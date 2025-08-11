@@ -20,9 +20,12 @@ Config.MomentumSuperJumpThreshold = 65
 Config.MomentumAirDashThreshold = 45
 
 -- Dash
-Config.DashImpulse = 40
+Config.DashImpulse = 50
 Config.DashCooldownSeconds = 1.25
 Config.DashStaminaCost = 20
+Config.DashVfxDuration = 0.2
+Config.DashDurationSeconds = 0.18
+Config.DashSpeed = 70
 
 -- Slide
 Config.SlideDurationSeconds = 0.5
@@ -30,6 +33,7 @@ Config.SlideSpeedBoost = 10
 Config.SlideFrictionMultiplier = 0.5
 Config.SlideHipHeightDelta = -1.2
 Config.SlideStaminaCost = 12
+Config.SlideVfxDuration = 0.25
 
 -- Wall run
 -- Wall running configuration:

@@ -28,7 +28,7 @@ local function findClimbable(root)
 
 	for _, dir in ipairs(directions) do
 		local result = workspace:Raycast(root.Position, dir * Config.ClimbDetectionDistance, params)
-		if result and result.Instance and result.Instance:GetAttribute("climbable") == true then
+		if result and result.Instance and result.Instance:GetAttribute("Climbable") == true then
 			return result
 		end
 	end

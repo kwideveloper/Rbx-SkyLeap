@@ -9,6 +9,7 @@ local Config = require(ReplicatedStorage.Movement.Config)
 local Momentum = require(ReplicatedStorage.Movement.Momentum)
 local Stamina = require(ReplicatedStorage.Movement.Stamina)
 local Abilities = require(ReplicatedStorage.Movement.Abilities)
+local DashVfx = require(ReplicatedStorage.Movement.DashVfx)
 local WallRun = require(ReplicatedStorage.Movement.WallRun)
 local WallJump = require(ReplicatedStorage.Movement.WallJump)
 local WallMemory = require(ReplicatedStorage.Movement.WallMemory)
@@ -136,6 +137,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		if state.stamina.current >= Config.DashStaminaCost then
 			if Abilities.tryDash(character) then
 				state.stamina.current = math.max(0, state.stamina.current - Config.DashStaminaCost)
+				DashVfx.playFor(character, Config.DashVfxDuration)
 			end
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
@@ -159,6 +161,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				state.sliding = true
 				state.slideEnd = Abilities.slide(character)
 				state.stamina.current = math.max(0, state.stamina.current - Config.SlideStaminaCost)
+				DashVfx.playSlideFor(character, Config.SlideVfxDuration)
 				task.delay(Config.SlideDurationSeconds, function()
 					state.sliding = false
 					if state.slideEnd then
