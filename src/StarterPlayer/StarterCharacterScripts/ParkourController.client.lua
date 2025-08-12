@@ -34,8 +34,6 @@ local state = {
 	clientStateFolder = nil,
 	staminaValue = nil,
 	speedValue = nil,
-	lastOnGroundTime = 0,
-	usedCoyoteJump = false,
 }
 
 local function getCharacter()
@@ -375,28 +373,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 						return
 					end
 				end
-				-- No wall: allow one emergency air jump only when beyond coyote window
-				local withinCoyote = (os.clock() - (state.lastOnGroundTime or 0)) <= (Config.CoyoteTimeSeconds or 0)
-				if
-					not withinCoyote
-					and not state.usedCoyoteJump
-					and state.stamina.current >= Config.WallJumpStaminaCost
-				then
-					local root = character:FindFirstChild("HumanoidRootPart")
-					if root then
-						local look = root.CFrame.LookVector
-						local forward = Vector3.new(look.X, 0, look.Z)
-						if forward.Magnitude > 0 then
-							forward = forward.Unit
-						end
-						local upImpulse = Config.AirJumpImpulseUp or (Config.WallJumpImpulseUp or 40)
-						local fwdImpulse = (Config.AirJumpForwardBoost or 0)
-						local desiredVel = Vector3.new(forward.X * fwdImpulse, upImpulse, forward.Z * fwdImpulse)
-						root.AssemblyLinearVelocity = desiredVel
-						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
-						state.usedCoyoteJump = true
-					end
-				end
 			end
 		end
 	end
@@ -474,11 +450,6 @@ RunService.RenderStepped:Connect(function(dt)
 			Stamina.setSprinting(state.stamina, false)
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
 		end
-	end
-	-- Track last ground contact time for coyote jumping
-	if humanoid.FloorMaterial ~= Enum.Material.Air then
-		state.lastOnGroundTime = os.clock()
-		state.usedCoyoteJump = false
 	end
 
 	-- Prone posture enforcement (hold-to-stay)

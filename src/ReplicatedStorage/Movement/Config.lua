@@ -79,8 +79,6 @@ Config.DebugClimb = false
 -- Raycast
 Config.RaycastIgnoreWater = true
 
--- Coyote time: allow one jump shortly after walking off a ledge
-Config.CoyoteTimeSeconds = 0.18
 -- Air jump (while falling, no wall): upward and forward boosts
 Config.AirJumpImpulseUp = 50
 Config.AirJumpForwardBoost = 20
