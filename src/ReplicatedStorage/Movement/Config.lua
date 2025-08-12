@@ -62,15 +62,15 @@ Config.WallStickVelocity = 4
 Config.WallHopForwardBoost = 18
 
 -- Wall jump
-Config.WallJumpImpulseUp = 40
+Config.WallJumpImpulseUp = 45
 Config.WallJumpImpulseAway = 45
-Config.WallJumpCooldownSeconds = 0.35
+Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 
 -- Climb
 Config.ClimbDetectionDistance = 4
 Config.ClimbSpeed = 12
-Config.ClimbStickVelocity = 4
+Config.ClimbStickVelocity = 3
 Config.ClimbStaminaDrainPerSecond = 8
 -- Minimum stamina required to start climbing
 Config.ClimbMinStamina = 10

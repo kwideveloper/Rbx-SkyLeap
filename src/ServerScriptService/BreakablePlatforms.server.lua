@@ -46,21 +46,43 @@ local function setupBreakable(part)
 		template:SetAttribute("_BreakableWired", nil)
 	end
 
-	local function tweenTransparency(target, duration)
-		local tween = TweenService:Create(
-			part,
-			TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Transparency = target }
-		)
-		tween:Play()
-		tween.Completed:Wait()
+	-- Helpers to manage decals-based staged visuals
+	local function collectOrderedDecals(root)
+		local decals = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Decal") then
+				local num = tonumber(string.match(d.Name, "Decal(%d+)$") or "") or math.huge
+				table.insert(decals, { inst = d, order = num })
+			end
+		end
+		table.sort(decals, function(a, b)
+			return a.order < b.order
+		end)
+		local result = {}
+		for _, entry in ipairs(decals) do
+			table.insert(result, entry.inst)
+		end
+		return result
+	end
+
+	local function setAllDecalsHidden(root, hidden)
+		for _, d in ipairs(collectOrderedDecals(root)) do
+			d.Transparency = hidden and 1 or 0
+		end
 	end
 
 	local function stagedDisappearWhileTouched()
 		local total = tonumber(part:GetAttribute("TimeToDissapear")) or 2
-		local step = total / 5
-		local thresholds = { step, step * 2, step * 3, step * 4, step * 5 }
-		local targetTransparencyByStage = { 0, 0.3, 0.55, 0.9 }
+		local decals = collectOrderedDecals(part)
+		-- Ensure template also starts hidden on respawn
+		setAllDecalsHidden(part, true)
+
+		local stagesCount = math.max(1, #decals) -- show decals across stages; if none, fallback shake only then destroy
+		local step = total / (stagesCount + 1)
+		local thresholds = {}
+		for i = 1, stagesCount + 1 do
+			thresholds[i] = step * i
+		end
 
 		local progress = 0
 		local stage = 0
@@ -97,11 +119,14 @@ local function setupBreakable(part)
 		end
 
 		local function setStage(newStage)
-			if newStage > stage and targetTransparencyByStage[newStage] ~= nil then
+			if newStage > stage then
 				stage = newStage
-				tweenTransparency(targetTransparencyByStage[newStage], math.min(0.1, step * 0.25))
-				-- Subtle shake on the last stage (about to break)
-				if stage == 4 then
+				-- Reveal decals progressively by setting Transparency = 0
+				if decals[stage] and decals[stage].Transparency ~= 0 then
+					decals[stage].Transparency = 0
+				end
+				-- Subtle shake on the penultimate stage (last visible stage) before destroy
+				if stage == stagesCount then
 					local started = false
 					if not started and part and part.Parent then
 						started = true
@@ -135,7 +160,7 @@ local function setupBreakable(part)
 							t2.Completed:Wait()
 						end
 						task.spawn(function()
-							while running and part and part.Parent and stage == 4 do
+							while running and part and part.Parent and stage == stagesCount do
 								if part.Anchored then
 									doShakeOnce()
 								else
@@ -181,16 +206,14 @@ local function setupBreakable(part)
 
 			if isTouched() then
 				if not didInitialTouch and stage == 0 then
-					-- instant jump to state #2 (70%) for immediate feedback
-					part.Transparency = targetTransparencyByStage[2] or 0.3
-					stage = 2 - 1 -- ensure subsequent setStage logic considers next thresholds
+					-- Immediate feedback: reveal first decal instantly
+					setStage(1)
 					didInitialTouch = true
 				end
 				progress = progress + dt
-				if progress >= thresholds[5] then
+				if progress >= thresholds[stagesCount + 1] then
 					-- destroy and cleanup
 					hb:Disconnect()
-					part.Transparency = 1
 					part.CanCollide = false
 					part.Anchored = true
 					local currentCFrame = part.CFrame
@@ -233,18 +256,19 @@ local function setupBreakable(part)
 							tween:Play()
 							tween.Completed:Wait()
 							-- Keep original physics; nothing else to restore here
+							-- Hide decals on the new part initially
+							setAllDecalsHidden(newPart, true)
 							setupBreakable(newPart)
 						end
 					end)
 					return
-				elseif progress >= thresholds[4] then
-					setStage(4)
-				elseif progress >= thresholds[3] then
-					setStage(3)
-				elseif progress >= thresholds[2] then
-					setStage(2)
-				elseif progress >= thresholds[1] then
-					setStage(1)
+				else
+					for i = stagesCount, 1, -1 do
+						if progress >= thresholds[i] then
+							setStage(i)
+							break
+						end
+					end
 				end
 			end
 		end)
