@@ -246,9 +246,6 @@ local function setupBreakable(part)
 				elseif progress >= thresholds[1] then
 					setStage(1)
 				end
-				if part:GetAttribute("Debug") == true then
-					print(string.format("[Breakable] progress=%.2f / %.2f", progress, thresholds[5]))
-				end
 			end
 		end)
 

@@ -16,6 +16,7 @@ local WallMemory = require(ReplicatedStorage.Movement.WallMemory)
 local Climb = require(ReplicatedStorage.Movement.Climb)
 
 local player = Players.LocalPlayer
+local proneDebugTicker = 0
 
 local state = {
 	momentum = Momentum.create(),
@@ -23,10 +24,18 @@ local state = {
 	sliding = false,
 	slideEnd = nil,
 	sprintHeld = false,
+	proneHeld = false,
+	proneActive = false,
+	proneOriginalWalkSpeed = nil,
+	proneOriginalHipHeight = nil,
+	proneOriginalCameraOffset = nil,
+	proneTrack = nil,
 	keys = { W = false, A = false, S = false, D = false },
 	clientStateFolder = nil,
 	staminaValue = nil,
 	speedValue = nil,
+	lastOnGroundTime = 0,
+	usedCoyoteJump = false,
 }
 
 local function getCharacter()
@@ -93,6 +102,10 @@ local function setupCharacter(character)
 	state.sprintHeld = false
 	state.sliding = false
 	state.slideEnd = nil
+	state.proneHeld = false
+	state.proneActive = false
+	state.proneOriginalWalkSpeed = nil
+	state.proneOriginalHipHeight = nil
 	if state.stamina then
 		state.stamina.current = Config.StaminaMax
 		state.stamina.isSprinting = false
@@ -198,6 +211,78 @@ if player.Character then
 	setupCharacter(player.Character)
 end
 
+local function tryPlayProneAnimation(humanoid)
+	local rs = game:GetService("ReplicatedStorage")
+	local animationsFolder = rs:FindFirstChild("Animations")
+	if not animationsFolder then
+		return nil
+	end
+	local anim = animationsFolder:FindFirstChild("Prone") or animationsFolder:FindFirstChild("Crawl")
+	if not anim or not anim:IsA("Animation") then
+		return nil
+	end
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+	animator.Parent = humanoid
+	local track = animator:LoadAnimation(anim)
+	track.Priority = Enum.AnimationPriority.Movement
+	track:Play(0.15, 1, 1)
+	return track
+end
+
+local function enterProne(character)
+	if state.proneActive then
+		return
+	end
+	local humanoid = getHumanoid(character)
+	-- Disallow prone during slide/wallrun/climb
+	if state.sliding or WallRun.isActive(character) or Climb.isActive(character) then
+		return
+	end
+	state.proneOriginalWalkSpeed = humanoid.WalkSpeed
+	state.proneOriginalHipHeight = humanoid.HipHeight
+	state.proneOriginalCameraOffset = humanoid.CameraOffset
+	humanoid.WalkSpeed = Config.ProneWalkSpeed
+	humanoid.HipHeight = math.max(0, state.proneOriginalHipHeight + (Config.ProneHipHeightDelta or 0))
+	humanoid.CameraOffset = Vector3.new(0, (Config.ProneCameraOffsetY or -2.5), 0)
+	-- Optional animation if present
+	if state.proneTrack then
+		pcall(function()
+			state.proneTrack:Stop(0.1)
+		end)
+		state.proneTrack = nil
+	end
+	state.proneTrack = tryPlayProneAnimation(humanoid)
+	state.proneActive = true
+end
+
+local function exitProne(character)
+	if not state.proneActive then
+		return
+	end
+	local humanoid = getHumanoid(character)
+	if state.proneOriginalWalkSpeed ~= nil then
+		humanoid.WalkSpeed = state.proneOriginalWalkSpeed
+	end
+	if state.proneOriginalHipHeight ~= nil then
+		humanoid.HipHeight = state.proneOriginalHipHeight
+	end
+	if state.proneOriginalCameraOffset ~= nil then
+		humanoid.CameraOffset = state.proneOriginalCameraOffset
+	else
+		humanoid.CameraOffset = Vector3.new()
+	end
+	if state.proneTrack then
+		pcall(function()
+			state.proneTrack:Stop(0.2)
+		end)
+		state.proneTrack = nil
+	end
+	state.proneActive = false
+	state.proneOriginalWalkSpeed = nil
+	state.proneOriginalHipHeight = nil
+	state.proneOriginalCameraOffset = nil
+end
+
 -- Inputs
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then
@@ -220,7 +305,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		-- Slide only while sprinting
 		local humanoid = getHumanoid(character)
 		-- Disable slide while airborne and during wall run
-		if WallRun.isActive(character) or Climb.isActive(character) then
+		if WallRun.isActive(character) or Climb.isActive(character) or state.proneActive then
 			return
 		end
 		if humanoid.FloorMaterial == Enum.Material.Air then
@@ -261,6 +346,9 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		end
+	elseif input.KeyCode == Enum.KeyCode.Z then
+		state.proneHeld = true
+		enterProne(character)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
 		if Climb.isActive(character) then
@@ -276,11 +364,38 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 				end
 			end
-		elseif humanoid.FloorMaterial == Enum.Material.Air then
-			-- Fallback: regular wall jump when airborne
-			if state.stamina.current >= Config.WallJumpStaminaCost then
-				if WallJump.tryJump(character) then
-					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+		else
+			local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
+			if airborne then
+				-- Preserve original behavior: try wall jump whenever airborne and near a wall
+				if state.stamina.current >= Config.WallJumpStaminaCost then
+					if WallJump.tryJump(character) then
+						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+						-- Do not mark usedCoyoteJump here; allow normal wall-jump chaining (WallMemory prevents spam)
+						return
+					end
+				end
+				-- No wall: allow one emergency air jump only when beyond coyote window
+				local withinCoyote = (os.clock() - (state.lastOnGroundTime or 0)) <= (Config.CoyoteTimeSeconds or 0)
+				if
+					not withinCoyote
+					and not state.usedCoyoteJump
+					and state.stamina.current >= Config.WallJumpStaminaCost
+				then
+					local root = character:FindFirstChild("HumanoidRootPart")
+					if root then
+						local look = root.CFrame.LookVector
+						local forward = Vector3.new(look.X, 0, look.Z)
+						if forward.Magnitude > 0 then
+							forward = forward.Unit
+						end
+						local upImpulse = Config.AirJumpImpulseUp or (Config.WallJumpImpulseUp or 40)
+						local fwdImpulse = (Config.AirJumpForwardBoost or 0)
+						local desiredVel = Vector3.new(forward.X * fwdImpulse, upImpulse, forward.Z * fwdImpulse)
+						root.AssemblyLinearVelocity = desiredVel
+						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+						state.usedCoyoteJump = true
+					end
 				end
 			end
 		end
@@ -306,6 +421,13 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 	end
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = false
+	end
+	if input.KeyCode == Enum.KeyCode.Z then
+		state.proneHeld = false
+		local character = player.Character
+		if character then
+			exitProne(character)
+		end
 	end
 	if input.KeyCode == Enum.KeyCode.W then
 		state.keys.W = false
@@ -351,6 +473,45 @@ RunService.RenderStepped:Connect(function(dt)
 		if state.stamina.isSprinting then
 			Stamina.setSprinting(state.stamina, false)
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
+		end
+	end
+	-- Track last ground contact time for coyote jumping
+	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		state.lastOnGroundTime = os.clock()
+		state.usedCoyoteJump = false
+	end
+
+	-- Prone posture enforcement (hold-to-stay)
+	if state.proneHeld then
+		-- If player started an incompatible state, leave prone
+		if state.sliding or WallRun.isActive(character) or Climb.isActive(character) then
+			state.proneHeld = false
+			exitProne(character)
+		else
+			if not state.proneActive then
+				enterProne(character)
+			end
+			-- Keep speed and hip height constrained while prone
+			humanoid.WalkSpeed = Config.ProneWalkSpeed
+			if state.proneOriginalHipHeight ~= nil then
+				humanoid.HipHeight = math.max(0, state.proneOriginalHipHeight + (Config.ProneHipHeightDelta or 0))
+			end
+			proneDebugTicker = proneDebugTicker + dt
+			if proneDebugTicker > 0.5 then
+				proneDebugTicker = 0
+				warn(
+					"[Prone] tick held=true active=",
+					state.proneActive,
+					" ws=",
+					humanoid.WalkSpeed,
+					" hip=",
+					humanoid.HipHeight
+				)
+			end
+		end
+	else
+		if state.proneActive then
+			exitProne(character)
 		end
 	end
 
@@ -441,6 +602,10 @@ RunService.RenderStepped:Connect(function(dt)
 
 	-- Wall run requires sprint held and being near a wall; simulate real wall stick/run
 	if state.sprintHeld and humanoid.FloorMaterial == Enum.Material.Air and not Climb.isActive(character) then
+		-- Exit prone if attempting wall behavior
+		if state.proneActive then
+			exitProne(character)
+		end
 		if WallRun.isActive(character) then
 			WallRun.maintain(character)
 		else

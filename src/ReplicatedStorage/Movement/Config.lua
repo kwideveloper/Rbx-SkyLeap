@@ -36,6 +36,12 @@ Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
 Config.SlideCooldownSeconds = 1.0
 
+-- Prone (lie down / crawl)
+Config.ProneWalkSpeed = 8
+Config.ProneHipHeightDelta = -2.2
+Config.ProneCameraOffsetY = -2.5
+Config.DebugProne = false
+
 -- Wall run
 -- Wall running configuration:
 -- WallRunMaxDurationSeconds: Maximum time (in seconds) a player can wall run before being forced off.
@@ -57,9 +63,9 @@ Config.WallHopForwardBoost = 18
 
 -- Wall jump
 Config.WallJumpImpulseUp = 40
-Config.WallJumpImpulseAway = 30
+Config.WallJumpImpulseAway = 45
 Config.WallJumpCooldownSeconds = 0.35
-Config.WallJumpStaminaCost = 18
+Config.WallJumpStaminaCost = 14
 
 -- Climb
 Config.ClimbDetectionDistance = 4
@@ -68,9 +74,15 @@ Config.ClimbStickVelocity = 4
 Config.ClimbStaminaDrainPerSecond = 8
 -- Minimum stamina required to start climbing
 Config.ClimbMinStamina = 10
-Config.DebugClimb = true
+Config.DebugClimb = false
 
 -- Raycast
 Config.RaycastIgnoreWater = true
+
+-- Coyote time: allow one jump shortly after walking off a ledge
+Config.CoyoteTimeSeconds = 0.18
+-- Air jump (while falling, no wall): upward and forward boosts
+Config.AirJumpImpulseUp = 50
+Config.AirJumpForwardBoost = 20
 
 return Config
