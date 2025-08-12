@@ -7,7 +7,7 @@ Config.BaseWalkSpeed = 20
 Config.SprintWalkSpeed = 30
 
 -- Stamina
-Config.StaminaMax = 100
+Config.StaminaMax = 200
 Config.SprintDrainPerSecond = 20
 Config.StaminaRegenPerSecond = 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
@@ -34,6 +34,7 @@ Config.SlideFrictionMultiplier = 0.5
 Config.SlideHipHeightDelta = -1.2
 Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
+Config.SlideCooldownSeconds = 1.0
 
 -- Wall run
 -- Wall running configuration:

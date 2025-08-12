@@ -4,41 +4,53 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
-local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- Use the prebuilt interface: ScreenGui "Stamina" with Frame "Container"
-local screenGui = playerGui:WaitForChild("Stamina")
-local container = screenGui:WaitForChild("Container")
-local barBg = container:WaitForChild("StaminaBg")
-local speedText = container:WaitForChild("SpeedText")
-local barLabel = container:WaitForChild("StaminaLabel")
+-- UI bindings (rebound after respawn if ScreenGui has ResetOnSpawn=true)
+local screenGui
+local container
+local barBg
+local speedText
+local barLabel
+local barFill
+local costsText
+local iconsFrame
+local dashIcon
+local slideIcon
+local wallIcon
 
--- Ensure a fill frame exists inside StaminaBg
-local barFill = barBg:FindFirstChild("StaminaFill")
-if not barFill then
-	barFill = Instance.new("Frame")
-	barFill.Name = "StaminaFill"
-	barFill.Size = UDim2.new(0, 0, 1, 0)
-	barFill.BackgroundColor3 = Color3.fromRGB(0, 200, 120)
-	barFill.BorderSizePixel = 0
-	barFill.Parent = barBg
+local function bindUi()
+	-- Attempt to (re)bind all references; do not create UI elements
+	local sg = playerGui:FindFirstChild("Stamina") or playerGui:WaitForChild("Stamina")
+	screenGui = sg
+	container = screenGui:FindFirstChild("Container") or screenGui:WaitForChild("Container")
+	barBg = container:FindFirstChild("StaminaBg") or container:WaitForChild("StaminaBg")
+	speedText = container:FindFirstChild("SpeedText") or container:WaitForChild("SpeedText")
+	barLabel = container:FindFirstChild("StaminaLabel") or container:WaitForChild("StaminaLabel")
+	barFill = barBg:FindFirstChild("StaminaFill") -- must exist in UI
+	costsText = container:FindFirstChild("CostsText") -- optional
+	iconsFrame = container:FindFirstChild("ActionIcons") -- optional
+	dashIcon = iconsFrame and iconsFrame:FindFirstChild("Dash") or nil
+	slideIcon = iconsFrame and iconsFrame:FindFirstChild("Slide") or nil
+	wallIcon = iconsFrame and iconsFrame:FindFirstChild("Wall") or nil
+
+	-- Rebind again if ScreenGui gets replaced on next spawn
+	screenGui.AncestryChanged:Connect(function()
+		if not screenGui:IsDescendantOf(playerGui) then
+			task.defer(bindUi)
+		end
+	end)
 end
 
--- Optional: show costs next to label
-local costsText = container:FindFirstChild("CostsText")
-if not costsText then
-	costsText = Instance.new("TextLabel")
-	costsText.Name = "CostsText"
-	costsText.Size = UDim2.new(0, 240, 0, 16)
-	costsText.Position = UDim2.new(0, 0, 0, -36)
-	costsText.BackgroundTransparency = 1
-	costsText.Font = Enum.Font.Gotham
-	costsText.TextSize = 12
-	costsText.TextColor3 = Color3.fromRGB(170, 170, 170)
-	costsText.TextXAlignment = Enum.TextXAlignment.Left
-	costsText.Text = ""
-	costsText.Parent = container
-end
+bindUi()
+
+-- Rebind when a new Stamina gui is added (covers ResetOnSpawn=true)
+playerGui.ChildAdded:Connect(function(child)
+	if child.Name == "Stamina" then
+		bindUi()
+	end
+end)
 
 local function formatCosts()
 	local C = require(ReplicatedStorage.Movement.Config)
@@ -51,6 +63,9 @@ local function formatCosts()
 end
 
 local function flashBar(color)
+	if not barFill then
+		return
+	end
 	local original = barFill.BackgroundColor3
 	barFill.BackgroundColor3 = color
 	TweenService:Create(barFill, TweenInfo.new(0.4), { BackgroundColor3 = original }):Play()
@@ -81,12 +96,6 @@ local function getClientState()
 end
 
 -- Action icons (UI elements) - use existing UI only
-local iconsFrame = container:WaitForChild("ActionIcons")
-
-local dashIcon = iconsFrame:WaitForChild("Dash")
-local slideIcon = iconsFrame:WaitForChild("Slide")
-local wallIcon = iconsFrame:WaitForChild("Wall")
-
 -- Preserve original frame BG configured in Studio; toggle frame BG color per availability
 local frameDefaults = {}
 local function captureFrameDefaults(frame)
@@ -107,6 +116,16 @@ local function setIconState(frame, enabled)
 end
 
 local function update()
+	if not screenGui or not container or not barBg or not speedText or not barLabel then
+		return
+	end
+	if not barFill then
+		-- Wait for UI to include fill; skip until it exists
+		barFill = barBg:FindFirstChild("StaminaFill")
+		if not barFill then
+			return
+		end
+	end
 	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning = getClientState()
 	if not folder then
 		return
@@ -121,7 +140,9 @@ local function update()
 	barFill.Size = UDim2.new(ratio, 0, 1, 0)
 	barFill.BackgroundColor3 = colorForStaminaRatio(ratio)
 	speedText.Text = string.format("Speed: %d", speedValue and math.floor(speedValue.Value + 0.5) or 0)
-	costsText.Text = formatCosts()
+	if costsText then
+		costsText.Text = formatCosts()
+	end
 
 	-- Visual feedback when stamina insuficiente (< min de cualquiera de los costos)
 	local minCost = math.min(C.DashStaminaCost or 0, C.SlideStaminaCost or 0, C.WallJumpStaminaCost or 0)
@@ -136,6 +157,7 @@ local function update()
 		and not (isWallRunning and isWallRunning.Value)
 	local canSlide = (isSprinting and isSprinting.Value)
 		and staminaCurrent >= (C.SlideStaminaCost or 0)
+		and Abilities.isSlideReady()
 		and not (isWallRunning and isWallRunning.Value)
 		and not (isAirborne and isAirborne.Value)
 	-- Wall jump/hop available if near a wall (airborne not required)
@@ -157,9 +179,15 @@ local function update()
 		end
 	end
 	local canWall = staminaCurrent >= (C.WallJumpStaminaCost or 0) and nearWall
-	setIconState(dashIcon, canDash)
-	setIconState(slideIcon, canSlide)
-	setIconState(wallIcon, canWall)
+	if dashIcon then
+		setIconState(dashIcon, canDash)
+	end
+	if slideIcon then
+		setIconState(slideIcon, canSlide)
+	end
+	if wallIcon then
+		setIconState(wallIcon, canWall)
+	end
 end
 
 -- Heartbeat-driven update for snappy UI

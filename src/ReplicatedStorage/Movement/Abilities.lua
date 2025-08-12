@@ -5,6 +5,7 @@ local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local Abilities = {}
 
 local lastDashTick = 0
+local lastSlideTick = 0
 local originalPhysByPart = {}
 
 local function getCharacterParts(character)
@@ -47,6 +48,11 @@ end
 function Abilities.isDashReady()
 	local now = os.clock()
 	return (now - lastDashTick) >= Config.DashCooldownSeconds
+end
+
+function Abilities.isSlideReady()
+	local now = os.clock()
+	return (now - lastSlideTick) >= (Config.SlideCooldownSeconds or 0)
 end
 
 function Abilities.tryDash(character)
@@ -100,6 +106,10 @@ function Abilities.tryDash(character)
 end
 
 function Abilities.slide(character)
+	local now = os.clock()
+	if (now - lastSlideTick) < (Config.SlideCooldownSeconds or 0) then
+		return function() end
+	end
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid then
 		return function() end
@@ -118,6 +128,7 @@ function Abilities.slide(character)
 		end
 	end
 
+	lastSlideTick = now
 	task.delay(Config.SlideDurationSeconds, endSlide)
 	return endSlide
 end

@@ -1,4 +1,4 @@
--- Client-side parkour controller
+-- Client-side parkour controller (module-style to be loaded from StarterCharacterScripts)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -41,6 +41,80 @@ end
 local function setupCharacter(character)
 	local humanoid = getHumanoid(character)
 	humanoid.WalkSpeed = Config.BaseWalkSpeed
+	-- Setup stamina touch tracking for parts with attribute Stamina=true (works even for CanQuery=false when CanTouch is true)
+	state.staminaTouched = {}
+	state.staminaTouchCount = 0
+	if state.touchConns then
+		for _, c in ipairs(state.touchConns) do
+			if c then
+				c:Disconnect()
+			end
+		end
+	end
+	state.touchConns = {}
+
+	local function onTouched(other)
+		if other and typeof(other.GetAttribute) == "function" and other:GetAttribute("Stamina") == true then
+			if not state.staminaTouched[other] then
+				state.staminaTouched[other] = 1
+				state.staminaTouchCount = state.staminaTouchCount + 1
+			end
+		end
+	end
+	local function onTouchEnded(other)
+		if other and state.staminaTouched[other] then
+			state.staminaTouched[other] = nil
+			state.staminaTouchCount = math.max(0, state.staminaTouchCount - 1)
+		end
+	end
+
+	local function hookPart(part)
+		if not part:IsA("BasePart") then
+			return
+		end
+		table.insert(state.touchConns, part.Touched:Connect(onTouched))
+		if part.TouchEnded then
+			table.insert(state.touchConns, part.TouchEnded:Connect(onTouchEnded))
+		end
+	end
+
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("BasePart") then
+			hookPart(d)
+		end
+	end
+	character.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") then
+			hookPart(d)
+		end
+	end)
+
+	-- Reset transient state on spawn and publish clean HUD states
+	state.sprintHeld = false
+	state.sliding = false
+	state.slideEnd = nil
+	if state.stamina then
+		state.stamina.current = Config.StaminaMax
+		state.stamina.isSprinting = false
+	end
+	if state.staminaValue then
+		state.staminaValue.Value = state.stamina.current
+	end
+	if state.isSprintingValue then
+		state.isSprintingValue.Value = false
+	end
+	if state.isSlidingValue then
+		state.isSlidingValue.Value = false
+	end
+	if state.isAirborneValue then
+		state.isAirborneValue.Value = false
+	end
+	if state.isWallRunningValue then
+		state.isWallRunningValue.Value = false
+	end
+	if state.isClimbingValue then
+		state.isClimbingValue.Value = false
+	end
 end
 local function ensureClientState()
 	local folder = ReplicatedStorage:FindFirstChild("ClientState")
@@ -156,6 +230,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			state.stamina.isSprinting
 			and humanoid.MoveDirection.Magnitude > 0
 			and state.stamina.current >= Config.SlideStaminaCost
+			and Abilities.isSlideReady()
 		then
 			if not state.sliding then
 				state.sliding = true
@@ -279,10 +354,32 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	local stillSprinting = state.stamina.isSprinting
-	if not Climb.isActive(character) then
-		local _cur, sprintingNow = Stamina.tick(state.stamina, dt)
-		stillSprinting = sprintingNow
+	-- Stamina gate: regen when on ground OR touching any part with attribute Stamina=true (collidable or not)
+	local allowRegen = (humanoid.FloorMaterial ~= Enum.Material.Air)
+	if state.staminaTouchCount and state.staminaTouchCount > 0 then
+		allowRegen = true
+	else
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local overlapParams = OverlapParams.new()
+			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+			overlapParams.FilterDescendantsInstances = { character }
+			overlapParams.RespectCanCollide = false
+			local expand = Vector3.new(2, 3, 2)
+			local parts =
+				workspace:GetPartBoundsInBox(root.CFrame, (root.Size or Vector3.new(2, 2, 1)) + expand, overlapParams)
+			for _, p in ipairs(parts) do
+				if p and typeof(p.GetAttribute) == "function" and p:GetAttribute("Stamina") == true then
+					allowRegen = true
+					break
+				end
+			end
+		end
+	end
+	local stillSprinting
+	do
+		local _cur, s = Stamina.tickWithGate(state.stamina, dt, allowRegen)
+		stillSprinting = s
 	end
 	if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
 		humanoid.WalkSpeed = Config.BaseWalkSpeed

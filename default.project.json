@@ -13,7 +13,10 @@
 
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "$path": "src/StarterPlayer"
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      },
+      "StarterCharacterScripts": {
+        "$path": "src/StarterPlayer/StarterCharacterScripts"
       }
     },
 
