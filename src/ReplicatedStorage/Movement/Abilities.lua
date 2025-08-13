@@ -79,7 +79,7 @@ function Abilities.tryDash(character)
 		moveDir = moveDir.Unit
 	end
 
-	-- Completamente horizontal, sin componente vertical (ignorando la gravedad)
+	--Completely horizontal, without vertical component (ignoring gravity)
 	local desiredHorizontal = moveDir * Config.DashSpeed
 	local desiredVel = Vector3.new(desiredHorizontal.X, 0, desiredHorizontal.Z)
 	rootPart.AssemblyLinearVelocity = desiredVel
@@ -119,15 +119,15 @@ function Abilities.tryDash(character)
 		end
 	end
 
-	-- Guardar el estado original de las propiedades de física y configurar el personaje
+	-- Save the original status of physics properties and configure the character
 	local originalAutoRotate = humanoid.AutoRotate
 	-- Temporarily reduce friction to 0 on all character parts to achieve consistent ground dash
 	setCharacterFriction(character, 0, 0)
 	humanoid.AutoRotate = false
 
-	-- Desactivar temporalmente la gravedad configurando un estado especial para el humanoid
+	-- Temporarily disable gravity by configuring a special state for humans
 	local originalState = humanoid:GetState()
-	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- Este estado nos permite tener control completo sobre la física
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- This state allows us to have complete control over physics
 
 	local stillValid = true
 	task.delay(Config.DashDurationSeconds, function()
@@ -135,17 +135,17 @@ function Abilities.tryDash(character)
 		humanoid.AutoRotate = originalAutoRotate
 		restoreCharacterFriction(character)
 
-		-- Restaurar el comportamiento normal de la gravedad después del dash
+		-- Restore the normal behavior of gravity after Dash
 		if humanoid and humanoid.Parent then
 			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 		end
 	end)
 
-	-- Actualizar constantemente la velocidad durante el dash para mantener el movimiento perfectamente horizontal
+	-- Constantly update the speed during the Dash to maintain the perfectly horizontal movement
 	task.spawn(function()
 		local t0 = os.clock()
 		while stillValid and (os.clock() - t0) < Config.DashDurationSeconds do
-			rootPart.AssemblyLinearVelocity = desiredVel -- Mantener velocidad horizontal constante sin componente vertical
+			rootPart.AssemblyLinearVelocity = desiredVel -- Maintain constant horizontal speed without vertical component
 			task.wait()
 		end
 	end)
