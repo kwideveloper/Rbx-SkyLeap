@@ -160,25 +160,28 @@ local function update()
 		and Abilities.isSlideReady()
 		and not (isWallRunning and isWallRunning.Value)
 		and not (isAirborne and isAirborne.Value)
-	-- Wall jump/hop available if near a wall (airborne not required)
-	local nearWall = false
+	-- Wall jump/hop icon: enabled only when action is truly available
+	local canWall = false
 	do
 		local WallRun = require(ReplicatedStorage.Movement.WallRun)
 		local WallJump = require(ReplicatedStorage.Movement.WallJump)
 		local player = game:GetService("Players").LocalPlayer
 		local character = player.Character
 		if character then
-			nearWall = WallRun.isNearWall(character) or WallJump.isNearWall(character)
-			-- Respect one-jump-per-wall rule: if the nearby wall is the same as the last used, disable icon until reset
+			local readyBySlide = WallJump.canWallJump(character)
+			local readyByRun = WallRun.isActive(character)
+			local near = WallRun.isNearWall(character) or WallJump.isNearWall(character)
+			-- Enforce stamina and memory rule
+			local ok = (staminaCurrent >= (C.WallJumpStaminaCost or 0)) and near and (readyBySlide or readyByRun)
 			local WallMemory = require(ReplicatedStorage.Movement.WallMemory)
 			local last = WallMemory.getLast(character)
 			local currentWall = WallJump.getNearbyWall(character)
 			if last and currentWall and last == currentWall then
-				nearWall = false
+				ok = false
 			end
+			canWall = ok
 		end
 	end
-	local canWall = staminaCurrent >= (C.WallJumpStaminaCost or 0) and nearWall
 	if dashIcon then
 		setIconState(dashIcon, canDash)
 	end

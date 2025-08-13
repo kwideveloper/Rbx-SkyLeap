@@ -425,12 +425,16 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		else
 			local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
 			if airborne then
-				-- Preserve original behavior: try wall jump whenever airborne and near a wall
+				-- Airborne: if near wall and can enter slide immediately, prefer starting slide first and block jump until pose snaps
 				if state.stamina.current >= Config.WallJumpStaminaCost then
-					if WallJump.tryJump(character) then
-						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
-						-- Do not mark usedCoyoteJump here; allow normal wall-jump chaining (WallMemory prevents spam)
+					if WallJump.isNearWall(character) then
+						-- isNearWall will start slide; rely on WallJump.tryJump to enforce animReady gating on next press
 						return
+					else
+						if WallJump.tryJump(character) then
+							state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+							return
+						end
 					end
 				end
 			end

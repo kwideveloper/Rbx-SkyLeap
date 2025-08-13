@@ -446,6 +446,18 @@ function WallJump.stopSlide(character)
 	stopWallSlide(character)
 end
 
+function WallJump.canWallJump(character)
+	-- True if slide is active and animation pose is ready, or if wall run is active (hop)
+	local data = activeWallSlides[character]
+	if data and data.animReady == true then
+		return true
+	end
+	if require(game:GetService("ReplicatedStorage").Movement.WallRun).isActive(character) then
+		return true
+	end
+	return false
+end
+
 function WallJump.getNearbyWall(character)
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -485,6 +497,16 @@ function WallJump.tryJump(character)
 		end
 		-- Stop wall slide first so our Jumping state is not overridden
 		stopWallSlide(character)
+	else
+		-- If slide is eligible right now, start it instantly and block this jump so pose can snap first
+		local canSlideNow = shouldActivateWallSlide(character)
+		if canSlideNow then
+			local maybeHit = findNearbyWallForSlide(rootPart)
+			if maybeHit then
+				startWallSlide(character, maybeHit)
+				return false
+			end
+		end
 	end
 
 	local away = hit.Normal * Config.WallJumpImpulseAway
