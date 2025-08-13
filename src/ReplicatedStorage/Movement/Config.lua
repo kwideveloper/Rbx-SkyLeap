@@ -50,13 +50,13 @@ Config.WallRunMinSpeed = 25
 -- WallRunSpeed: The speed at which the player moves while wall running.
 Config.WallRunSpeed = 30
 -- WallDetectionDistance: The distance (in studs) to check for a wall when attempting to start a wall run.
-Config.WallDetectionDistance = 3
+Config.WallDetectionDistance = 4
 
 -- WallRunDownSpeed: The downward velocity applied to the player while wall running (controls how quickly they slide down).
 Config.WallRunDownSpeed = 3
 
 -- WallStickVelocity: The force applied to keep the player attached to the wall during a wall run.
-Config.WallStickVelocity = 3
+Config.WallStickVelocity = 4
 
 -- Wall hop (Space while wall running)
 Config.WallHopForwardBoost = 18
@@ -69,9 +69,9 @@ Config.WallJumpStaminaCost = 14
 
 -- Wall slide
 Config.WallSlideFallSpeed = 5
-Config.WallSlideStickVelocity = 3 -- 4
+Config.WallSlideStickVelocity = 4 -- 4
 Config.WallSlideMaxDurationSeconds = 100 -- 100
-Config.WallSlideDetectionDistance = 3 -- 4
+Config.WallSlideDetectionDistance = 4 -- 4
 Config.WallSlideGroundProximityStuds = 5 -- distance from feet to ground to exit slide
 Config.WallSlideDrainPerSecond = (Config.SprintDrainPerSecond or 20) * 0.5
 
@@ -96,5 +96,13 @@ Config.ZiplineSpeed = 45
 Config.ZiplineDetectionDistance = 5
 Config.ZiplineStickVelocity = 6
 Config.ZiplineEndDetachDistance = 2
+
+-- Camera alignment (body yaw + head tracking)
+Config.CameraAlignEnabled = false
+Config.CameraAlignBodyLerpAlpha = 0.25 -- 0..1 per frame smoothing for body yaw
+Config.CameraAlignHeadEnabled = true
+Config.CameraAlignHeadYawDeg = 60
+Config.CameraAlignHeadPitchDeg = 30
+Config.CameraAlignBodyYawDeg = 45
 
 return Config

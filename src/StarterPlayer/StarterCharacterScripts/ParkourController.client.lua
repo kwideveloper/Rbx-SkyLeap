@@ -231,6 +231,9 @@ if player.Character then
 	setupCharacter(player.Character)
 end
 
+-- Ensure camera align caches base motors on spawn
+-- (Removed CameraAlign setup; head tracking handled by HeadTracking.client.lua)
+
 local function tryPlayProneAnimation(humanoid)
 	local rs = game:GetService("ReplicatedStorage")
 	local animationsFolder = rs:FindFirstChild("Animations")
@@ -621,6 +624,8 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isZipliningValue then
 		state.isZipliningValue.Value = Zipline.isActive(character)
 	end
+
+	-- (Head/camera alignment handled by HeadTracking.client.lua)
 	-- Show climb prompt when near climbable and with enough stamina
 	if state.climbPromptValue then
 		local show = ""
