@@ -18,7 +18,7 @@ end
 local function findNearestRope(rootPart)
 	local closest, closestDistSq = nil, math.huge
 
-	-- Buscar todos los modelos llamados "Zipline" en el workspace
+	-- Find all models called "Zipline" in the workspace
 	local ziplineModels = {}
 	for _, instance in ipairs(workspace:GetDescendants()) do
 		if instance:IsA("Model") and instance.Name == "Zipline" then
@@ -30,7 +30,7 @@ local function findNearestRope(rootPart)
 		return nil
 	end
 
-	-- Buscar RopeConstraints dentro de cada modelo Zipline
+	-- Look for ROPECONSTRAINTS within each Zipline model
 	for _, model in ipairs(ziplineModels) do
 		for _, constraint in ipairs(model:GetDescendants()) do
 			if constraint:IsA("RopeConstraint") then
@@ -54,7 +54,7 @@ local function findNearestRope(rootPart)
 						closestDistSq = distSq
 						closest = {
 							rope = constraint,
-							model = model, -- Guardar referencia al modelo para acceder a los atributos
+							model = model, -- Store reference to the model to access attributes
 							a0 = a0,
 							a1 = a1,
 							p0 = p0,
@@ -133,7 +133,7 @@ function Zipline.tryStart(character)
 		t = info.t,
 		dirSign = dirSign,
 		token = token,
-		model = info.model, -- Guardar referencia al modelo para acceder a su atributo Speed
+		model = info.model, -- Store reference to the model to access its Speed attribute
 	}
 	return true
 end
@@ -165,14 +165,14 @@ function Zipline.maintain(character, dt)
 	end
 
 	-- Move parameter t along rope
-	-- Obtener velocidad del modelo primero, luego de Config, o valor por defecto
-	local speed = 40 -- Valor por defecto
+	-- Get speed from the model first, then from Config, or default value
+	local speed = 40 -- Default value
 
-	-- Verificar si el modelo tiene el atributo Speed
+	-- Check if the model has the Speed attribute
 	if data.model and data.model:GetAttribute("Speed") ~= nil then
 		speed = data.model:GetAttribute("Speed")
 	else
-		-- Si no tiene el atributo, usar la configuración global
+		-- If it doesn't have the attribute, use the global configuration
 		speed = Config.ZiplineSpeed or speed
 	end
 
@@ -190,14 +190,14 @@ function Zipline.maintain(character, dt)
 	local pos, dir = computeRopePoint(data.a0, data.a1, data.t)
 	local forward = dir.Unit * data.dirSign
 
-	-- Ajustar la posición vertical para que la cabeza quede por debajo de la línea
-	-- Verificar si el modelo tiene un atributo HeadOffset personalizado
-	local headOffset = 5 -- Valor por defecto
+	-- Adjust vertical position so the head is below the line
+	-- Check if the model has a custom HeadOffset attribute
+	local headOffset = 5 -- Default value
 
 	if data.model and data.model:GetAttribute("HeadOffset") ~= nil then
 		headOffset = data.model:GetAttribute("HeadOffset")
 	else
-		-- Si no tiene el atributo, usar la configuración global
+		-- If it doesn't have the attribute, use the global configuration
 		headOffset = Config.ZiplineHeadOffset or headOffset
 	end
 
