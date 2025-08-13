@@ -50,20 +50,20 @@ Config.WallRunMinSpeed = 25
 -- WallRunSpeed: The speed at which the player moves while wall running.
 Config.WallRunSpeed = 30
 -- WallDetectionDistance: The distance (in studs) to check for a wall when attempting to start a wall run.
-Config.WallDetectionDistance = 2
+Config.WallDetectionDistance = 3
 
 -- WallRunDownSpeed: The downward velocity applied to the player while wall running (controls how quickly they slide down).
 Config.WallRunDownSpeed = 3
 
 -- WallStickVelocity: The force applied to keep the player attached to the wall during a wall run.
-Config.WallStickVelocity = 4
+Config.WallStickVelocity = 3
 
 -- Wall hop (Space while wall running)
 Config.WallHopForwardBoost = 18
 
 -- Wall jump
 Config.WallJumpImpulseUp = 45
-Config.WallJumpImpulseAway = 45
+Config.WallJumpImpulseAway = 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 

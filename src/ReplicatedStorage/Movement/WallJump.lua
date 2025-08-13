@@ -13,6 +13,7 @@ local activeAnimationTracks = {} -- To follow character active by character
 local activeWallSlides = {} -- To follow characters that are on Wall Slide
 local stopWallSlide -- forward declaration
 local slideCooldownUntil = {} -- Cooldown to prevent immediate re-entering slide after jumping
+local cachedSlideTrackByHumanoid = setmetatable({}, { __mode = "k" }) -- weak keys: humanoid -> AnimationTrack
 
 -- Configurable parameters for the wall slide
 local WALL_SLIDE_FALL_SPEED = Config.WallSlideFallSpeed -- Fall speed during the wall slide
@@ -115,21 +116,26 @@ local function playWallJumpAnimation(character)
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 	animator.Parent = humanoid
 
-	local animInst = Animations.get("WallJump")
-	if not animInst then
-		return nil
+	-- Reuse prewarmed track if available for instant readiness
+	local track = cachedSlideTrackByHumanoid[humanoid]
+	if not track then
+		local animInst = Animations.get("WallJump")
+		if not animInst then
+			return nil
+		end
+		pcall(function()
+			track = animator:LoadAnimation(animInst)
+		end)
+		if track then
+			cachedSlideTrackByHumanoid[humanoid] = track
+		end
 	end
-
-	local track = nil
-	pcall(function()
-		track = animator:LoadAnimation(animInst)
-	end)
 
 	if track then
 		track.Priority = Enum.AnimationPriority.Action
 		track.Looped = true
 		-- Play paused and seek to the last frame to hold pose
-		track:Play(0.05, 1, 0)
+		track:Play(0, 1, 0)
 		local function snapToLastFrame()
 			local len = track.Length or 0
 			if len and len > 0 then
@@ -222,7 +228,7 @@ local function startWallSlide(character, hitResult)
 		return
 	end
 
-	-- Change to state that allows us to better control the movement
+	-- Change to a controlled state early
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
 	-- Save original values
@@ -236,10 +242,26 @@ local function startWallSlide(character, hitResult)
 		hitInstance = hitResult.Instance,
 		token = token,
 		humanoid = humanoid,
+		animReady = false,
 	}
 
-	-- Reproduce animation
-	playWallJumpAnimation(character)
+	-- Play slide animation pose and only after it is ready, allow slide state to be considered fully active
+	-- Play immediately using cached track (instant snap)
+	local track = playWallJumpAnimation(character)
+	if track then
+		local data = activeWallSlides[character]
+		if data then
+			-- Mark ready immediately; we force TimePosition below
+			data.animReady = true
+		end
+		-- Force to last frame instantly to avoid any blend delay
+		local len = track.Length or 0
+		local epsilon = 1 / 30
+		pcall(function()
+			track.TimePosition = (len > 0) and math.max(0, len - epsilon) or 0
+			track:AdjustSpeed(0)
+		end)
+	end
 
 	-- Configure a maximum timer for the wall slide
 	task.delay(WALL_SLIDE_MAX_DURATION, function()
@@ -455,8 +477,13 @@ function WallJump.tryJump(character)
 
 	lastJumpTick = now
 
-	-- Stop wall slide first so our Jumping state is not overridden
-	if activeWallSlides[character] then
+	-- If wall slide is active, require animation to be ready before allowing jump
+	local slideData = activeWallSlides[character]
+	if slideData then
+		if slideData.animReady ~= true then
+			return false
+		end
+		-- Stop wall slide first so our Jumping state is not overridden
 		stopWallSlide(character)
 	end
 
