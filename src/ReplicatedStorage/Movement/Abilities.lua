@@ -1,6 +1,7 @@
 -- Dash and slide abilities
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
+local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
 
 local Abilities = {}
 
@@ -83,6 +84,41 @@ function Abilities.tryDash(character)
 	local desiredVel = Vector3.new(desiredHorizontal.X, currentVel.Y, desiredHorizontal.Z)
 	rootPart.AssemblyLinearVelocity = desiredVel
 
+	-- Play dash animation if available (uses preloaded cache if present)
+	do
+		local humanoid = humanoid
+		local animInst = Animations and Animations.get and Animations.get("Dash")
+		if humanoid and animInst then
+			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+			animator.Parent = humanoid
+			local track = nil
+			pcall(function()
+				track = animator:LoadAnimation(animInst)
+			end)
+			if track then
+				track.Priority = Enum.AnimationPriority.Action
+				-- Match animation playback to dash duration if possible
+				local playbackSpeed = 1.0
+				local dashDur = Config.DashDurationSeconds or 0
+				local length = 0
+				pcall(function()
+					length = track.Length or 0
+				end)
+				if dashDur > 0 and length > 0 then
+					playbackSpeed = length / dashDur
+				end
+				track.Looped = false
+				track.TimePosition = 0
+				track:Play(0.05, 1, playbackSpeed)
+				task.delay(Config.DashDurationSeconds + 0.25, function()
+					pcall(function()
+						track:Stop(0.1)
+					end)
+				end)
+			end
+		end
+	end
+
 	-- Briefly reduce friction by disabling auto-rotate and maintaining velocity window
 	local originalAutoRotate = humanoid.AutoRotate
 	-- Temporarily reduce friction to 0 on all character parts to achieve consistent ground dash
@@ -121,10 +157,79 @@ function Abilities.slide(character)
 	humanoid.WalkSpeed = originalWalkSpeed + Config.SlideSpeedBoost
 	humanoid.HipHeight = math.max(0, originalHipHeight + Config.SlideHipHeightDelta)
 
+	-- Optional slide animations: Start -> Loop -> End
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+	animator.Parent = humanoid
+	local startId = Animations and Animations.SlideStart or ""
+	local loopId = Animations and Animations.SlideLoop or ""
+	local endId = Animations and Animations.SlideEnd or ""
+	local startTrack, loopTrack
+
+	local function playTrack(id, looped)
+		if not id or id == "" then
+			return nil
+		end
+		local anim
+		if Animations and Animations.get then
+			-- Find the configured key that matches this id to reuse cached instances
+			for key, value in pairs(Animations) do
+				if type(value) == "string" and value == id then
+					anim = Animations.get(key)
+					break
+				end
+			end
+		end
+		if not anim then
+			anim = Instance.new("Animation")
+			anim.AnimationId = id
+		end
+		local track
+		pcall(function()
+			track = animator:LoadAnimation(anim)
+		end)
+		if not track then
+			return nil
+		end
+		track.Priority = Enum.AnimationPriority.Movement
+		track.Looped = looped and true or false
+		track:Play(0.05, 1, 1.0)
+		return track
+	end
+
+	-- Play Start then Loop (if provided). If only Start exists, it will play once.
+	if startId ~= "" then
+		startTrack = playTrack(startId, false)
+		if startTrack and loopId ~= "" then
+			-- When start ends, begin loop
+			startTrack.Stopped:Connect(function()
+				if loopTrack == nil then
+					loopTrack = playTrack(loopId, true)
+				end
+			end)
+		end
+	elseif loopId ~= "" then
+		loopTrack = playTrack(loopId, true)
+	end
+
 	local endSlide = function()
 		if humanoid and humanoid.Parent then
 			humanoid.WalkSpeed = originalWalkSpeed
 			humanoid.HipHeight = originalHipHeight
+		end
+		-- Stop loop and optionally play end
+		if startTrack then
+			pcall(function()
+				startTrack:Stop(0.05)
+			end)
+		end
+		if loopTrack then
+			pcall(function()
+				loopTrack:Stop(0.05)
+			end)
+			loopTrack = nil
+		end
+		if endId ~= "" then
+			playTrack(endId, false)
 		end
 	end
 

@@ -8,7 +8,7 @@ Config.SprintWalkSpeed = 30
 
 -- Stamina
 Config.StaminaMax = 200
-Config.SprintDrainPerSecond = 20
+                                Config.SprintDrainPerSecond = 20
 Config.StaminaRegenPerSecond = 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
 
@@ -82,5 +82,11 @@ Config.RaycastIgnoreWater = true
 -- Air jump (while falling, no wall): upward and forward boosts
 Config.AirJumpImpulseUp = 50
 Config.AirJumpForwardBoost = 20
+
+-- Zipline
+Config.ZiplineSpeed = 45
+Config.ZiplineDetectionDistance = 5
+Config.ZiplineStickVelocity = 6
+Config.ZiplineEndDetachDistance = 2
 
 return Config

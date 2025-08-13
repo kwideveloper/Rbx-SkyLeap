@@ -6,6 +6,7 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Movement.Config)
+local Animations = require(ReplicatedStorage.Movement.Animations)
 local Momentum = require(ReplicatedStorage.Movement.Momentum)
 local Stamina = require(ReplicatedStorage.Movement.Stamina)
 local Abilities = require(ReplicatedStorage.Movement.Abilities)
@@ -14,6 +15,7 @@ local WallRun = require(ReplicatedStorage.Movement.WallRun)
 local WallJump = require(ReplicatedStorage.Movement.WallJump)
 local WallMemory = require(ReplicatedStorage.Movement.WallMemory)
 local Climb = require(ReplicatedStorage.Movement.Climb)
+local Zipline = require(ReplicatedStorage.Movement.Zipline)
 
 local player = Players.LocalPlayer
 local proneDebugTicker = 0
@@ -48,6 +50,10 @@ end
 local function setupCharacter(character)
 	local humanoid = getHumanoid(character)
 	humanoid.WalkSpeed = Config.BaseWalkSpeed
+	-- Preload configured animations on character spawn to avoid first-play hitches
+	task.spawn(function()
+		Animations.preload()
+	end)
 	-- Setup stamina touch tracking for parts with attribute Stamina=true (works even for CanQuery=false when CanTouch is true)
 	state.staminaTouched = {}
 	state.staminaTouchCount = 0
@@ -192,6 +198,14 @@ local function ensureClientState()
 	end
 	state.isClimbingValue = isClimbing
 
+	local isZiplining = folder:FindFirstChild("IsZiplining")
+	if not isZiplining then
+		isZiplining = Instance.new("BoolValue")
+		isZiplining.Name = "IsZiplining"
+		isZiplining.Parent = folder
+	end
+	state.isZipliningValue = isZiplining
+
 	local climbPrompt = folder:FindFirstChild("ClimbPrompt")
 	if not climbPrompt then
 		climbPrompt = Instance.new("StringValue")
@@ -330,16 +344,32 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			end
 		end
 	elseif input.KeyCode == Enum.KeyCode.E then
-		-- Toggle climb on climbable walls
-		if Climb.isActive(character) then
-			Climb.stop(character)
+		-- Zipline takes priority when near a rope
+		if Zipline.isActive(character) then
+			Zipline.stop(character)
+		elseif Zipline.isNear(character) then
+			-- stop incompatible states
+			if Climb.isActive(character) then
+				Climb.stop(character)
+			end
+			if WallRun.isActive(character) then
+				WallRun.stop(character)
+			end
+			state.sliding = false
+			state.sprintHeld = false
+			Zipline.tryStart(character)
 		else
-			if state.stamina.current >= Config.ClimbMinStamina then
-				if Climb.tryStart(character) then
-					-- start draining immediately on start tick
-					state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * 0.1)
-					if state.stamina.current < 0 then
-						state.stamina.current = 0
+			-- Toggle climb on climbable walls
+			if Climb.isActive(character) then
+				Climb.stop(character)
+			else
+				if state.stamina.current >= Config.ClimbMinStamina then
+					if Climb.tryStart(character) then
+						-- start draining immediately on start tick
+						state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * 0.1)
+						if state.stamina.current < 0 then
+							state.stamina.current = 0
+						end
 					end
 				end
 			end
@@ -349,7 +379,16 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		enterProne(character)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
-		if Climb.isActive(character) then
+		if Zipline.isActive(character) then
+			-- Jump off the zipline. Force a jump frame after detaching
+			Zipline.stop(character)
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			task.defer(function()
+				if humanoid and humanoid.Parent then
+					humanoid.Jump = true
+				end
+			end)
+		elseif Climb.isActive(character) then
 			if state.stamina.current >= Config.WallJumpStaminaCost then
 				if Climb.tryHop(character) then
 					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
@@ -539,11 +578,22 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isClimbingValue then
 		state.isClimbingValue.Value = Climb.isActive(character)
 	end
+	if state.isZipliningValue then
+		state.isZipliningValue.Value = Zipline.isActive(character)
+	end
 	-- Show climb prompt when near climbable and with enough stamina
 	if state.climbPromptValue then
-		local nearClimbable = (not Climb.isActive(character)) and Climb.isNearClimbable(character)
-		if nearClimbable and state.stamina.current >= Config.ClimbMinStamina then
-			state.climbPromptValue.Value = "Press E to Climb"
+		local show = ""
+		if (not Zipline.isActive(character)) and Zipline.isNear(character) then
+			show = "Press E to Zipline"
+		else
+			local nearClimbable = (not Climb.isActive(character)) and Climb.isNearClimbable(character)
+			if nearClimbable and state.stamina.current >= Config.ClimbMinStamina then
+				show = "Press E to Climb"
+			end
+		end
+		if show ~= "" then
+			state.climbPromptValue.Value = show
 		else
 			state.climbPromptValue.Value = ""
 		end
@@ -572,7 +622,12 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 
 	-- Wall run requires sprint held and being near a wall; simulate real wall stick/run
-	if state.sprintHeld and humanoid.FloorMaterial == Enum.Material.Air and not Climb.isActive(character) then
+	if
+		not Zipline.isActive(character)
+		and state.sprintHeld
+		and humanoid.FloorMaterial == Enum.Material.Air
+		and not Climb.isActive(character)
+	then
 		-- Exit prone if attempting wall behavior
 		if state.proneActive then
 			exitProne(character)
@@ -597,6 +652,11 @@ end)
 RunService.Stepped:Connect(function(_time, dt)
 	local character = player.Character
 	if not character then
+		return
+	end
+	-- Apply zipline/ climb velocities before physics
+	if Zipline.isActive(character) then
+		Zipline.maintain(character, dt)
 		return
 	end
 	if not Climb.isActive(character) then
