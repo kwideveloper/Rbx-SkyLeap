@@ -261,9 +261,27 @@ stopWallSlide = function(character)
 		return
 	end
 
-	-- Restore the state of the humanoid
-	if data.humanoid and data.humanoid.Parent then
-		data.humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	-- Restore humanoid state and clear residual slide velocity
+	local humanoid = data.humanoid
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if humanoid and humanoid.Parent then
+		local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+		if root then
+			local vel = root.AssemblyLinearVelocity
+			if grounded then
+				root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				-- ensure we resume normal locomotion on ground
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			else
+				-- in air: drop horizontal stick so we don't keep sliding along wall
+				root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
+				-- freefall for natural gravity
+				humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+			end
+		else
+			-- fallback: set to freefall if no root
+			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+		end
 	end
 
 	-- Clean
@@ -311,9 +329,12 @@ function WallJump.updateWallSlide(character, dt)
 
 	-- Verify if you are still in the air
 	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		-- zero velocity before stopping to avoid horizontal drift
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		end
 		stopWallSlide(character)
-		-- Ensure normal walking state resumes on ground
-		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 		return false
 	end
 
@@ -336,7 +357,7 @@ function WallJump.updateWallSlide(character, dt)
 	-- Calculate the new speed with controlled drop and stick to the wall, but if the player presses Space, avoid strong glue
 	local newVelocity = Vector3.new(stickForce.X, -WALL_SLIDE_FALL_SPEED, stickForce.Z)
 
-	-- Early exit based on ground proximity (1 stud from feet)
+	-- Early exit based on ground proximity (<= 2 studs from feet)
 	do
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
@@ -345,18 +366,24 @@ function WallJump.updateWallSlide(character, dt)
 		local rayDist = 4
 		local ground = workspace:Raycast(root.Position, Vector3.new(0, -rayDist, 0), params)
 		if ground then
-			local feetY = root.Position.Y - ((root.Size and root.Size.Y or 2) * 0.5)
+			local halfHeight = (root.Size and root.Size.Y or 2) * 0.5
+			local feetY = root.Position.Y - halfHeight
 			local verticalGap = feetY - ground.Position.Y
-			if verticalGap <= 1.0 then
+			local threshold = Config.WallSlideGroundProximityStuds or 2.0
+			if verticalGap <= threshold then
+				-- Kill horizontal drift and add a short cooldown to avoid re-entering slide before landing
+				root.AssemblyLinearVelocity = Vector3.new(0, math.min(root.AssemblyLinearVelocity.Y, 0), 0)
+				slideCooldownUntil[character] = os.clock() + 0.5
 				stopWallSlide(character)
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
 				return false
 			end
 		end
 	end
 
-	-- Apply the new speed
-	root.AssemblyLinearVelocity = newVelocity
+	-- Apply the new speed (only while airborne)
+	if humanoid.FloorMaterial == Enum.Material.Air then
+		root.AssemblyLinearVelocity = newVelocity
+	end
 
 	-- Orient character to face the wall (stable up axis)
 	local lookDir = -normal

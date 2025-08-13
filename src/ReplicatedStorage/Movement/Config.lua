@@ -72,6 +72,7 @@ Config.WallSlideFallSpeed = 5
 Config.WallSlideStickVelocity = 3 -- 4
 Config.WallSlideMaxDurationSeconds = 100 -- 100
 Config.WallSlideDetectionDistance = 3 -- 4
+Config.WallSlideGroundProximityStuds = 5 -- distance from feet to ground to exit slide
 
 -- Climb
 Config.ClimbDetectionDistance = 4
