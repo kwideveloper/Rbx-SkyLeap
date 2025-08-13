@@ -73,7 +73,7 @@ Config.WallSlideStickVelocity = 4 -- 4
 Config.WallSlideMaxDurationSeconds = 100 -- 100
 Config.WallSlideDetectionDistance = 4 -- 4
 Config.WallSlideGroundProximityStuds = 5 -- distance from feet to ground to exit slide
-Config.WallSlideDrainPerSecond = (Config.SprintDrainPerSecond or 20) * 0.5
+Config.WallSlideDrainPerSecond = Config.SprintDrainPerSecond * 0.5
 
 -- Climb
 Config.ClimbDetectionDistance = 4
@@ -104,5 +104,23 @@ Config.CameraAlignHeadEnabled = true
 Config.CameraAlignHeadYawDeg = 60
 Config.CameraAlignHeadPitchDeg = 30
 Config.CameraAlignBodyYawDeg = 45
+
+-- Bunny hop
+Config.BunnyHopWindowSeconds = 1 -- 0.12 time after landing to count as a perfect hop
+Config.BunnyHopMaxStacks = 3
+Config.BunnyHopBaseBoost = 20 -- base horizontal speed added on perfect hop
+Config.BunnyHopPerStackBoost = 20 -- extra per additional stack
+Config.BunnyHopMomentumBonusBase = 12
+Config.BunnyHopMomentumBonusPerStack = 4
+Config.BunnyHopDirectionCarry = 0.85 -- 0.85--  0..1 how much to preserve current travel direction over input
+
+-- Air control (Quake/CS-style)
+Config.AirControlEnabled = true
+Config.AirControlUseCameraFacing = true -- when no MoveDirection, use camera facing
+Config.AirControlAccelerate = 20 -- 60 acceleration rate along wish dir (per second)
+Config.AirStrafeAccelerate = 190 -- 90 extra accel when strafing (low dot with velocity)
+Config.AirControlMaxWishSpeed = 45 -- max speed contributed along wish dir
+Config.AirControlMaxAddPerTick = 20 -- safety cap per frame on speed added
+Config.AirControlTotalSpeedCap = 85 -- overall air speed cap (horizontal)
 
 return Config

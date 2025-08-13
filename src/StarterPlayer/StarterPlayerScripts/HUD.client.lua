@@ -19,6 +19,8 @@ local iconsFrame
 local dashIcon
 local slideIcon
 local wallIcon
+local bhFrame
+local bhLabel
 
 local function bindUi()
 	-- Attempt to (re)bind all references; do not create UI elements
@@ -34,6 +36,36 @@ local function bindUi()
 	dashIcon = iconsFrame and iconsFrame:FindFirstChild("Dash") or nil
 	slideIcon = iconsFrame and iconsFrame:FindFirstChild("Slide") or nil
 	wallIcon = iconsFrame and iconsFrame:FindFirstChild("Wall") or nil
+
+	-- Create a minimal temporary BunnyHop indicator if not present
+	bhFrame = container:FindFirstChild("BunnyHop")
+	if not bhFrame then
+		bhFrame = Instance.new("Frame")
+		bhFrame.Name = "BunnyHop"
+		bhFrame.Size = UDim2.new(0, 140, 0, 28)
+		bhFrame.Position = UDim2.new(1, -150, 1, -34)
+		bhFrame.AnchorPoint = Vector2.new(0, 0)
+		bhFrame.BackgroundTransparency = 0.25
+		bhFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		bhFrame.BorderSizePixel = 0
+		bhFrame.Parent = container
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = bhFrame
+	end
+	bhLabel = bhFrame:FindFirstChild("Text")
+	if not bhLabel then
+		bhLabel = Instance.new("TextLabel")
+		bhLabel.Name = "Text"
+		bhLabel.Size = UDim2.new(1, -10, 1, 0)
+		bhLabel.Position = UDim2.new(0, 5, 0, 0)
+		bhLabel.BackgroundTransparency = 1
+		bhLabel.TextScaled = true
+		bhLabel.Font = Enum.Font.GothamBold
+		bhLabel.TextColor3 = Color3.fromRGB(200, 235, 255)
+		bhLabel.Text = "BH: 0"
+		bhLabel.Parent = bhFrame
+	end
 
 	-- Rebind again if ScreenGui gets replaced on next spawn
 	screenGui.AncestryChanged:Connect(function()
@@ -92,7 +124,9 @@ local function getClientState()
 		folder and folder:FindFirstChild("IsSprinting") or nil,
 		folder and folder:FindFirstChild("IsSliding") or nil,
 		folder and folder:FindFirstChild("IsAirborne") or nil,
-		folder and folder:FindFirstChild("IsWallRunning") or nil
+		folder and folder:FindFirstChild("IsWallRunning") or nil,
+		folder and folder:FindFirstChild("BunnyHopStacks") or nil,
+		folder and folder:FindFirstChild("BunnyHopFlash") or nil
 end
 
 -- Action icons (UI elements) - use existing UI only
@@ -126,7 +160,8 @@ local function update()
 			return
 		end
 	end
-	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning = getClientState()
+	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning, bhStacks, bhFlash =
+		getClientState()
 	if not folder then
 		return
 	end
@@ -190,6 +225,18 @@ local function update()
 	end
 	if wallIcon then
 		setIconState(wallIcon, canWall)
+	end
+
+	-- BunnyHop indicator
+	if bhLabel then
+		local stacks = (bhStacks and bhStacks.Value) or 0
+		bhLabel.Text = string.format("BH: %d", stacks)
+		if bhFlash and bhFlash.Value == true then
+			flashBar(Color3.fromRGB(80, 200, 255))
+			-- also briefly flash the BunnyHop frame
+			bhFrame.BackgroundColor3 = Color3.fromRGB(40, 120, 255)
+			TweenService:Create(bhFrame, TweenInfo.new(0.25), { BackgroundColor3 = Color3.fromRGB(30, 30, 30) }):Play()
+		end
 	end
 end
 

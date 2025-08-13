@@ -16,6 +16,8 @@ local WallJump = require(ReplicatedStorage.Movement.WallJump)
 local WallMemory = require(ReplicatedStorage.Movement.WallMemory)
 local Climb = require(ReplicatedStorage.Movement.Climb)
 local Zipline = require(ReplicatedStorage.Movement.Zipline)
+local BunnyHop = require(ReplicatedStorage.Movement.BunnyHop)
+local AirControl = require(ReplicatedStorage.Movement.AirControl)
 
 local player = Players.LocalPlayer
 local proneDebugTicker = 0
@@ -36,6 +38,8 @@ local state = {
 	clientStateFolder = nil,
 	staminaValue = nil,
 	speedValue = nil,
+	bunnyHopStacksValue = nil,
+	bunnyHopFlashValue = nil,
 }
 
 local function getCharacter()
@@ -132,6 +136,8 @@ local function setupCharacter(character)
 	if state.isClimbingValue then
 		state.isClimbingValue.Value = false
 	end
+	-- Initialize bunny hop listener for this character
+	BunnyHop.setup(character)
 end
 local function ensureClientState()
 	local folder = ReplicatedStorage:FindFirstChild("ClientState")
@@ -222,6 +228,25 @@ local function ensureClientState()
 		climbPrompt.Parent = folder
 	end
 	state.climbPromptValue = climbPrompt
+
+	-- Bunny hop HUD bindings
+	local bhStacks = folder:FindFirstChild("BunnyHopStacks")
+	if not bhStacks then
+		bhStacks = Instance.new("NumberValue")
+		bhStacks.Name = "BunnyHopStacks"
+		bhStacks.Value = 0
+		bhStacks.Parent = folder
+	end
+	state.bunnyHopStacksValue = bhStacks
+
+	local bhFlash = folder:FindFirstChild("BunnyHopFlash")
+	if not bhFlash then
+		bhFlash = Instance.new("BoolValue")
+		bhFlash.Name = "BunnyHopFlash"
+		bhFlash.Value = false
+		bhFlash.Parent = folder
+	end
+	state.bunnyHopFlashValue = bhFlash
 end
 
 ensureClientState()
@@ -230,6 +255,9 @@ player.CharacterAdded:Connect(setupCharacter)
 if player.Character then
 	setupCharacter(player.Character)
 end
+player.CharacterRemoving:Connect(function(char)
+	BunnyHop.teardown(char)
+end)
 
 -- Ensure camera align caches base motors on spawn
 -- (Removed CameraAlign setup; head tracking handled by HeadTracking.client.lua)
@@ -440,6 +468,10 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 						end
 					end
 				end
+			end
+			-- If grounded and sprinting, attempt bunny hop boost on perfect timing
+			if (not airborne) and state.stamina.isSprinting then
+				BunnyHop.tryApplyOnJump(character, state.momentum)
 			end
 		end
 	end
@@ -718,6 +750,9 @@ RunService.RenderStepped:Connect(function(dt)
 			end
 		end
 	end
+
+	-- Apply Quake/CS-style air control after other airborne logic
+	AirControl.apply(character, dt)
 end)
 
 -- Apply climb velocities before physics integrates gravity

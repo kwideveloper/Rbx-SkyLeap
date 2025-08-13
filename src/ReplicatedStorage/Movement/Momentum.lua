@@ -29,4 +29,18 @@ function Momentum.decay(momentumState, dt)
 	return momentumState.value
 end
 
+-- Apply a direct momentum bonus (e.g., from bunny hops)
+function Momentum.addBonus(momentumState, amount)
+	if not amount or amount == 0 then
+		return momentumState.value
+	end
+	momentumState.value = momentumState.value + amount
+	if momentumState.value > Config.MomentumMax then
+		momentumState.value = Config.MomentumMax
+	elseif momentumState.value < 0 then
+		momentumState.value = 0
+	end
+	return momentumState.value
+end
+
 return Momentum
