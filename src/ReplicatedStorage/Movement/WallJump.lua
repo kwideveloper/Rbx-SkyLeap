@@ -342,6 +342,8 @@ function WallJump.updateWallSlide(character, dt)
 		return
 	end
 
+	-- Stamina drain handled centrally in ParkourController; only react to stop when controller cuts stamina
+
 	-- If player initiated a jump, immediately stop sliding
 	local state = humanoid:GetState()
 	if state == Enum.HumanoidStateType.Jumping or humanoid.Jump == true then
@@ -424,8 +426,16 @@ function WallJump.isNearWall(character)
 	-- For the Slide Wall, we use the specialized function that now allows weather walls
 	local hitForSlide = findNearbyWallForSlide(root)
 
-	-- Verify if we must activate the wall slide
-	local shouldActivate = shouldActivateWallSlide(character)
+	-- Verify if we must activate the wall slide (require stamina > 0)
+	local staminaOk = true
+	do
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local staminaValue = folder and folder:FindFirstChild("Stamina")
+		if staminaValue and staminaValue.Value <= 0 then
+			staminaOk = false
+		end
+	end
+	local shouldActivate = staminaOk and shouldActivateWallSlide(character)
 
 	-- If it must be activated and is not active, start it
 	if shouldActivate and not activeWallSlides[character] and hitForSlide then

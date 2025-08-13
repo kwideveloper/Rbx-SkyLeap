@@ -69,6 +69,15 @@ function WallRun.tryStart(character)
 		return false
 	end
 
+	-- Require stamina to start wallrun
+	do
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local staminaValue = folder and folder:FindFirstChild("Stamina")
+		if staminaValue and staminaValue.Value <= 0 then
+			return false
+		end
+	end
+
 	local hit = findWall(rootPart)
 	if not hit then
 		return false

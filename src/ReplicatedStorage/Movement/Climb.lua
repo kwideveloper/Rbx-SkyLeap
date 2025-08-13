@@ -182,6 +182,22 @@ function Climb.maintain(character, input)
 
 	-- Orient character to face the wall
 	root.CFrame = CFrame.lookAt(root.Position, root.Position - n, Vector3.yAxis)
+
+	-- Drain stamina; if depleted, stop climbing immediately
+	do
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local staminaValue = folder and folder:FindFirstChild("Stamina")
+		if staminaValue then
+			-- Approximate dt using Heartbeat delta from RunService if not passed here
+			local hb = game:GetService("RunService").Heartbeat:Wait()
+			local delta = typeof(hb) == "number" and hb or 0.016
+			staminaValue.Value = math.max(0, staminaValue.Value - (Config.ClimbStaminaDrainPerSecond * delta))
+			if staminaValue.Value <= 0 then
+				Climb.stop(character)
+				return false
+			end
+		end
+	end
 	return true
 end
 

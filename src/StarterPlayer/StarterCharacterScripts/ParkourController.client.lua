@@ -581,6 +581,18 @@ RunService.RenderStepped:Connect(function(dt)
 		humanoid.WalkSpeed = Config.BaseWalkSpeed
 	end
 
+	-- Wall slide stamina drain (half sprint rate) while active
+	if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+		local drain = (Config.WallSlideDrainPerSecond or (Config.SprintDrainPerSecond * 0.5)) * dt
+		state.stamina.current = math.max(0, state.stamina.current - drain)
+		if state.stamina.current <= 0 then
+			-- stop slide when out of stamina
+			if WallJump.stopSlide then
+				WallJump.stopSlide(character)
+			end
+		end
+	end
+
 	-- Publish client state for HUD
 	if state.staminaValue then
 		state.staminaValue.Value = state.stamina.current
@@ -649,10 +661,12 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Wall run requires sprint held and being near a wall; simulate real wall stick/run
+	-- Wall run requires sprint and stamina, and being near a wall; simulate real wall stick/run
 	if
 		not Zipline.isActive(character)
 		and state.sprintHeld
+		and state.stamina.isSprinting
+		and state.stamina.current > 0
 		and humanoid.FloorMaterial == Enum.Material.Air
 		and not Climb.isActive(character)
 	then
@@ -685,14 +699,18 @@ RunService.RenderStepped:Connect(function(dt)
 		and not Zipline.isActive(character)
 		and not Climb.isActive(character)
 	then
-		-- Do not start slide if sprinting (wallrun has priority)
-		if not state.sprintHeld then
+		-- Do not start slide if sprinting (wallrun has priority) or if out of stamina
+		if (not state.sprintHeld) and state.stamina.current > 0 then
 			-- Proximity check will internally start/stop slide as needed
 			WallJump.isNearWall(character)
 		end
-		-- If slide is active, maintain physics
+		-- If slide is active, maintain physics only if we have stamina; otherwise stop
 		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
-			WallJump.updateWallSlide(character, dt)
+			if state.stamina.current > 0 then
+				WallJump.updateWallSlide(character, dt)
+			else
+				WallJump.stopSlide(character)
+			end
 		end
 	end
 end)
