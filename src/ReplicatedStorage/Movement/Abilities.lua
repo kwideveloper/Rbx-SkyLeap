@@ -69,7 +69,7 @@ function Abilities.tryDash(character)
 
 	lastDashTick = now
 
-	-- Ground dash: set a target horizontal velocity and preserve current vertical
+	-- Ground dash: set a target horizontal velocity and zero vertical velocity to ignore gravity
 	local moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
 	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
 	if moveDir.Magnitude < 0.05 then
@@ -79,9 +79,9 @@ function Abilities.tryDash(character)
 		moveDir = moveDir.Unit
 	end
 
-	local currentVel = rootPart.AssemblyLinearVelocity
+	-- Completamente horizontal, sin componente vertical (ignorando la gravedad)
 	local desiredHorizontal = moveDir * Config.DashSpeed
-	local desiredVel = Vector3.new(desiredHorizontal.X, currentVel.Y, desiredHorizontal.Z)
+	local desiredVel = Vector3.new(desiredHorizontal.X, 0, desiredHorizontal.Z)
 	rootPart.AssemblyLinearVelocity = desiredVel
 
 	-- Play dash animation if available (uses preloaded cache if present)
@@ -119,25 +119,37 @@ function Abilities.tryDash(character)
 		end
 	end
 
-	-- Briefly reduce friction by disabling auto-rotate and maintaining velocity window
+	-- Guardar el estado original de las propiedades de física y configurar el personaje
 	local originalAutoRotate = humanoid.AutoRotate
 	-- Temporarily reduce friction to 0 on all character parts to achieve consistent ground dash
 	setCharacterFriction(character, 0, 0)
 	humanoid.AutoRotate = false
+
+	-- Desactivar temporalmente la gravedad configurando un estado especial para el humanoid
+	local originalState = humanoid:GetState()
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- Este estado nos permite tener control completo sobre la física
+
 	local stillValid = true
 	task.delay(Config.DashDurationSeconds, function()
 		stillValid = false
 		humanoid.AutoRotate = originalAutoRotate
 		restoreCharacterFriction(character)
+
+		-- Restaurar el comportamiento normal de la gravedad después del dash
+		if humanoid and humanoid.Parent then
+			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+		end
 	end)
+
+	-- Actualizar constantemente la velocidad durante el dash para mantener el movimiento perfectamente horizontal
 	task.spawn(function()
 		local t0 = os.clock()
 		while stillValid and (os.clock() - t0) < Config.DashDurationSeconds do
-			rootPart.AssemblyLinearVelocity =
-				Vector3.new(desiredHorizontal.X, rootPart.AssemblyLinearVelocity.Y, desiredHorizontal.Z)
+			rootPart.AssemblyLinearVelocity = desiredVel -- Mantener velocidad horizontal constante sin componente vertical
 			task.wait()
 		end
 	end)
+
 	return true
 end
 
