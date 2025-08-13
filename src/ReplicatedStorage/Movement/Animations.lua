@@ -25,7 +25,7 @@ local Animations = {
 
 	-- Wall interactions
 	WallRunLoop = "",
-	WallJump = "",
+	WallJump = "rbxassetid://128500979538038", -- Preparation animation for Wall Jump
 
 	-- Climb (optional)
 	ClimbStart = "",
