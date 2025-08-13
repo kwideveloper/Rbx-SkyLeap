@@ -190,6 +190,14 @@ local function ensureClientState()
 	end
 	state.isWallRunningValue = isWallRunning
 
+	local isWallSliding = folder:FindFirstChild("IsWallSliding")
+	if not isWallSliding then
+		isWallSliding = Instance.new("BoolValue")
+		isWallSliding.Name = "IsWallSliding"
+		isWallSliding.Parent = folder
+	end
+	state.isWallSlidingValue = isWallSliding
+
 	local isClimbing = folder:FindFirstChild("IsClimbing")
 	if not isClimbing then
 		isClimbing = Instance.new("BoolValue")
@@ -355,6 +363,9 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if WallRun.isActive(character) then
 				WallRun.stop(character)
 			end
+			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				WallJump.stopSlide(character)
+			end
 			state.sliding = false
 			state.sprintHeld = false
 			Zipline.tryStart(character)
@@ -364,6 +375,10 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				Climb.stop(character)
 			else
 				if state.stamina.current >= Config.ClimbMinStamina then
+					-- stop any wall slide to allow climbing to take over immediately
+					if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+						WallJump.stopSlide(character)
+					end
 					if Climb.tryStart(character) then
 						-- start draining immediately on start tick
 						state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * 0.1)
@@ -394,11 +409,17 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 				end
 			end
-		elseif WallRun.isActive(character) then
+		elseif WallRun.isActive(character) or (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
 			-- Hop off the wall and stop sticking
 			if state.stamina.current >= Config.WallJumpStaminaCost then
 				if WallRun.tryHop(character) then
 					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+				end
+				-- If wall slide is active, attempt wall jump via WallJump.tryJump
+				if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+					if WallJump.tryJump(character) then
+						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+					end
 				end
 			end
 		else
@@ -575,6 +596,9 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isWallRunningValue then
 		state.isWallRunningValue.Value = WallRun.isActive(character)
 	end
+	if state.isWallSlidingValue then
+		state.isWallSlidingValue.Value = (WallJump.isWallSliding and WallJump.isWallSliding(character)) or false
+	end
 	if state.isClimbingValue then
 		state.isClimbingValue.Value = Climb.isActive(character)
 	end
@@ -632,6 +656,10 @@ RunService.RenderStepped:Connect(function(dt)
 		if state.proneActive then
 			exitProne(character)
 		end
+		-- If slide is active, stop it because wall run has priority
+		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+			WallJump.stopSlide(character)
+		end
 		if WallRun.isActive(character) then
 			WallRun.maintain(character)
 		else
@@ -644,6 +672,23 @@ RunService.RenderStepped:Connect(function(dt)
 		-- Reset wall jump memory on ground so player can reuse same wall after landing
 		if humanoid.FloorMaterial ~= Enum.Material.Air then
 			WallMemory.clear(character)
+		end
+	end
+
+	-- Maintain Wall Slide when airborne near walls (independent of sprint)
+	if
+		humanoid.FloorMaterial == Enum.Material.Air
+		and not Zipline.isActive(character)
+		and not Climb.isActive(character)
+	then
+		-- Do not start slide if sprinting (wallrun has priority)
+		if not state.sprintHeld then
+			-- Proximity check will internally start/stop slide as needed
+			WallJump.isNearWall(character)
+		end
+		-- If slide is active, maintain physics
+		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+			WallJump.updateWallSlide(character, dt)
 		end
 	end
 end)

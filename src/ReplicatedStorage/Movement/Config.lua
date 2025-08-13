@@ -8,7 +8,7 @@ Config.SprintWalkSpeed = 30
 
 -- Stamina
 Config.StaminaMax = 200
-                                Config.SprintDrainPerSecond = 20
+Config.SprintDrainPerSecond = 20
 Config.StaminaRegenPerSecond = 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
 
@@ -66,6 +66,12 @@ Config.WallJumpImpulseUp = 45
 Config.WallJumpImpulseAway = 45
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
+
+-- Wall slide
+Config.WallSlideFallSpeed = 5
+Config.WallSlideStickVelocity = 3 -- 4
+Config.WallSlideMaxDurationSeconds = 100 -- 100
+Config.WallSlideDetectionDistance = 3 -- 4
 
 -- Climb
 Config.ClimbDetectionDistance = 4

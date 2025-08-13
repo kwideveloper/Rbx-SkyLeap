@@ -29,11 +29,11 @@ local function findWall(rootPart)
 		local result = workspace:Raycast(rootPart.Position, dir * Config.WallDetectionDistance, params)
 		if result and result.Instance and result.Instance.CanCollide then
 			local inst = result.Instance
-			local climbable = inst:GetAttribute("Climbable") or inst:GetAttribute("climbable")
-			local wallJumpAttr = inst:GetAttribute("WallJump")
-			-- Wall run is disabled if wall is climbable or explicitly has WallJump = false
-			local wallRunAllowed = not (climbable == true or wallJumpAttr == false)
-			if wallRunAllowed then
+			local isClimbable = inst:GetAttribute("Climbable") == true or inst:GetAttribute("climbable") == true
+			local wallRunOverride = inst:GetAttribute("WallRun") == true
+			-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
+			local allowedByClimbableRule = (not isClimbable) or wallRunOverride
+			if allowedByClimbableRule then
 				return {
 					normal = result.Normal,
 					position = result.Position,
