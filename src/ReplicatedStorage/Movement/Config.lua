@@ -123,4 +123,11 @@ Config.AirControlMaxWishSpeed = 45 -- max speed contributed along wish dir
 Config.AirControlMaxAddPerTick = 20 -- safety cap per frame on speed added
 Config.AirControlTotalSpeedCap = 85 -- overall air speed cap (horizontal)
 
+-- LaunchPad (trampoline) defaults
+Config.LaunchPadUpSpeed = 80
+Config.LaunchPadForwardSpeed = 0
+Config.LaunchPadCarryFactor = 0 -- 0..1 how much of current velocity to preserve
+Config.LaunchPadCooldownSeconds = 0
+Config.LaunchPadMinUpLift = 12 -- ensures detachment from ground even on forward pads
+
 return Config
