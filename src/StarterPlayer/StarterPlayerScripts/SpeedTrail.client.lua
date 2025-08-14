@@ -1,0 +1,193 @@
+-- Client trail that scales with speed and changes color/transparency
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Movement.Config)
+
+local player = Players.LocalPlayer
+
+local character
+local trail
+local attachA
+local attachB
+local handTrailL
+local handTrailR
+local handA_L
+local handB_L
+local handA_R
+local handB_R
+
+local function ensureAttachments(char)
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return nil
+	end
+	local a = root:FindFirstChild(Config.TrailAttachmentNameA or "TrailA")
+	local b = root:FindFirstChild(Config.TrailAttachmentNameB or "TrailB")
+	if not a then
+		a = Instance.new("Attachment")
+		a.Name = Config.TrailAttachmentNameA or "TrailA"
+		a.Position = Vector3.new(0, 0.9, -0.5)
+		a.Parent = root
+	end
+	if not b then
+		b = Instance.new("Attachment")
+		b.Name = Config.TrailAttachmentNameB or "TrailB"
+		b.Position = Vector3.new(0, -0.9, 0.5)
+		b.Parent = root
+	end
+	return a, b
+end
+
+local function lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+local function lerpColor(c1, c2, t)
+	return Color3.new(lerp(c1.R, c2.R, t), lerp(c1.G, c2.G, t), lerp(c1.B, c2.B, t))
+end
+
+local function setup(char)
+	character = char
+	if not (Config.TrailEnabled ~= false) then
+		return
+	end
+	attachA, attachB = ensureAttachments(char)
+	if not (attachA and attachB) then
+		return
+	end
+	if trail then
+		trail:Destroy()
+		trail = nil
+	end
+	trail = Instance.new("Trail")
+	trail.Attachment0 = attachA
+	trail.Attachment1 = attachB
+	trail.Enabled = true
+	trail.LightEmission = 0.75
+	trail.Lifetime = Config.TrailLifeTime or 0.25
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, Config.TrailBaseTransparency or 0.6),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.Color = ColorSequence.new(Config.TrailColorMin or Color3.fromRGB(90, 170, 255))
+	trail.WidthScale = NumberSequence.new(Config.TrailWidth or 0.3)
+	trail.Parent = char
+
+	-- Optional hand trails
+	if Config.TrailHandsEnabled then
+		local left = char:FindFirstChild("LeftHand")
+			or char:FindFirstChild("LeftLowerArm")
+			or char:FindFirstChild("Left Arm")
+		local right = char:FindFirstChild("RightHand")
+			or char:FindFirstChild("RightLowerArm")
+			or char:FindFirstChild("Right Arm")
+		if left and right then
+			-- Left
+			handA_L = left:FindFirstChild("TrailA") or Instance.new("Attachment")
+			handA_L.Name = "TrailA"
+			handA_L.Position = Vector3.new(0, 0.2, 0)
+			handA_L.Parent = left
+			handB_L = left:FindFirstChild("TrailB") or Instance.new("Attachment")
+			handB_L.Name = "TrailB"
+			handB_L.Position = Vector3.new(0, -0.2, 0)
+			handB_L.Parent = left
+			if handTrailL then
+				handTrailL:Destroy()
+			end
+			handTrailL = Instance.new("Trail")
+			handTrailL.Attachment0 = handA_L
+			handTrailL.Attachment1 = handB_L
+			handTrailL.LightEmission = trail.LightEmission
+			handTrailL.Lifetime = (trail.Lifetime or (Config.TrailLifeTime or 0.25))
+				* (Config.TrailHandsLifetimeFactor or 0.5)
+			handTrailL.Transparency = trail.Transparency
+			handTrailL.Color = trail.Color
+			handTrailL.WidthScale = NumberSequence.new(
+				(Config.TrailWidth or 0.3) * (Config.TrailHandsScale or 0.6) * (Config.TrailHandsSizeFactor or 1.15)
+			)
+			handTrailL.Enabled = true
+			handTrailL.Parent = left
+			-- Right
+			handA_R = right:FindFirstChild("TrailA") or Instance.new("Attachment")
+			handA_R.Name = "TrailA"
+			handA_R.Position = Vector3.new(0, 0.2, 0)
+			handA_R.Parent = right
+			handB_R = right:FindFirstChild("TrailB") or Instance.new("Attachment")
+			handB_R.Name = "TrailB"
+			handB_R.Position = Vector3.new(0, -0.2, 0)
+			handB_R.Parent = right
+			if handTrailR then
+				handTrailR:Destroy()
+			end
+			handTrailR = Instance.new("Trail")
+			handTrailR.Attachment0 = handA_R
+			handTrailR.Attachment1 = handB_R
+			handTrailR.LightEmission = trail.LightEmission
+			handTrailR.Lifetime = (trail.Lifetime or (Config.TrailLifeTime or 0.25))
+				* (Config.TrailHandsLifetimeFactor or 0.5)
+			handTrailR.Transparency = trail.Transparency
+			handTrailR.Color = trail.Color
+			handTrailR.WidthScale = NumberSequence.new(
+				(Config.TrailWidth or 0.3) * (Config.TrailHandsScale or 0.6) * (Config.TrailHandsSizeFactor or 1.15)
+			)
+			handTrailR.Enabled = true
+			handTrailR.Parent = right
+		end
+	end
+end
+
+player.CharacterAdded:Connect(setup)
+if player.Character then
+	setup(player.Character)
+end
+
+RunService.RenderStepped:Connect(function()
+	if not trail or not character then
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then
+		return
+	end
+	local speed = root.AssemblyLinearVelocity.Magnitude
+	local sMin = Config.TrailSpeedMin or 10
+	local sMax = Config.TrailSpeedMax or 80
+	local t = 0
+	if sMax > sMin then
+		t = math.clamp((speed - sMin) / (sMax - sMin), 0, 1)
+	end
+	-- Fade in with speed, change color, widen slightly
+	local alpha = lerp(Config.TrailBaseTransparency or 0.6, Config.TrailMinTransparency or 0.15, t)
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, alpha),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	local cMin = Config.TrailColorMin or Color3.fromRGB(90, 170, 255)
+	local cMax = Config.TrailColorMax or Color3.fromRGB(255, 100, 180)
+	trail.Color = ColorSequence.new(lerpColor(cMin, cMax, t))
+	trail.WidthScale = NumberSequence.new(lerp(Config.TrailWidth or 0.3, (Config.TrailWidth or 0.3) * 1.8, t))
+	-- Hand trails match visual intensity subtly
+	local widthHand = lerp(
+		(Config.TrailWidth or 0.3) * (Config.TrailHandsScale or 0.6) * (Config.TrailHandsSizeFactor or 1.15),
+		(Config.TrailWidth or 0.3) * (Config.TrailHandsScale or 0.6) * (Config.TrailHandsSizeFactor or 1.15) * 1.6,
+		t
+	)
+	local alphaHand =
+		lerp(Config.TrailBaseTransparency or 0.6, math.max((Config.TrailMinTransparency or 0.15), 0.25), t)
+	if handTrailL then
+		handTrailL.WidthScale = NumberSequence.new(widthHand)
+		handTrailL.Transparency =
+			NumberSequence.new({ NumberSequenceKeypoint.new(0, alphaHand), NumberSequenceKeypoint.new(1, 1) })
+		handTrailL.Color = ColorSequence.new(lerpColor(cMin, cMax, t))
+	end
+	if handTrailR then
+		handTrailR.WidthScale = NumberSequence.new(widthHand)
+		handTrailR.Transparency =
+			NumberSequence.new({ NumberSequenceKeypoint.new(0, alphaHand), NumberSequenceKeypoint.new(1, 1) })
+		handTrailR.Color = ColorSequence.new(lerpColor(cMin, cMax, t))
+	end
+end)

@@ -74,11 +74,11 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	local state = ensureState(character)
 	local root, humanoid = getParts(character)
 	if not root or not humanoid then
-		return false
+		return 0
 	end
 	-- Only consider when actually grounded
 	if humanoid.FloorMaterial == Enum.Material.Air then
-		return false
+		return 0
 	end
 
 	local now = os.clock()
@@ -87,7 +87,7 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	if not withinWindow then
 		-- Not a perfect hop: chain breaks
 		state.stacks = 0
-		return false
+		return 0
 	end
 
 	-- Compute next stack
@@ -109,7 +109,7 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	local horizMag = horiz.Magnitude
 	if horizMag < 0.05 and moveDir.Magnitude == 0 then
 		-- No movement and no intent: skip
-		return false
+		return 0
 	end
 
 	local travelDir = (horizMag > 0.05) and horiz.Unit or moveDir
@@ -143,6 +143,8 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	if folder then
 		local stacksVal = folder:FindFirstChild("BunnyHopStacks")
 		local flashVal = folder:FindFirstChild("BunnyHopFlash")
+		local styleScore = folder:FindFirstChild("StyleScore")
+		local styleCombo = folder:FindFirstChild("StyleCombo")
 		if stacksVal then
 			stacksVal.Value = state.stacks
 		end
@@ -156,7 +158,7 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 		end
 	end
 
-	return true
+	return state.stacks or 1
 end
 
 return BunnyHop

@@ -7,9 +7,9 @@ Config.BaseWalkSpeed = 20
 Config.SprintWalkSpeed = 30
 
 -- Stamina
-Config.StaminaMax = 200
-Config.SprintDrainPerSecond = 20
-Config.StaminaRegenPerSecond = 40
+Config.StaminaMax = 400 -- 200
+Config.SprintDrainPerSecond = 20 -- 20
+Config.StaminaRegenPerSecond = 80 -- 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
 
 -- Momentum system
@@ -129,5 +129,41 @@ Config.LaunchPadForwardSpeed = 0
 Config.LaunchPadCarryFactor = 0 -- 0..1 how much of current velocity to preserve
 Config.LaunchPadCooldownSeconds = 0
 Config.LaunchPadMinUpLift = 12 -- ensures detachment from ground even on forward pads
+
+-- Style / Combo system
+Config.StyleEnabled = true
+Config.StylePerSecondBase = 5
+Config.StyleSpeedFactor = 0.12
+Config.StyleSpeedThreshold = 18
+Config.StyleAirTimePerSecond = 6
+Config.StyleWallRunPerSecond = 10
+Config.StyleBreakTimeoutSeconds = 0.65
+Config.StyleMultiplierStep = 0.25
+Config.StyleMultiplierMax = 4.0
+Config.StyleBunnyHopBonusBase = 50
+Config.StyleBunnyHopBonusPerStack = 25
+Config.StyleDashBonus = 20
+Config.StyleWallJumpBonus = 30
+Config.StyleRequireSprint = true
+Config.StyleCommitInactivitySeconds = 2
+
+-- Trails
+Config.TrailEnabled = true
+Config.TrailAttachmentNameA = "TrailA"
+Config.TrailAttachmentNameB = "TrailB"
+Config.TrailBaseTransparency = 0.6
+Config.TrailMinTransparency = 0.2
+Config.TrailColorMin = Color3.fromRGB(90, 170, 255)
+Config.TrailColorMax = Color3.fromRGB(255, 100, 180)
+Config.TrailLifeTime = 0.30 -- 0.25
+Config.TrailWidth = 0.3 -- 0.3
+Config.TrailSpeedMin = 10 -- 10
+Config.TrailSpeedMax = 80 -- 80
+
+-- Hand trails
+Config.TrailHandsEnabled = true
+Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail
+Config.TrailHandsLifetimeFactor = 0.5 -- lifetime relative to main trail
+Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 
 return Config

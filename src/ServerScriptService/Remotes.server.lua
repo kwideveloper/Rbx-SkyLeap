@@ -25,3 +25,5 @@ end
 local remotesFolder = ensureFolder(ReplicatedStorage, "Remotes")
 ensureRemoteEvent(remotesFolder, "DashActivated")
 ensureRemoteEvent(remotesFolder, "MomentumUpdated")
+ensureRemoteEvent(remotesFolder, "StyleCommit")
+ensureRemoteEvent(remotesFolder, "MaxComboReport")

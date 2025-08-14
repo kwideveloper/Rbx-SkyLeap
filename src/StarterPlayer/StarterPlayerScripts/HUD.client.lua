@@ -37,7 +37,7 @@ local function bindUi()
 	slideIcon = iconsFrame and iconsFrame:FindFirstChild("Slide") or nil
 	wallIcon = iconsFrame and iconsFrame:FindFirstChild("Wall") or nil
 
-	-- Create a minimal temporary BunnyHop indicator if not present
+	-- Create a minimal BunnyHop indicator if not present
 	bhFrame = container:FindFirstChild("BunnyHop")
 	if not bhFrame then
 		bhFrame = Instance.new("Frame")
@@ -66,6 +66,8 @@ local function bindUi()
 		bhLabel.Text = "BH: 0"
 		bhLabel.Parent = bhFrame
 	end
+
+	-- Minimal style HUD removed: rely on StarterGui/StyleUI instead
 
 	-- Rebind again if ScreenGui gets replaced on next spawn
 	screenGui.AncestryChanged:Connect(function()
@@ -179,7 +181,7 @@ local function update()
 		costsText.Text = formatCosts()
 	end
 
-	-- Visual feedback when stamina insuficiente (< min de cualquiera de los costos)
+	-- Visual feedback when insufficient stamina (<min of any cost)
 	local minCost = math.min(C.DashStaminaCost or 0, C.SlideStaminaCost or 0, C.WallJumpStaminaCost or 0)
 	if staminaCurrent < minCost then
 		flashBar(Color3.fromRGB(220, 80, 80))
@@ -238,6 +240,8 @@ local function update()
 			TweenService:Create(bhFrame, TweenInfo.new(0.25), { BackgroundColor3 = Color3.fromRGB(30, 30, 30) }):Play()
 		end
 	end
+
+	-- Style HUD is handled by StarterGui/StyleUI
 end
 
 -- Heartbeat-driven update for snappy UI

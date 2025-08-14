@@ -18,6 +18,10 @@ local Climb = require(ReplicatedStorage.Movement.Climb)
 local Zipline = require(ReplicatedStorage.Movement.Zipline)
 local BunnyHop = require(ReplicatedStorage.Movement.BunnyHop)
 local AirControl = require(ReplicatedStorage.Movement.AirControl)
+local Style = require(ReplicatedStorage.Movement.Style)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local StyleCommit = Remotes:WaitForChild("StyleCommit")
+local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
 
 local player = Players.LocalPlayer
 local proneDebugTicker = 0
@@ -40,6 +44,14 @@ local state = {
 	speedValue = nil,
 	bunnyHopStacksValue = nil,
 	bunnyHopFlashValue = nil,
+	style = Style.create(),
+	styleScoreValue = nil,
+	styleComboValue = nil,
+	styleMultiplierValue = nil,
+	styleLastMult = 1,
+	maxComboSession = 0,
+	styleCommitFlashValue = nil,
+	styleCommitAmountValue = nil,
 }
 
 local function getCharacter()
@@ -247,6 +259,53 @@ local function ensureClientState()
 		bhFlash.Parent = folder
 	end
 	state.bunnyHopFlashValue = bhFlash
+
+	-- Style HUD values
+	local styleScore = folder:FindFirstChild("StyleScore")
+	if not styleScore then
+		styleScore = Instance.new("NumberValue")
+		styleScore.Name = "StyleScore"
+		styleScore.Value = 0
+		styleScore.Parent = folder
+	end
+	state.styleScoreValue = styleScore
+
+	local styleCombo = folder:FindFirstChild("StyleCombo")
+	if not styleCombo then
+		styleCombo = Instance.new("NumberValue")
+		styleCombo.Name = "StyleCombo"
+		styleCombo.Value = 0
+		styleCombo.Parent = folder
+	end
+	state.styleComboValue = styleCombo
+
+	local styleMult = folder:FindFirstChild("StyleMultiplier")
+	if not styleMult then
+		styleMult = Instance.new("NumberValue")
+		styleMult.Name = "StyleMultiplier"
+		styleMult.Value = 1
+		styleMult.Parent = folder
+	end
+	state.styleMultiplierValue = styleMult
+
+	-- Style commit UI signals
+	local styleCommitAmount = folder:FindFirstChild("StyleCommittedAmount")
+	if not styleCommitAmount then
+		styleCommitAmount = Instance.new("NumberValue")
+		styleCommitAmount.Name = "StyleCommittedAmount"
+		styleCommitAmount.Value = 0
+		styleCommitAmount.Parent = folder
+	end
+	state.styleCommitAmountValue = styleCommitAmount
+
+	local styleCommitFlash = folder:FindFirstChild("StyleCommittedFlash")
+	if not styleCommitFlash then
+		styleCommitFlash = Instance.new("BoolValue")
+		styleCommitFlash.Name = "StyleCommittedFlash"
+		styleCommitFlash.Value = false
+		styleCommitFlash.Parent = folder
+	end
+	state.styleCommitFlashValue = styleCommitFlash
 end
 
 ensureClientState()
@@ -255,6 +314,19 @@ player.CharacterAdded:Connect(setupCharacter)
 if player.Character then
 	setupCharacter(player.Character)
 end
+player.CharacterAdded:Connect(function()
+	-- Reset style session state hard on respawn to avoid zero-point commit visuals
+	state.style = Style.create()
+	if state.styleScoreValue then
+		state.styleScoreValue.Value = 0
+	end
+	if state.styleComboValue then
+		state.styleComboValue.Value = 0
+	end
+	if state.styleMultiplierValue then
+		state.styleMultiplierValue.Value = 1
+	end
+end)
 player.CharacterRemoving:Connect(function(char)
 	BunnyHop.teardown(char)
 end)
@@ -471,7 +543,16 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			end
 			-- If grounded and sprinting, attempt bunny hop boost on perfect timing
 			if (not airborne) and state.stamina.isSprinting then
-				BunnyHop.tryApplyOnJump(character, state.momentum)
+				local stacks = BunnyHop.tryApplyOnJump(character, state.momentum)
+				if type(stacks) == "number" and stacks > 0 then
+					Style.addEvent(state.style, "BunnyHop", stacks)
+					if state.styleScoreValue then
+						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+					end
+					if state.styleComboValue then
+						state.styleComboValue.Value = state.style.combo or 0
+					end
+				end
 			end
 		end
 	end
@@ -536,6 +617,91 @@ RunService.RenderStepped:Connect(function(dt)
 	else
 		Momentum.decay(state.momentum, dt)
 	end
+
+	-- Style/Combo tick
+	local styleCtx = {
+		dt = dt,
+		speed = speed,
+		airborne = (humanoid.FloorMaterial == Enum.Material.Air),
+		wallRun = WallRun.isActive(character),
+		sliding = state.sliding,
+		climbing = Climb.isActive(character),
+	}
+	-- Gate style by sprint requirement
+	local sprintGate = true
+	if Config.StyleRequireSprint then
+		sprintGate = state.stamina.isSprinting == true
+	end
+	if sprintGate then
+		Style.tick(state.style, styleCtx)
+	end
+	if state.styleScoreValue then
+		local s = state.style.score or 0
+		state.styleScoreValue.Value = math.floor((s * 100) + 0.5) / 100
+	end
+	if state.styleComboValue then
+		state.styleComboValue.Value = state.style.combo or 0
+	end
+	-- Track session max combo and report when it increases
+	local comboNow = state.style.combo or 0
+	if comboNow > (state.maxComboSession or 0) then
+		state.maxComboSession = comboNow
+		pcall(function()
+			MaxComboReport:FireServer(state.maxComboSession)
+		end)
+	end
+	if state.styleMultiplierValue then
+		local mul = state.style.multiplier or 1
+		-- Round to 2 decimals for cleaner UI/inspectors
+		state.styleMultiplierValue.Value = math.floor((mul * 100) + 0.5) / 100
+	end
+
+	-- Detect multiplier break to commit and reset Style
+	local prevMult = state.styleLastMult or 1
+	local curMult = state.style.multiplier or 1
+
+	-- Also commit if no style input for X seconds (inactivity)
+	local commitByInactivity = false
+	local timeout = Config.StyleCommitInactivitySeconds or 1.0
+	if timeout > 0 and (os.clock() - (state.style.lastActiveTick or 0)) >= timeout then
+		commitByInactivity = (state.style.score or 0) > 0
+	end
+
+	if (prevMult > 1.01 and curMult <= 1.01) or commitByInactivity then
+		local commitAmount = math.floor(((state.style.score or 0) * 100) + 0.5) / 100
+		if commitAmount > 0 then
+			pcall(function()
+				StyleCommit:FireServer(commitAmount)
+			end)
+			-- Pulse UI signal for animation
+			if state.styleCommitAmountValue then
+				state.styleCommitAmountValue.Value = commitAmount
+			end
+			if state.styleCommitFlashValue then
+				state.styleCommitFlashValue.Value = true
+				task.delay(0.05, function()
+					if state.styleCommitFlashValue then
+						state.styleCommitFlashValue.Value = false
+					end
+				end)
+			end
+		end
+		-- Reset session style
+		state.style.score = 0
+		state.style.combo = 0
+		state.style.multiplier = 1
+		state.style.flowTime = 0
+		if state.styleScoreValue then
+			state.styleScoreValue.Value = 0
+		end
+		if state.styleComboValue then
+			state.styleComboValue.Value = 0
+		end
+		if state.styleMultiplierValue then
+			state.styleMultiplierValue.Value = 1
+		end
+	end
+	state.styleLastMult = curMult
 
 	-- Sprinting and stamina updates
 	if state.sprintHeld then
