@@ -56,6 +56,70 @@ local state = {
 	pendingPadTick = nil,
 }
 
+-- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
+local wallChain = { currentWall = nil, count = 0 }
+local function resetWallChain()
+	wallChain.currentWall = nil
+	wallChain.count = 0
+end
+
+-- Reset chain when grounded
+RunService.RenderStepped:Connect(function()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
+		resetWallChain()
+	end
+end)
+
+local function getNearbyWallInstance()
+	local character = player.Character
+	if not character then
+		return nil
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return nil
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.IgnoreWater = true
+	local dirs = { root.CFrame.RightVector, -root.CFrame.RightVector, root.CFrame.LookVector, -root.CFrame.LookVector }
+	for _, d in ipairs(dirs) do
+		local r = workspace:Raycast(root.Position, d * (Config.WallSlideDetectionDistance or 4), params)
+		if r and r.Instance and r.Instance.CanCollide then
+			return r.Instance
+		end
+	end
+	return nil
+end
+
+local function maybeConsumePadThenBump(eventName)
+	local chainWin = Config.ComboChainWindowSeconds or 3
+	if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
+		Style.addEvent(state.style, "Pad", 1)
+		state.pendingPadTick = nil
+	end
+	-- Enforce per-wall chain cap
+	local maxPerWall = Config.MaxWallChainPerSurface or 3
+	if eventName == "WallJump" or eventName == "WallSlide" or eventName == "WallRun" then
+		local wall = getNearbyWallInstance()
+		if wall then
+			if wallChain.currentWall == wall then
+				wallChain.count = wallChain.count + 1
+			else
+				wallChain.currentWall = wall
+				wallChain.count = 1
+			end
+			if wallChain.count > maxPerWall then
+				return -- suppress further combo bumps on this wall until reset by ground
+			end
+		end
+	end
+	Style.addEvent(state.style, eventName, 1)
+end
+
 local function getCharacter()
 	local character = player.Character or player.CharacterAdded:Wait()
 	return character
@@ -975,13 +1039,7 @@ do
 		end
 		local nowActive = WallRun.isActive(character)
 		if nowActive and not wasActive then
-			-- If Pad happened just before wallrun, count Pad as chained first
-			local chainWin = Config.ComboChainWindowSeconds or 3
-			if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
-				Style.addEvent(state.style, "Pad", 1)
-				state.pendingPadTick = nil
-			end
-			onWallRunStart()
+			maybeConsumePadThenBump("WallRun")
 		end
 		wasActive = nowActive
 	end)
@@ -994,12 +1052,7 @@ do
 	Abilities.tryDash = function(character)
 		local ok = oldTryDash(character)
 		if ok then
-			local chainWin = Config.ComboChainWindowSeconds or 3
-			if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
-				Style.addEvent(state.style, "Pad", 1)
-				state.pendingPadTick = nil
-			end
-			Style.addEvent(state.style, "Dash", 1)
+			maybeConsumePadThenBump("Dash")
 		end
 		return ok
 	end
@@ -1012,12 +1065,7 @@ do
 		WallJump.tryJump = function(character)
 			local ok = oldTryJump(character)
 			if ok then
-				local chainWin = Config.ComboChainWindowSeconds or 3
-				if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
-					Style.addEvent(state.style, "Pad", 1)
-					state.pendingPadTick = nil
-				end
-				Style.addEvent(state.style, "WallJump", 1)
+				maybeConsumePadThenBump("WallJump")
 			end
 			return ok
 		end
@@ -1035,12 +1083,7 @@ do
 			end
 			local active = WallJump.isWallSliding(character) or false
 			if active and not prev then
-				local chainWin = Config.ComboChainWindowSeconds or 3
-				if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
-					Style.addEvent(state.style, "Pad", 1)
-					state.pendingPadTick = nil
-				end
-				Style.addEvent(state.style, "WallSlide", 1)
+				maybeConsumePadThenBump("WallSlide")
 			end
 			prev = active
 		end)

@@ -492,10 +492,7 @@ function WallJump.tryJump(character)
 	if not hit then
 		return false
 	end
-	local last = WallMemory.getLast(character)
-	if last and last == hit.Instance then
-		return false
-	end
+	-- Allow repeated wall jumps on the same wall: remove last-wall restriction
 
 	lastJumpTick = now
 
@@ -527,7 +524,7 @@ function WallJump.tryJump(character)
 	vel = Vector3.new(vel.X, 0, vel.Z)
 	rootPart.AssemblyLinearVelocity = vel + away + up
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	WallMemory.setLast(character, hit.Instance)
+	-- Do not track last wall so subsequent jumps on the same wall are permitted
 
 	-- Prevent immediate re-entering wall slide after jumping
 	slideCooldownUntil[character] = os.clock() + ((Config.WallJumpCooldownSeconds or 0.2) + 0.2)

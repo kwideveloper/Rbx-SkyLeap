@@ -160,6 +160,8 @@ Config.StyleWallJumpStreakBonusPer = 4
 Config.StyleWallJumpStreakMaxBonus = 20
 Config.StyleRequireSprint = true
 Config.StyleCommitInactivitySeconds = 3.0
+-- Anti-abuse: max consecutive chain actions on the same wall surface before requiring variety
+Config.MaxWallChainPerSurface = 3
 Config.StyleComboPopupWindowSeconds = 0.2 -- time to aggregate combo increases into a single popup
 
 -- Trails
