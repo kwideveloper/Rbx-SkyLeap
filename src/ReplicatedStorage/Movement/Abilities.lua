@@ -496,7 +496,7 @@ local function isVaultCandidate(root, humanoid)
 		return nil
 	end
 	local vattr = getVaultAttr(hit)
-	if vattr == false then
+	if vattr ~= true then
 		return false
 	end
 	if not hit.CanCollide then
