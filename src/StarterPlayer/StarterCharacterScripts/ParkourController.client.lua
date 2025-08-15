@@ -156,6 +156,33 @@ local function setupCharacter(character)
 				state.staminaTouchCount = state.staminaTouchCount + 1
 			end
 		end
+		-- Publish last collidable touch for vault fallback detection (handles CanQuery=false parts)
+		if other and other:IsA("BasePart") and other.CanCollide then
+			local folder = state.clientStateFolder
+			if folder then
+				local partVal = folder:FindFirstChild("VaultTouchPart")
+				if not partVal then
+					partVal = Instance.new("ObjectValue")
+					partVal.Name = "VaultTouchPart"
+					partVal.Parent = folder
+				end
+				local timeVal = folder:FindFirstChild("VaultTouchTime")
+				if not timeVal then
+					timeVal = Instance.new("NumberValue")
+					timeVal.Name = "VaultTouchTime"
+					timeVal.Parent = folder
+				end
+				local posVal = folder:FindFirstChild("VaultTouchPos")
+				if not posVal then
+					posVal = Instance.new("Vector3Value")
+					posVal.Name = "VaultTouchPos"
+					posVal.Parent = folder
+				end
+				partVal.Value = other
+				timeVal.Value = os.clock()
+				posVal.Value = other.Position
+			end
+		end
 	end
 	local function onTouchEnded(other)
 		if other and state.staminaTouched[other] then

@@ -76,9 +76,6 @@ local function isVaultCandidate(root, humanoid)
 	end
 	local res = raycastForward(root, Config.VaultDetectionDistance or 4.5)
 	if not res or not res.Instance then
-		if Config.DebugVault then
-			print("[Vault] no hit forward")
-		end
 		return false
 	end
 	local hit = res.Instance
@@ -91,13 +88,7 @@ local function isVaultCandidate(root, humanoid)
 	local minH = Config.VaultMinHeight or 1.0
 	local maxH = Config.VaultMaxHeight or 4.0
 	if h < minH or h > maxH then
-		if Config.DebugVault then
-			print(string.format("[Vault] height=%.2f outside [%.2f, %.2f]", h, minH, maxH))
-		end
 		return false
-	end
-	if Config.DebugVault then
-		print("[Vault] candidate hit=", hit:GetFullName(), string.format("h=%.2f", h))
 	end
 	return true, res
 end
@@ -358,21 +349,91 @@ local function sampleObstacleTopY(root, distance)
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { root.Parent }
 	params.IgnoreWater = true
-	local samples = Config.VaultSampleHeights or { 0.2, 0.4, 0.6, 0.85 }
+	local samples = Config.VaultSampleHeights or { 0.15, 0.35, 0.55, 0.75, 0.9 }
 	local bestY = nil
 	local bestRes = nil
+	-- Try a fan of yaw offsets to be tolerant to small aim misalignments
+	local yawOffsets = { 0, math.rad(12), -math.rad(12), math.rad(22), -math.rad(22) }
 	for _, frac in ipairs(samples) do
-		local origin = root.Position + Vector3.new(0, (root.Size and root.Size.Y or 2) * frac, 0)
-		local res = workspace:Raycast(origin, root.CFrame.LookVector * distance, params)
-		if res and res.Instance and res.Instance.CanCollide then
-			local topY = computeObstacleTopY(res.Instance)
-			if (not bestY) or (topY > bestY) then
-				bestY = topY
-				bestRes = res
+		for _, yaw in ipairs(yawOffsets) do
+			local dir = (
+				CFrame.fromMatrix(Vector3.new(), root.CFrame.XVector, root.CFrame.YVector, root.CFrame.ZVector)
+				* CFrame.Angles(0, yaw, 0)
+			).LookVector
+			-- If player is too close, ray from slightly behind the root to avoid starting inside the obstacle
+			local backOffset = dir * -0.8
+			local origin = root.Position + Vector3.new(0, (root.Size and root.Size.Y or 2) * frac, 0) + backOffset
+			local res = workspace:Raycast(origin, dir * (distance + 0.8), params)
+			if res and res.Instance then
+				local topY = computeObstacleTopY(res.Instance)
+				if (not bestY) or (topY > bestY) then
+					bestY = topY
+					bestRes = res
+				end
 			end
 		end
 	end
 	return bestY, bestRes
+end
+
+-- Three-ray detector: feet, mid, and head
+local function detectObstacleWithThreeRays(root, distance)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { root.Parent }
+	params.IgnoreWater = true
+
+	local halfH = (root.Size and root.Size.Y or 2) * 0.5
+	local look = root.CFrame.LookVector
+	local back = -look
+
+	local points = {
+		{ name = "feet", pos = root.Position + Vector3.new(0, -halfH + 0.1, 0) },
+		{ name = "mid", pos = root.Position },
+		{ name = "head", pos = root.Position + Vector3.new(0, halfH - 0.1, 0) },
+	}
+
+	for _, p in ipairs(points) do
+		local origin = p.pos + back * 0.6
+		local res = workspace:Raycast(origin, look * (distance + 0.6), params)
+		if res and res.Instance then
+			local topY = computeObstacleTopY(res.Instance)
+			return topY, res
+		end
+	end
+
+	return nil, nil
+end
+
+-- Fallback detection using a box overlap directly in front of the root (helps when rays start inside the wall)
+local function boxDetectFrontTopY(root, distance)
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Exclude
+	overlap.FilterDescendantsInstances = { root.Parent }
+	overlap.RespectCanCollide = false
+	local forward = root.CFrame.LookVector
+	local height = (root.Size and root.Size.Y or 2)
+	local center = root.CFrame * CFrame.new(0, 0, math.clamp(distance * 0.5, 0.75, distance))
+	local size = Vector3.new(3.0, height * 1.3, math.max(2.0, distance + 0.5))
+	local parts = workspace:GetPartBoundsInBox(center, size, overlap)
+	local bestY, bestPart = nil, nil
+	for _, p in ipairs(parts) do
+		if p then
+			-- Keep only parts that are generally in front of us
+			local toPart = (p.Position - root.Position)
+			if toPart:Dot(forward) > 0 then
+				local topY = computeObstacleTopY(p)
+				if (not bestY) or (topY > bestY) then
+					bestY = topY
+					bestPart = p
+				end
+			end
+		end
+	end
+	if bestPart then
+		return bestY, { Instance = bestPart, Position = bestPart.Position, Normal = -forward }
+	end
+	return nil, nil
 end
 
 local function isVaultCandidate(root, humanoid)
@@ -382,33 +443,60 @@ local function isVaultCandidate(root, humanoid)
 	if humanoid.WalkSpeed < (Config.VaultMinSpeed or 24) then
 		return false
 	end
-	local topY, res = sampleObstacleTopY(root, Config.VaultDetectionDistance or 4.5)
+	-- Primary detector: explicit feet/mid/head rays
+	local topY, res = detectObstacleWithThreeRays(root, Config.VaultDetectionDistance or 4.5)
 	if not res or not res.Instance or not topY then
-		if Config.DebugVault then
-			print("[Vault] no hit forward")
+		-- Secondary: widen with multi-sample ray fan
+		topY, res = sampleObstacleTopY(root, Config.VaultDetectionDistance or 4.5)
+	end
+	if not res or not res.Instance or not topY then
+		-- Fallback: box overlap front detection
+		local topY2, res2 = boxDetectFrontTopY(root, Config.VaultDetectionDistance or 4.5)
+		if not res2 or not res2.Instance or not topY2 then
+			-- Fallback 2: recent touched collidable part from client state (handles CanQuery=false)
+			local folder = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+			local partVal = folder and folder:FindFirstChild("VaultTouchPart")
+			local timeVal = folder and folder:FindFirstChild("VaultTouchTime")
+			local posVal = folder and folder:FindFirstChild("VaultTouchPos")
+			local touchedPart = partVal and partVal.Value or nil
+			local touchedWhen = timeVal and timeVal.Value or 0
+			local touchedPos = posVal and posVal.Value or nil
+			local recent = touchedPart and ((os.clock() - touchedWhen) < 0.35)
+			if recent and touchedPart and touchedPart.Parent and touchedPart.CanCollide then
+				local topY3 = computeObstacleTopY(touchedPart)
+				local res3 = {
+					Instance = touchedPart,
+					Position = touchedPos or touchedPart.Position,
+					Normal = -root.CFrame.LookVector,
+				}
+				topY, res = topY3, res3
+			else
+				return false
+			end
+		else
+			topY, res = topY2, res2
 		end
-		return false
 	end
 	local hit = res.Instance
-	-- Require Vault attribute true on the obstacle or its ancestors
-	local function hasVaultAttr(inst)
+	-- Attribute check: only block if attribute explicitly set to false; missing or true are allowed
+	local function getVaultAttr(inst)
 		local cur = inst
 		for _ = 1, 4 do
 			if not cur then
 				break
 			end
-			local ok = (typeof(cur.GetAttribute) == "function") and (cur:GetAttribute("Vault") == true)
-			if ok then
-				return true
+			if typeof(cur.GetAttribute) == "function" then
+				local val = cur:GetAttribute("Vault")
+				if val ~= nil then
+					return val
+				end
 			end
 			cur = cur.Parent
 		end
-		return false
+		return nil
 	end
-	if not hasVaultAttr(hit) then
-		if Config.DebugVault then
-			print("[Vault] obstacle missing Vault=true attribute", hit:GetFullName())
-		end
+	local vattr = getVaultAttr(hit)
+	if vattr == false then
 		return false
 	end
 	if not hit.CanCollide then
@@ -419,14 +507,10 @@ local function isVaultCandidate(root, humanoid)
 	local minH = Config.VaultMinHeight or 1.0
 	local maxH = Config.VaultMaxHeight or 4.0
 	if h < minH or h > maxH then
-		if Config.DebugVault then
-			print(string.format("[Vault] height=%.2f outside [%.2f, %.2f]", h, minH, maxH))
-		end
 		return false
 	end
-	if Config.DebugVault then
-		print("[Vault] candidate hit=", hit:GetFullName(), string.format("h=%.2f topY=%.2f", h, topY))
-	end
+	-- Always log a concise candidate line for troubleshooting high obstacles
+	local spd = humanoid and humanoid.WalkSpeed or 0
 	return true, res, topY
 end
 
@@ -460,18 +544,18 @@ function Abilities.tryVault(character)
 	local desiredY = topY + clearance
 	local curY = root.Position.Y
 	local needUp = math.max(0, desiredY - curY)
-	-- Forward-biased impulse: small vertical just enough, extra forward based on obstacle height
+	-- Physics-based vertical speed: v = sqrt(2 * g * height)
+	local g = workspace and workspace.Gravity or 196.2
+	local requiredUp = math.sqrt(math.max(0, 2 * g * needUp))
 	local upMin = Config.VaultUpMin or 8
-	local upMax = Config.VaultUpMax or 26
-	local upV = math.clamp(needUp * 1.2, upMin, upMax)
+	local upMax = Config.VaultUpMax -- optional cap
+	local upV = math.max(requiredUp, upMin)
+	-- If a cap exists but is below the physics requirement, prefer the requirement to ensure clearance
 	local forwardBase = (Config.VaultForwardBoost or 26)
 	local forwardGain = (Config.VaultForwardGainPerHeight or 2.5) * needUp
 	local forward = root.CFrame.LookVector * (forwardBase + forwardGain)
 	local up = Vector3.new(0, upV, 0)
 	root.AssemblyLinearVelocity = Vector3.new(forward.X, up.Y, forward.Z)
-	if Config.DebugVault then
-		print("[Vault] APPLY velocity", root.AssemblyLinearVelocity, "topY=", topY, "desiredY=", desiredY)
-	end
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 	-- Disable collisions during vault to ensure smooth pass-through
 	disableCharacterCollision(character)
@@ -566,17 +650,6 @@ function Abilities.tryVault(character)
 		local startCF = root.CFrame
 		local targetCF = startCF + Vector3.new(0, deltaY, 0)
 		local releasedHeight = false
-		if Config.DebugVault then
-			print(
-				string.format(
-					"[Vault] Retarget canon=%.2f feetY0=%.2f topY=%.2f deltaY=%.2f",
-					canon,
-					feetY0,
-					topY,
-					deltaY
-				)
-			)
-		end
 		local t0 = os.clock()
 		task.spawn(function()
 			-- Blend a small vertical CF offset, then hold briefly
