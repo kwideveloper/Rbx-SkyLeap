@@ -185,7 +185,8 @@ function Style.addEvent(state, event, magnitude)
 			pushAction(state, "WallSlide")
 		end
 	elseif event == "Pad" then
-		-- Only counts when chained with next action (handled by caller sequencing as Pad -> NextAction)
+		-- Only counts when chained with a subsequent action within the chain window.
+		-- The client sets lastEventTick on pad trigger, and the next qualifying action will allow this to contribute.
 		if isChained(state) then
 			bonus = Config.StylePadChainBonus or 5
 			pushAction(state, "Pad")

@@ -53,6 +53,7 @@ local state = {
 	maxComboSession = 0,
 	styleCommitFlashValue = nil,
 	styleCommitAmountValue = nil,
+	pendingPadTick = nil,
 }
 
 local function getCharacter()
@@ -974,6 +975,12 @@ do
 		end
 		local nowActive = WallRun.isActive(character)
 		if nowActive and not wasActive then
+			-- If Pad happened just before wallrun, count Pad as chained first
+			local chainWin = Config.ComboChainWindowSeconds or 3
+			if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
+				Style.addEvent(state.style, "Pad", 1)
+				state.pendingPadTick = nil
+			end
 			onWallRunStart()
 		end
 		wasActive = nowActive
@@ -987,6 +994,11 @@ do
 	Abilities.tryDash = function(character)
 		local ok = oldTryDash(character)
 		if ok then
+			local chainWin = Config.ComboChainWindowSeconds or 3
+			if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
+				Style.addEvent(state.style, "Pad", 1)
+				state.pendingPadTick = nil
+			end
 			Style.addEvent(state.style, "Dash", 1)
 		end
 		return ok
@@ -1000,6 +1012,11 @@ do
 		WallJump.tryJump = function(character)
 			local ok = oldTryJump(character)
 			if ok then
+				local chainWin = Config.ComboChainWindowSeconds or 3
+				if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
+					Style.addEvent(state.style, "Pad", 1)
+					state.pendingPadTick = nil
+				end
 				Style.addEvent(state.style, "WallJump", 1)
 			end
 			return ok
@@ -1018,6 +1035,11 @@ do
 			end
 			local active = WallJump.isWallSliding(character) or false
 			if active and not prev then
+				local chainWin = Config.ComboChainWindowSeconds or 3
+				if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
+					Style.addEvent(state.style, "Pad", 1)
+					state.pendingPadTick = nil
+				end
 				Style.addEvent(state.style, "WallSlide", 1)
 			end
 			prev = active
@@ -1025,9 +1047,10 @@ do
 	end
 end
 
--- Pad trigger from server; counts only if followed by another action within window
+-- Pad trigger from server; do NOT bump combo immediately. Only make it eligible for chaining.
 PadTriggered.OnClientEvent:Connect(function()
-	Style.addEvent(state.style, "Pad", 1)
+	-- Remember pad time; consume on the next qualifying action within chain window
+	state.pendingPadTick = os.clock()
 end)
 
 -- Apply climb velocities before physics integrates gravity

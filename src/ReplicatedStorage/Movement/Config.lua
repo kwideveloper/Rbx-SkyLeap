@@ -127,7 +127,7 @@ Config.AirControlTotalSpeedCap = 85 -- overall air speed cap (horizontal)
 Config.LaunchPadUpSpeed = 80
 Config.LaunchPadForwardSpeed = 0
 Config.LaunchPadCarryFactor = 0 -- 0..1 how much of current velocity to preserve
-Config.LaunchPadCooldownSeconds = 0
+Config.LaunchPadCooldownSeconds = 0.35
 Config.LaunchPadMinUpLift = 12 -- ensures detachment from ground even on forward pads
 
 -- Style / Combo system
