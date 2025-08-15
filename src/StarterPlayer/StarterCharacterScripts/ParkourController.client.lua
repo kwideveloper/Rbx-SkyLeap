@@ -54,6 +54,7 @@ local state = {
 	styleCommitFlashValue = nil,
 	styleCommitAmountValue = nil,
 	pendingPadTick = nil,
+	wallAttachLockedUntil = nil,
 }
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -1022,7 +1023,9 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 
 	-- Apply Quake/CS-style air control after other airborne logic
-	AirControl.apply(character, dt)
+	if not (state.wallAttachLockedUntil and os.clock() < state.wallAttachLockedUntil) then
+		AirControl.apply(character, dt)
+	end
 end)
 -- Chain-sensitive action events to Style
 local function onWallRunStart()
@@ -1035,6 +1038,10 @@ do
 	RunService.RenderStepped:Connect(function()
 		local character = player.Character
 		if not character then
+			return
+		end
+		if state.wallAttachLockedUntil and os.clock() < state.wallAttachLockedUntil then
+			wasActive = false
 			return
 		end
 		local nowActive = WallRun.isActive(character)
@@ -1065,6 +1072,9 @@ do
 		WallJump.tryJump = function(character)
 			local ok = oldTryJump(character)
 			if ok then
+				-- Lock wall attach for a short window to preserve jump impulse when still facing the wall
+				state.wallAttachLockedUntil = os.clock() + (Config.WallRunLockAfterWallJumpSeconds or 0.25)
+				-- Removed camera nudge on walljump per request
 				maybeConsumePadThenBump("WallJump")
 			end
 			return ok
@@ -1072,18 +1082,61 @@ do
 	end
 end
 
+-- During lock window prevent wallrun/wallslide from being started
+RunService.RenderStepped:Connect(function()
+	if state.wallAttachLockedUntil and os.clock() < state.wallAttachLockedUntil then
+		-- Stop active wallrun
+		local character = player.Character
+		if character and WallRun.isActive and WallRun.isActive(character) then
+			WallRun.stop(character)
+		end
+		-- Optionally suppress air control override for a brief moment after walljump
+		local lock = (Config.WallRunLockAfterWallJumpSeconds or 0.35)
+		if lock > 0 then
+			-- NOP: AirControl.apply uses MoveDirection/camera; we rely on our short lock and fixed velocity to dominate initial frames
+		end
+	end
+end)
+
 -- Wall slide counts only when chained; we signal start when sliding becomes active
 do
 	if WallJump.isWallSliding then
 		local prev = false
+		local nudgeT0 = 0
 		RunService.RenderStepped:Connect(function()
 			local character = player.Character
 			if not character then
 				return
 			end
+			if state.wallAttachLockedUntil and os.clock() < state.wallAttachLockedUntil then
+				prev = false
+				return
+			end
 			local active = WallJump.isWallSliding(character) or false
 			if active and not prev then
 				maybeConsumePadThenBump("WallSlide")
+				nudgeT0 = os.clock()
+			end
+			-- Camera nudge while sliding: blend view towards away-from-wall
+			if active then
+				local cam = workspace.CurrentCamera
+				local root = character:FindFirstChild("HumanoidRootPart")
+				if cam and root then
+					local delayS = Config.CameraNudgeWallSlideDelaySeconds or 1.5
+					if (os.clock() - nudgeT0) >= delayS then
+						local frac = Config.CameraNudgeWallSlideFraction or 0.35
+						local dur = Config.CameraNudgeWallSlideSeconds or 0.25
+						local away = -root.CFrame.LookVector
+						local start = cam.CFrame
+						local target = CFrame.lookAt(
+							start.Position,
+							start.Position + (start.LookVector:Lerp(away, frac)),
+							Vector3.yAxis
+						)
+						local alpha = math.clamp(((os.clock() - nudgeT0) - delayS) / dur, 0, 1)
+						cam.CFrame = start:Lerp(target, alpha)
+					end
+				end
 			end
 			prev = active
 		end)

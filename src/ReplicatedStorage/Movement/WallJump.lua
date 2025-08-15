@@ -516,13 +516,30 @@ function WallJump.tryJump(character)
 		end
 	end
 
-	local away = hit.Normal * Config.WallJumpImpulseAway
-	local up = Vector3.new(0, Config.WallJumpImpulseUp, 0)
+	local away = hit.Normal * (Config.WallJumpImpulseAway or 120)
+	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45), 0)
 
-	-- Reset vertical velocity to avoid "moon jump" stacking
-	local vel = rootPart.AssemblyLinearVelocity
-	vel = Vector3.new(vel.X, 0, vel.Z)
-	rootPart.AssemblyLinearVelocity = vel + away + up
+	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
+	rootPart.AssemblyLinearVelocity = away + up
+
+	-- Reorient the character to face away from the wall so movement inputs reinforce the jump direction
+	local oldAuto = humanoid.AutoRotate
+	humanoid.AutoRotate = false
+	local awayHoriz = Vector3.new(away.X, 0, away.Z)
+	if awayHoriz.Magnitude < 0.01 then
+		local n = hit.Normal
+		awayHoriz = Vector3.new(n.X, 0, n.Z)
+	end
+	if awayHoriz.Magnitude > 0 then
+		rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
+	end
+	local lockSecs = Config.WallRunLockAfterWallJumpSeconds or 0.35
+	task.delay(math.max(0.18, lockSecs), function()
+		if humanoid and humanoid.Parent then
+			humanoid.AutoRotate = oldAuto
+		end
+	end)
+
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 	-- Do not track last wall so subsequent jumps on the same wall are permitted
 

@@ -63,9 +63,20 @@ Config.WallHopForwardBoost = 18
 
 -- Wall jump
 Config.WallJumpImpulseUp = 45
-Config.WallJumpImpulseAway = 120 -- 65
+Config.WallJumpImpulseAway = 100 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
+Config.WallJumpCarryFactor = 0.25
+Config.WallRunLockAfterWallJumpSeconds = 0.45
+-- Camera nudge assists
+Config.CameraNudgeWallJumpSeconds = 0.2
+Config.CameraNudgeWallJumpFraction = 0.45 -- 0..1 blend towards away direction
+Config.CameraNudgeWallSlideSeconds = 0.25
+Config.CameraNudgeWallSlideFraction = 0.35
+Config.CameraNudgeWallSlideDelaySeconds = 1.2
+-- Camera nudge after wall jump (subtle assist to show away direction)
+Config.CameraNudgeWallJumpSeconds = 0.2
+Config.CameraNudgeWallJumpFraction = 0.45 -- 0..1 blend towards away direction
 
 -- Wall slide
 Config.WallSlideFallSpeed = 5
