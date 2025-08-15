@@ -503,6 +503,10 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	if input.KeyCode == Enum.KeyCode.Q then
 		-- Dash: only spend stamina if dash actually triggers (respects cooldown)
 		if state.stamina.current >= Config.DashStaminaCost then
+			-- Disable dash during wall slide
+			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				return
+			end
 			if Abilities.tryDash(character) then
 				state.stamina.current = math.max(0, state.stamina.current - Config.DashStaminaCost)
 				DashVfx.playFor(character, Config.DashVfxDuration)
@@ -529,6 +533,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if not state.sliding then
 				state.sliding = true
 				state.slideEnd = Abilities.slide(character)
+				-- Count slide into combo points
+				Style.addEvent(state.style, "GroundSlide", 1)
 				state.stamina.current = math.max(0, state.stamina.current - Config.SlideStaminaCost)
 				DashVfx.playSlideFor(character, Config.SlideVfxDuration)
 				task.delay(Config.SlideDurationSeconds, function()
@@ -612,6 +618,11 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		else
+			-- Attempt vault if a low obstacle is in front
+			local didVault = Abilities.tryVault(character)
+			if didVault then
+				return
+			end
 			local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
 			if airborne then
 				-- Airborne: if near wall and can enter slide immediately, prefer starting slide first and block jump until pose snaps
@@ -1023,8 +1034,27 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 
 	-- Apply Quake/CS-style air control after other airborne logic
-	if not (state.wallAttachLockedUntil and os.clock() < state.wallAttachLockedUntil) then
+	local acUnlock = (
+		state.wallAttachLockedUntil
+		and (
+			state.wallAttachLockedUntil
+			- (Config.WallRunLockAfterWallJumpSeconds or 0.35)
+			+ (Config.AirControlUnlockAfterWallJumpSeconds or 0.12)
+		)
+	) or 0
+	if (not state.wallAttachLockedUntil) or (os.clock() >= acUnlock) then
 		AirControl.apply(character, dt)
+	end
+
+	-- Auto-vault while sprinting towards low obstacle
+	if Config.VaultEnabled ~= false then
+		local isMovingForward = humanoid.MoveDirection.Magnitude > 0.1
+		local isGrounded = (humanoid.FloorMaterial ~= Enum.Material.Air)
+		if isGrounded and isMovingForward and state.stamina.isSprinting then
+			if Abilities.tryVault(character) then
+				Style.addEvent(state.style, "Vault", 1)
+			end
+		end
 	end
 end)
 -- Chain-sensitive action events to Style

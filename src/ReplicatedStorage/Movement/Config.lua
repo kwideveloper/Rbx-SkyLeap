@@ -67,7 +67,8 @@ Config.WallJumpImpulseAway = 100 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 Config.WallJumpCarryFactor = 0.25
-Config.WallRunLockAfterWallJumpSeconds = 0.45
+Config.WallRunLockAfterWallJumpSeconds = 0
+Config.AirControlUnlockAfterWallJumpSeconds = 0
 -- Camera nudge assists
 Config.CameraNudgeWallJumpSeconds = 0.2
 Config.CameraNudgeWallJumpFraction = 0.45 -- 0..1 blend towards away direction
@@ -159,6 +160,8 @@ Config.StyleDashBonus = 8 -- counts only when chained
 Config.StyleWallJumpBonus = 15
 Config.StyleWallSlideBonus = 10 -- counts only when chained
 Config.StylePadChainBonus = 5 -- counts only when chained
+Config.StyleVaultBonus = 12
+Config.StyleGroundSlideBonus = 8
 -- Combo/variety rules
 Config.ComboChainWindowSeconds = 3.0 -- window to chain dependent actions (dash, pad, wallslide, zipline)
 Config.StyleRepeatLimit = 3 -- identical consecutive actions beyond this won't bump combo
@@ -174,6 +177,32 @@ Config.StyleCommitInactivitySeconds = 3.0
 -- Anti-abuse: max consecutive chain actions on the same wall surface before requiring variety
 Config.MaxWallChainPerSurface = 3
 Config.StyleComboPopupWindowSeconds = 0.2 -- time to aggregate combo increases into a single popup
+
+-- Vault (parkour over low obstacles)
+Config.VaultEnabled = true
+Config.VaultDetectionDistance = 4.5
+Config.VaultMinHeight = 0 -- studs above feet
+Config.VaultMaxHeight = 88 -- studs above feet
+Config.VaultMinSpeed = 24 -- require decent speed (sprinting)
+Config.VaultUpBoost = 0
+Config.VaultForwardBoost = 40 -- 26
+Config.VaultDurationSeconds = 0.25 -- 0.35
+Config.VaultCooldownSeconds = 0.6
+-- Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Lazy", "Vault_Kong", "Vault_Dash", "Vault_TwoHanded" }
+Config.VaultAnimationKeys = { "Vault_Speed" }
+Config.DebugVault = false
+-- Dynamic vault clearance: how many studs above obstacle top we aim to pass
+Config.VaultClearanceStuds = 1.5
+-- Heights (fractions of root height) to probe obstacle front for estimating top
+Config.VaultSampleHeights = { 0.2, 0.4, 0.6, 0.85 }
+-- Forward-biased vault tuning
+Config.VaultForwardGainPerHeight = 2.5 -- extra forward speed per stud of obstacle height
+Config.VaultUpMin = 8
+Config.VaultUpMax = 26
+-- Retarget authored vault (3 studs) to any obstacle height
+Config.VaultCanonicalHeightStuds = 3.0
+Config.VaultAlignBlendSeconds = 0.12
+Config.VaultAlignHoldSeconds = 0.08
 
 -- Trails
 Config.TrailEnabled = true

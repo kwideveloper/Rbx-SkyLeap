@@ -127,6 +127,7 @@ local function getClientState()
 		folder and folder:FindFirstChild("IsSliding") or nil,
 		folder and folder:FindFirstChild("IsAirborne") or nil,
 		folder and folder:FindFirstChild("IsWallRunning") or nil,
+		folder and folder:FindFirstChild("IsWallSliding") or nil,
 		folder and folder:FindFirstChild("BunnyHopStacks") or nil,
 		folder and folder:FindFirstChild("BunnyHopFlash") or nil
 end
@@ -162,7 +163,7 @@ local function update()
 			return
 		end
 	end
-	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning, bhStacks, bhFlash =
+	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning, isWallSliding, bhStacks, bhFlash =
 		getClientState()
 	if not folder then
 		return
@@ -192,10 +193,12 @@ local function update()
 	local canDash = staminaCurrent >= (C.DashStaminaCost or 0)
 		and Abilities.isDashReady()
 		and not (isWallRunning and isWallRunning.Value)
+		and not (isWallSliding and isWallSliding.Value)
 	local canSlide = (isSprinting and isSprinting.Value)
 		and staminaCurrent >= (C.SlideStaminaCost or 0)
 		and Abilities.isSlideReady()
 		and not (isWallRunning and isWallRunning.Value)
+		and not (isWallSliding and isWallSliding.Value)
 		and not (isAirborne and isAirborne.Value)
 	-- Wall jump/hop icon: enabled only when action is truly available
 	local canWall = false

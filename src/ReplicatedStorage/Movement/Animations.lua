@@ -25,7 +25,14 @@ local Animations = {
 
 	-- Wall interactions
 	WallRunLoop = "",
-	WallJump = "rbxassetid://97790866467641", -- Preparation animation for Wall Jump
+	WallJump = "rbxassetid://125842455228311", -- Preparation animation for Wall Jump
+
+	-- Vaults
+	Vault_Speed = "rbxassetid://83144181218736",
+	-- Vault_Lazy = "",
+	-- Vault_Kong = "",
+	-- Vault_Dash = "",
+	-- Vault_TwoHanded = "",
 
 	-- Climb (optional)
 	ClimbStart = "",

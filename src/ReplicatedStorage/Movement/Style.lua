@@ -191,6 +191,12 @@ function Style.addEvent(state, event, magnitude)
 			bonus = Config.StylePadChainBonus or 5
 			pushAction(state, "Pad")
 		end
+	elseif event == "Vault" then
+		bonus = Config.StyleVaultBonus or 12
+		pushAction(state, "Vault")
+	elseif event == "GroundSlide" then
+		bonus = Config.StyleGroundSlideBonus or 8
+		pushAction(state, "GroundSlide")
 	elseif event == "ZiplineExit" then
 		-- Only counts when chained into a follow-up (e.g., wallrun, walljump, pad)
 		if isChained(state) then
