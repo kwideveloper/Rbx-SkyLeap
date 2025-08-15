@@ -2,7 +2,6 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local DataStoreService = game:GetService("DataStoreService")
 local ServerScriptService = game:GetService("ServerScriptService")
 local PlayerProfile = require(ServerScriptService:WaitForChild("PlayerProfile"))
 
@@ -10,22 +9,9 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local styleCommit = remotes:WaitForChild("StyleCommit")
 
 -- Mirror total style into default Roblox leaderstats as NumberValue "Style"
-local store = DataStoreService:GetDataStore("StyleTotalsV1")
-
 local function loadStyleTotal(player)
-	local ok, value = pcall(function()
-		return store:GetAsync("u:" .. player.UserId)
-	end)
-	if ok and typeof(value) == "number" then
-		return value
-	end
-	return 0
-end
-
-local function saveStyleTotal(userId, value)
-	pcall(function()
-		store:SetAsync("u:" .. userId, value)
-	end)
+	local p = PlayerProfile.load(player.UserId)
+	return tonumber((p.stats and p.stats.styleTotal) or 0)
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -55,13 +41,7 @@ Players.PlayerAdded:Connect(function(player)
 	-- TimePlayed is tracked internally but not shown in leaderstats
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-	local stats = player:FindFirstChild("leaderstats")
-	local style = stats and stats:FindFirstChild("Style")
-	if style then
-		saveStyleTotal(player.UserId, style.Value)
-	end
-end)
+-- No explicit save here; PlayerProfile.addStyleTotal already persists on commit
 
 styleCommit.OnServerEvent:Connect(function(player, amount)
 	amount = tonumber(amount) or 0
@@ -81,7 +61,6 @@ styleCommit.OnServerEvent:Connect(function(player, amount)
 	end
 	style.Value = style.Value + amount
 	-- Save asynchronously (fire-and-forget); PlayerRemoving persists too
-	saveStyleTotal(player.UserId, style.Value)
-	-- Mirror into PlayerProfile styleTotal for unified access
+	-- Mirror into PlayerProfile styleTotal for unified access (single source of truth)
 	PlayerProfile.addStyleTotal(player.UserId, amount)
 end)

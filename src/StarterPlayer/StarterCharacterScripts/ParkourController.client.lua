@@ -22,6 +22,7 @@ local Style = require(ReplicatedStorage.Movement.Style)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
+local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
 local player = Players.LocalPlayer
 local proneDebugTicker = 0
@@ -306,6 +307,25 @@ local function ensureClientState()
 		styleCommitFlash.Parent = folder
 	end
 	state.styleCommitFlashValue = styleCommitFlash
+
+	-- Combo timeout HUD bindings
+	local comboRemain = folder:FindFirstChild("StyleComboTimeRemaining")
+	if not comboRemain then
+		comboRemain = Instance.new("NumberValue")
+		comboRemain.Name = "StyleComboTimeRemaining"
+		comboRemain.Value = 0
+		comboRemain.Parent = folder
+	end
+	state.styleComboTimeRemaining = comboRemain
+
+	local comboMax = folder:FindFirstChild("StyleComboTimeMax")
+	if not comboMax then
+		comboMax = Instance.new("NumberValue")
+		comboMax.Name = "StyleComboTimeMax"
+		comboMax.Value = Config.StyleBreakTimeoutSeconds or 3
+		comboMax.Parent = folder
+	end
+	state.styleComboTimeMax = comboMax
 end
 
 ensureClientState()
@@ -650,6 +670,12 @@ RunService.RenderStepped:Connect(function(dt)
 			MaxComboReport:FireServer(state.maxComboSession)
 		end)
 	end
+
+	-- Count chained per-event actions into the combo system
+	-- Dash chained into something else
+	if Abilities.isDashReady and not Abilities.isDashReady() then
+		-- dash just used recently, Style.addEvent("Dash") is handled when input triggers; ensure we set lastEventTick
+	end
 	if state.styleMultiplierValue then
 		local mul = state.style.multiplier or 1
 		-- Round to 2 decimals for cleaner UI/inspectors
@@ -660,11 +686,11 @@ RunService.RenderStepped:Connect(function(dt)
 	local prevMult = state.styleLastMult or 1
 	local curMult = state.style.multiplier or 1
 
-	-- Also commit if no style input for X seconds (inactivity)
+	-- Also commit if no style input for X seconds (inactivity), but only if a combo existed
 	local commitByInactivity = false
 	local timeout = Config.StyleCommitInactivitySeconds or 1.0
 	if timeout > 0 and (os.clock() - (state.style.lastActiveTick or 0)) >= timeout then
-		commitByInactivity = (state.style.score or 0) > 0
+		commitByInactivity = (state.style.combo or 0) > 0
 	end
 
 	if (prevMult > 1.01 and curMult <= 1.01) or commitByInactivity then
@@ -823,6 +849,19 @@ RunService.RenderStepped:Connect(function(dt)
 		state.isZipliningValue.Value = Zipline.isActive(character)
 	end
 
+	-- Publish combo timeout progress for HUD
+	if state.styleComboValue and state.styleComboTimeRemaining and state.styleComboTimeMax then
+		local timeout = Config.StyleBreakTimeoutSeconds or 3
+		state.styleComboTimeMax.Value = timeout
+		local combo = state.style.combo or 0
+		if combo > 0 then
+			local remain = math.max(0, timeout - (os.clock() - (state.style.lastActiveTick or 0)))
+			state.styleComboTimeRemaining.Value = remain
+		else
+			state.styleComboTimeRemaining.Value = 0
+		end
+	end
+
 	-- (Head/camera alignment handled by HeadTracking.client.lua)
 	-- Show climb prompt when near climbable and with enough stamina
 	if state.climbPromptValue then
@@ -919,6 +958,76 @@ RunService.RenderStepped:Connect(function(dt)
 
 	-- Apply Quake/CS-style air control after other airborne logic
 	AirControl.apply(character, dt)
+end)
+-- Chain-sensitive action events to Style
+local function onWallRunStart()
+	Style.addEvent(state.style, "WallRun", 1)
+end
+
+-- Hook wallrun transitions by polling state change
+do
+	local wasActive = false
+	RunService.RenderStepped:Connect(function()
+		local character = player.Character
+		if not character then
+			return
+		end
+		local nowActive = WallRun.isActive(character)
+		if nowActive and not wasActive then
+			onWallRunStart()
+		end
+		wasActive = nowActive
+	end)
+end
+
+-- Dash is fired in InputBegan when Abilities.tryDash succeeds; count it as chained
+-- We emit the Style event immediately after a successful dash
+do
+	local oldTryDash = Abilities.tryDash
+	Abilities.tryDash = function(character)
+		local ok = oldTryDash(character)
+		if ok then
+			Style.addEvent(state.style, "Dash", 1)
+		end
+		return ok
+	end
+end
+
+-- Wall jump: count each successful tryJump
+do
+	local oldTryJump = WallJump.tryJump
+	if oldTryJump then
+		WallJump.tryJump = function(character)
+			local ok = oldTryJump(character)
+			if ok then
+				Style.addEvent(state.style, "WallJump", 1)
+			end
+			return ok
+		end
+	end
+end
+
+-- Wall slide counts only when chained; we signal start when sliding becomes active
+do
+	if WallJump.isWallSliding then
+		local prev = false
+		RunService.RenderStepped:Connect(function()
+			local character = player.Character
+			if not character then
+				return
+			end
+			local active = WallJump.isWallSliding(character) or false
+			if active and not prev then
+				Style.addEvent(state.style, "WallSlide", 1)
+			end
+			prev = active
+		end)
+	end
+end
+
+-- Pad trigger from server; counts only if followed by another action within window
+PadTriggered.OnClientEvent:Connect(function()
+	Style.addEvent(state.style, "Pad", 1)
 end)
 
 -- Apply climb velocities before physics integrates gravity

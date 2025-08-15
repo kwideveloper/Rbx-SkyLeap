@@ -63,7 +63,7 @@ Config.WallHopForwardBoost = 18
 
 -- Wall jump
 Config.WallJumpImpulseUp = 45
-Config.WallJumpImpulseAway = 65
+Config.WallJumpImpulseAway = 120 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 
@@ -106,7 +106,7 @@ Config.CameraAlignHeadPitchDeg = 30
 Config.CameraAlignBodyYawDeg = 45
 
 -- Bunny hop
-Config.BunnyHopWindowSeconds = 1 -- 0.12 time after landing to count as a perfect hop
+Config.BunnyHopWindowSeconds = 0.12 -- 0.12 time after landing to count as a perfect hop
 Config.BunnyHopMaxStacks = 3
 Config.BunnyHopBaseBoost = 20 -- base horizontal speed added on perfect hop
 Config.BunnyHopPerStackBoost = 20 -- extra per additional stack
@@ -136,16 +136,31 @@ Config.StylePerSecondBase = 5
 Config.StyleSpeedFactor = 0.12
 Config.StyleSpeedThreshold = 18
 Config.StyleAirTimePerSecond = 6
-Config.StyleWallRunPerSecond = 10
-Config.StyleBreakTimeoutSeconds = 0.65
-Config.StyleMultiplierStep = 0.25
-Config.StyleMultiplierMax = 4.0
-Config.StyleBunnyHopBonusBase = 50
-Config.StyleBunnyHopBonusPerStack = 25
-Config.StyleDashBonus = 20
-Config.StyleWallJumpBonus = 30
+Config.StyleWallRunPerSecond = 10 -- per-second scoring aligns with Wallrun: 10 points
+Config.StyleWallRunEventBonus = 10 -- on start of a wallrun, as a discrete action
+Config.StyleBreakTimeoutSeconds = 3.0 -- break combo if no valid action in this time
+Config.StyleMultiplierStep = 0.10 -- x1.1, x1.2, etc.
+Config.StyleMultiplierMax = 5.0
+-- Action bonuses
+Config.StyleBunnyHopBonusBase = 5 -- per jump
+Config.StyleBunnyHopBonusPerStack = 5
+Config.StyleDashBonus = 8 -- counts only when chained
+Config.StyleWallJumpBonus = 15
+Config.StyleWallSlideBonus = 10 -- counts only when chained
+Config.StylePadChainBonus = 5 -- counts only when chained
+-- Combo/variety rules
+Config.ComboChainWindowSeconds = 3.0 -- window to chain dependent actions (dash, pad, wallslide, zipline)
+Config.StyleRepeatLimit = 3 -- identical consecutive actions beyond this won't bump combo
+Config.StyleVarietyWindow = 6 -- last N actions to consider for variety
+Config.StyleVarietyDistinctThreshold = 4 -- distinct actions in window to grant bonus
+Config.StyleCreativityBonus = 20
+-- WallJump streak scaling (more points for fast consecutive walljumps, combo still +1 each)
+Config.StyleWallJumpChainWindowSeconds = 0.6
+Config.StyleWallJumpStreakBonusPer = 4
+Config.StyleWallJumpStreakMaxBonus = 20
 Config.StyleRequireSprint = true
-Config.StyleCommitInactivitySeconds = 2
+Config.StyleCommitInactivitySeconds = 3.0
+Config.StyleComboPopupWindowSeconds = 0.2 -- time to aggregate combo increases into a single popup
 
 -- Trails
 Config.TrailEnabled = true

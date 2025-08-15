@@ -6,6 +6,8 @@ local RunService = game:GetService("RunService")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Movement.Config)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
 local recentLaunch = {} -- [character] = cooldownUntil
 
@@ -71,6 +73,14 @@ local function applyLaunch(character, humanoid, pad)
 	pcall(function()
 		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	end)
+
+	-- Notify client to allow chaining (only count if followed by a valid action)
+	local player = game:GetService("Players"):GetPlayerFromCharacter(character)
+	if player then
+		pcall(function()
+			PadTriggered:FireClient(player)
+		end)
+	end
 end
 
 local function onPadTouched(pad, other)
