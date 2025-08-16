@@ -672,7 +672,146 @@ function Abilities.tryMantle(character)
 			track = animator:LoadAnimation(animInst)
 		end)
 		if track then
-			track.Priority = Enum.AnimationPriority.Movement
+			track.Priority = Enum.AnimationPriority.Action
+			-- Stop lower-priority movement/idle tracks so vault dominates fully (prevents Jump loop interfering)
+			pcall(function()
+				for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+					local ok, pr = pcall(function()
+						return tr.Priority
+					end)
+					if
+						ok
+						and (
+							pr == Enum.AnimationPriority.Movement
+							or pr == Enum.AnimationPriority.Idle
+							or pr == Enum.AnimationPriority.Core
+						)
+					then
+						pcall(function()
+							tr:Stop(0.05)
+						end)
+					end
+				end
+			end)
+			-- IK hands marker-driven (Grab, Pass, Release)
+			local ikL, ikR
+			local targetFolder = workspace:FindFirstChild("MantleTargets") or Instance.new("Folder")
+			targetFolder.Name = "MantleTargets"
+			targetFolder.Parent = workspace
+			local function makeTarget(name, pos)
+				local p = Instance.new("Part")
+				p.Name = name
+				p.Size = Vector3.new(0.2, 0.2, 0.2)
+				p.Transparency = 1
+				p.CanCollide = false
+				p.Anchored = true
+				p.CFrame = CFrame.new(pos)
+				p.Parent = targetFolder
+				local a = Instance.new("Attachment")
+				a.Name = "Attach"
+				a.Parent = p
+				return p, a
+			end
+			local hitPos = hitRes.Position
+			local normal = hitRes.Normal
+			local tangent = Vector3.yAxis:Cross(normal)
+			if tangent.Magnitude < 0.05 then
+				tangent = Vector3.xAxis:Cross(normal)
+			end
+			tangent = tangent.Unit
+			local topYAdj = topY + 0.05
+			local center = Vector3.new(hitPos.X, topYAdj, hitPos.Z) - (normal * 0.15)
+			local handOffset = 0.5
+			local leftPos = center - (tangent * handOffset)
+			local rightPos = center + (tangent * handOffset)
+			local leftPart, leftAttach = makeTarget("MantleHandL", leftPos)
+			local rightPart, rightAttach = makeTarget("MantleHandR", rightPos)
+			local function setupIK(side, chainRootName, endEffName, attach)
+				local ik = Instance.new("IKControl")
+				ik.Name = "IK_Mantle_" .. side
+				ik.Type = Enum.IKControlType.Position
+				ik.ChainRoot = humanoid.Parent:FindFirstChild(chainRootName)
+				ik.EndEffector = humanoid.Parent:FindFirstChild(endEffName)
+				ik.Target = attach
+				pcall(function()
+					ik.Priority = Enum.IKPriority.Body
+				end)
+				ik.Enabled = false
+				ik.Weight = 0
+				ik.Parent = humanoid
+				return ik
+			end
+			ikL = setupIK("L", "LeftUpperArm", "LeftHand", leftAttach)
+			ikR = setupIK("R", "RightUpperArm", "RightHand", rightAttach)
+			local function cleanupIK()
+				pcall(function()
+					if ikL then
+						ikL.Enabled = false
+						ikL:Destroy()
+					end
+				end)
+				pcall(function()
+					if ikR then
+						ikR.Enabled = false
+						ikR:Destroy()
+					end
+				end)
+				pcall(function()
+					if leftPart then
+						leftPart:Destroy()
+					end
+				end)
+				pcall(function()
+					if rightPart then
+						rightPart:Destroy()
+					end
+				end)
+			end
+			local hasMarkers = false
+			pcall(function()
+				if track:GetMarkerReachedSignal("Grab") then
+					hasMarkers = true
+				end
+			end)
+			if hasMarkers then
+				track:GetMarkerReachedSignal("Grab"):Connect(function()
+					ikL.Enabled = true
+					ikR.Enabled = true
+					ikL.Weight = 1
+					ikR.Weight = 1
+				end)
+				track:GetMarkerReachedSignal("Pass"):Connect(function()
+					ikL.Weight = 0.6
+					ikR.Weight = 0.6
+				end)
+				track:GetMarkerReachedSignal("Release"):Connect(function()
+					ikL.Weight = 0
+					ikR.Weight = 0
+					ikL.Enabled = false
+					ikR.Enabled = false
+					cleanupIK()
+				end)
+			else
+				-- basic fallback timing
+				task.delay(0.08, function()
+					ikL.Enabled = true
+					ikR.Enabled = true
+					ikL.Weight = 1
+					ikR.Weight = 1
+				end)
+				task.delay(0.26, function()
+					ikL.Weight = 0.6
+					ikR.Weight = 0.6
+				end)
+				task.delay(0.38, function()
+					ikL.Weight = 0
+					ikR.Weight = 0
+					ikL.Enabled = false
+					ikR.Enabled = false
+					cleanupIK()
+				end)
+			end
+
 			-- Try to match playback to mantle duration
 			local dur = Config.MantleDurationSeconds or 0.22
 			local length = 0
@@ -1184,7 +1323,7 @@ function Abilities.tryVault(character)
 			track = animator:LoadAnimation(animInst)
 		end)
 		if track then
-			track.Priority = Enum.AnimationPriority.Movement
+			track.Priority = Enum.AnimationPriority.Action
 			track:Play(0.05, 1, 1)
 			-- Hand IK setup (simple target holders)
 			local targetsFolder = workspace:FindFirstChild("VaultTargets") or Instance.new("Folder")

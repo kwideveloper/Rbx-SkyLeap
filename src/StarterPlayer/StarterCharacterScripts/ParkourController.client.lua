@@ -137,6 +137,126 @@ local function setupCharacter(character)
 	task.spawn(function()
 		Animations.preload()
 	end)
+
+	-- Hook fall detection for landing roll
+	local humanoid = getHumanoid(character)
+	local lastAirY = nil
+	local minRollDrop = 20 -- studs; can be moved to Config later if needed
+	local rollPending = false
+	local jumpLoopTrack = nil
+	humanoid.StateChanged:Connect(function(old, new)
+		if new == Enum.HumanoidStateType.Freefall then
+			local root = character:FindFirstChild("HumanoidRootPart")
+			lastAirY = root and root.Position.Y or nil
+			rollPending = true
+			-- Start jump loop while airborne if configured (only if no vault/mantle/wallrun/slide/zipline)
+			local allowJumpLoop = not (state.isVaultingValue and state.isVaultingValue.Value)
+			local jumpAnim = allowJumpLoop and Animations and Animations.get and Animations.get("Jump") or nil
+			if jumpAnim then
+				local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+				animator.Parent = humanoid
+				if not jumpLoopTrack then
+					pcall(function()
+						jumpLoopTrack = animator:LoadAnimation(jumpAnim)
+					end)
+				end
+				if jumpLoopTrack then
+					jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
+					jumpLoopTrack.Looped = true
+					if not jumpLoopTrack.IsPlaying then
+						jumpLoopTrack:Play(0.05, 1, 1.0)
+					end
+				end
+			end
+			-- If any action blocks air loop, stop it
+			if (state.isVaultingValue and state.isVaultingValue.Value) and jumpLoopTrack then
+				pcall(function()
+					jumpLoopTrack:Stop(0.05)
+				end)
+				jumpLoopTrack = nil
+			end
+		elseif new == Enum.HumanoidStateType.Jumping then
+			-- Play one-shot JumpStart, then transition to Jump loop (unless blocked)
+			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+			animator.Parent = humanoid
+			local startAnim = Animations and Animations.get and Animations.get("JumpStart")
+			local loopAllowed = not (state.isVaultingValue and state.isVaultingValue.Value)
+			local loopAnim = loopAllowed and Animations and Animations.get and Animations.get("Jump") or nil
+			local startTrack
+			if startAnim then
+				pcall(function()
+					startTrack = animator:LoadAnimation(startAnim)
+				end)
+			end
+			if startTrack then
+				startTrack.Priority = Enum.AnimationPriority.Action
+				startTrack.Looped = false
+				startTrack:Play(0.05, 1, 1.0)
+				startTrack.Stopped:Connect(function()
+					if humanoid.FloorMaterial == Enum.Material.Air and loopAllowed and loopAnim then
+						if not jumpLoopTrack then
+							pcall(function()
+								jumpLoopTrack = animator:LoadAnimation(loopAnim)
+							end)
+						end
+						if jumpLoopTrack then
+							jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
+							jumpLoopTrack.Looped = true
+							if not jumpLoopTrack.IsPlaying then
+								jumpLoopTrack:Play(0.05, 1, 1.0)
+							end
+						end
+					end
+				end)
+			else
+				if loopAllowed and loopAnim then
+					if not jumpLoopTrack then
+						pcall(function()
+							jumpLoopTrack = animator:LoadAnimation(loopAnim)
+						end)
+					end
+					if jumpLoopTrack then
+						jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
+						jumpLoopTrack.Looped = true
+						if not jumpLoopTrack.IsPlaying then
+							jumpLoopTrack:Play(0.05, 1, 1.0)
+						end
+					end
+				end
+			end
+		elseif (new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running) and rollPending then
+			local root = character:FindFirstChild("HumanoidRootPart")
+			if root and lastAirY then
+				local drop = math.max(0, (lastAirY - root.Position.Y))
+				if drop >= minRollDrop then
+					-- Play LandRoll animation if configured
+					local anim = Animations and Animations.get and Animations.get("LandRoll")
+					if anim then
+						local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+						animator.Parent = humanoid
+						local track
+						pcall(function()
+							track = animator:LoadAnimation(anim)
+						end)
+						if track then
+							track.Priority = Enum.AnimationPriority.Action
+							track.Looped = false
+							track:Play(0.05, 1, 1.0)
+						end
+					end
+				end
+			end
+			rollPending = false
+			lastAirY = nil
+			-- Stop jump loop on landing/running
+			if jumpLoopTrack then
+				pcall(function()
+					jumpLoopTrack:Stop(0.1)
+				end)
+				jumpLoopTrack = nil
+			end
+		end
+	end)
 	-- Setup stamina touch tracking for parts with attribute Stamina=true (works even for CanQuery=false when CanTouch is true)
 	state.staminaTouched = {}
 	state.staminaTouchCount = 0
@@ -335,6 +455,14 @@ local function ensureClientState()
 	end
 	state.isZipliningValue = isZiplining
 
+	local isVaulting = folder:FindFirstChild("IsVaulting")
+	if not isVaulting then
+		isVaulting = Instance.new("BoolValue")
+		isVaulting.Name = "IsVaulting"
+		isVaulting.Parent = folder
+	end
+	state.isVaultingValue = isVaulting
+
 	local climbPrompt = folder:FindFirstChild("ClimbPrompt")
 	if not climbPrompt then
 		climbPrompt = Instance.new("StringValue")
@@ -457,20 +585,31 @@ end)
 -- (Removed CameraAlign setup; head tracking handled by HeadTracking.client.lua)
 
 local function tryPlayProneAnimation(humanoid)
-	local rs = game:GetService("ReplicatedStorage")
-	local animationsFolder = rs:FindFirstChild("Animations")
-	if not animationsFolder then
-		return nil
-	end
-	local anim = animationsFolder:FindFirstChild("Prone") or animationsFolder:FindFirstChild("Crawl")
-	if not anim or not anim:IsA("Animation") then
-		return nil
+	-- Prefer configured Crouch animation from Animations registry
+	local anim = Animations and Animations.get and Animations.get("Crouch") or nil
+	if not anim then
+		-- Fallback: legacy folder-based animations if present
+		local rs = game:GetService("ReplicatedStorage")
+		local animationsFolder = rs:FindFirstChild("Animations")
+		if animationsFolder then
+			anim = animationsFolder:FindFirstChild("Prone") or animationsFolder:FindFirstChild("Crawl")
+		end
+		if not anim then
+			return nil
+		end
 	end
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 	animator.Parent = humanoid
-	local track = animator:LoadAnimation(anim)
+	local track
+	pcall(function()
+		track = animator:LoadAnimation(anim)
+	end)
+	if not track then
+		return nil
+	end
 	track.Priority = Enum.AnimationPriority.Movement
-	track:Play(0.15, 1, 1)
+	track.Looped = true
+	track:Play(0.1, 1, 1.0)
 	return track
 end
 
@@ -479,8 +618,14 @@ local function enterProne(character)
 		return
 	end
 	local humanoid = getHumanoid(character)
-	-- Disallow prone during slide/wallrun/climb
-	if state.sliding or WallRun.isActive(character) or Climb.isActive(character) then
+	-- Disallow prone during slide/wallrun/climb/mantle/zipline
+	if
+		state.sliding
+		or WallRun.isActive(character)
+		or Climb.isActive(character)
+		or (state.isMantlingValue and state.isMantlingValue.Value)
+		or Zipline.isActive(character)
+	then
 		return
 	end
 	state.proneOriginalWalkSpeed = humanoid.WalkSpeed
@@ -489,7 +634,7 @@ local function enterProne(character)
 	humanoid.WalkSpeed = Config.ProneWalkSpeed
 	humanoid.HipHeight = math.max(0, state.proneOriginalHipHeight + (Config.ProneHipHeightDelta or 0))
 	humanoid.CameraOffset = Vector3.new(0, (Config.ProneCameraOffsetY or -2.5), 0)
-	-- Optional animation if present
+	-- Optional animation if present (loop while held Z)
 	if state.proneTrack then
 		pcall(function()
 			state.proneTrack:Stop(0.1)
@@ -625,6 +770,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		enterProne(character)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
+		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
 		if Zipline.isActive(character) then
 			-- Jump off the zipline. Force a jump frame after detaching
 			Zipline.stop(character)
@@ -886,7 +1032,13 @@ RunService.RenderStepped:Connect(function(dt)
 	-- Prone posture enforcement (hold-to-stay)
 	if state.proneHeld then
 		-- If player started an incompatible state, leave prone
-		if state.sliding or WallRun.isActive(character) or Climb.isActive(character) then
+		if
+			state.sliding
+			or WallRun.isActive(character)
+			or Climb.isActive(character)
+			or (state.isMantlingValue and state.isMantlingValue.Value)
+			or Zipline.isActive(character)
+		then
 			state.proneHeld = false
 			exitProne(character)
 		else

@@ -2,6 +2,14 @@
 
 This document lists optional Attributes that we can set on Parts/Models to customize movement and responsiveness.
 
+Recommended Animations Events
+Jump = Movement (bucle)
+JumpStart = Action (one-shot)
+Vault = Action (siempre)
+LandRoll = Action (one-shot)
+Dash/Slide one-shot = Action
+Everything else “of locomotion” = Movement
+
 ---
 
 ## 1. Wall & Surface Attributes

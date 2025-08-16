@@ -18,7 +18,9 @@ local Animations = {
 	SlideEnd = "",
 
 	-- Jump / Air
-	Jump = "",
+	JumpStart = "rbxassetid://104518933369704", -- custom jump start animation
+	Jump = "rbxassetid://134519357945550",
+	LandRoll = "rbxassetid://138804567004011", -- landing roll after high fall
 
 	-- Run / Locomotion
 	Run = "rbxassetid://129741854679661",
@@ -28,14 +30,14 @@ local Animations = {
 	WallJump = "rbxassetid://125842455228311", -- Preparation animation for Wall Jump
 
 	-- Vaults
-	Vault_Speed = "rbxassetid://83144181218736",
+	Vault_Speed = "rbxassetid://89523136070071",
 	-- Vault_Lazy = "",
 	-- Vault_Kong = "",
 	-- Vault_Dash = "",
 	-- Vault_TwoHanded = "",
 
 	-- Mantle (ledge grab)
-	Mantle = "",
+	Mantle = "rbxassetid://82189151823059",
 
 	-- Climb (optional)
 	ClimbStart = "",
@@ -43,7 +45,7 @@ local Animations = {
 	ClimbEnd = "",
 
 	-- Crouch / Prone (hold Z)
-	Crouch = "",
+	Crouch = "rbxassetid://73367679132673",
 }
 
 -- Internal cache of Animation instances by name

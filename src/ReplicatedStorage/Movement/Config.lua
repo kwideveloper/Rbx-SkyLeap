@@ -127,11 +127,11 @@ Config.CameraAlignBodyYawDeg = 45
 -- Bunny hop
 Config.BunnyHopWindowSeconds = 0.12 -- 0.12 time after landing to count as a perfect hop
 Config.BunnyHopMaxStacks = 3
-Config.BunnyHopBaseBoost = 10 -- base horizontal speed added on perfect hop
+Config.BunnyHopBaseBoost = 5 -- base horizontal speed added on perfect hop
 Config.BunnyHopPerStackBoost = 5 -- extra per additional stack
-Config.BunnyHopMomentumBonusBase = 12
-Config.BunnyHopMomentumBonusPerStack = 4
-Config.BunnyHopDirectionCarry = 0 -- 0..1 how much to preserve current travel direction over input
+Config.BunnyHopMomentumBonusBase = 7
+Config.BunnyHopMomentumBonusPerStack = 5
+Config.BunnyHopDirectionCarry = 0.5 -- INSTA REDIRECT=0 0..1 how much to preserve current travel direction over input
 Config.BunnyHopOppositeCancel = 1 -- 0..1 how much to cancel backward component vs desired direction on hop
 Config.BunnyHopPerpDampOnFlip = 0.5 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
 -- Hard reorientation on hop: completely retarget horizontal velocity to desired direction, preserving magnitude
@@ -228,8 +228,8 @@ Config.MantleDetectionDistance = 4.5 -- forward ray distance to detect a ledge
 Config.MantleMinAboveWaist = 0
 Config.MantleMaxAboveWaist = 10
 Config.MantleForwardOffset = 1.2 -- 1.2 -- how far onto the platform to place the character
-Config.MantleUpClearance = 5 -- 1.5 -- extra vertical clearance above top to ensure space
-Config.MantleDurationSeconds = 0.25 -- time to blend the movement
+Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
+Config.MantleDurationSeconds = 0.5 -- time to blend the movement
 Config.MantleCooldownSeconds = 0.35
 Config.MantleStaminaCost = 10
 -- Mantle approach gating: require facing and velocity towards wall
