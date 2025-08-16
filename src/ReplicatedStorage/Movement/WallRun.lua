@@ -28,17 +28,22 @@ local function findWall(rootPart)
 	for _, dir in ipairs(directions) do
 		local result = workspace:Raycast(rootPart.Position, dir * Config.WallDetectionDistance, params)
 		if result and result.Instance and result.Instance.CanCollide then
-			local inst = result.Instance
-			local isClimbable = inst:GetAttribute("Climbable") == true or inst:GetAttribute("climbable") == true
-			local wallRunOverride = inst:GetAttribute("WallRun") == true
-			-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
-			local allowedByClimbableRule = (not isClimbable) or wallRunOverride
-			if allowedByClimbableRule then
-				return {
-					normal = result.Normal,
-					position = result.Position,
-					instance = inst,
-				}
+			local n = result.Normal
+			local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+			if verticalDot <= allowedDot then
+				local inst = result.Instance
+				local isClimbable = inst:GetAttribute("Climbable") == true or inst:GetAttribute("climbable") == true
+				local wallRunOverride = inst:GetAttribute("WallRun") == true
+				-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
+				local allowedByClimbableRule = (not isClimbable) or wallRunOverride
+				if allowedByClimbableRule then
+					return {
+						normal = result.Normal,
+						position = result.Position,
+						instance = inst,
+					}
+				end
 			end
 		end
 	end

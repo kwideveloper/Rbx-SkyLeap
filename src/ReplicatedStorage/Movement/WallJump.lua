@@ -53,11 +53,17 @@ local function findNearbyWallForSlide(rootPart)
 	for _, dir in ipairs(offsets) do
 		local result = workspace:Raycast(rootPart.Position, dir * (Config.WallSlideDetectionDistance or 4), params)
 		if result and result.Instance and result.Instance.CanCollide then
-			local inst = result.Instance
-			-- Allow slide also on climate surfaces; just exclude whether walljump == fals
-			local wallJumpAttr = inst:GetAttribute("WallJump")
-			if wallJumpAttr ~= false then
-				return result
+			-- Verticality filter: accept only near-vertical surfaces (normal close to horizontal)
+			local n = result.Normal
+			local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+			if verticalDot <= allowedDot then
+				local inst = result.Instance
+				-- Allow slide also on climate surfaces; just exclude whether walljump == fals
+				local wallJumpAttr = inst:GetAttribute("WallJump")
+				if wallJumpAttr ~= false then
+					return result
+				end
 			end
 		end
 	end
@@ -82,11 +88,17 @@ local function findNearbyWall(rootPart)
 	for _, dir in ipairs(offsets) do
 		local result = workspace:Raycast(rootPart.Position, dir * (Config.WallSlideDetectionDistance or 4), params)
 		if result and result.Instance and result.Instance.CanCollide then
-			local inst = result.Instance
-			-- WallJump is allowed by default; disallow only if attribute explicitly false
-			local wallJumpAttr = inst:GetAttribute("WallJump")
-			if wallJumpAttr ~= false then
-				return result
+			-- Verticality filter: accept only near-vertical surfaces (normal close to horizontal)
+			local n = result.Normal
+			local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+			if verticalDot <= allowedDot then
+				local inst = result.Instance
+				-- WallJump is allowed by default; disallow only if attribute explicitly false
+				local wallJumpAttr = inst:GetAttribute("WallJump")
+				if wallJumpAttr ~= false then
+					return result
+				end
 			end
 		end
 	end

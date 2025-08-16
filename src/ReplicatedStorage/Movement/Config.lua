@@ -98,6 +98,10 @@ Config.DebugClimb = false
 
 -- Raycast
 Config.RaycastIgnoreWater = true
+-- Surface verticality filter (dot with world up): allow only near-vertical walls for wall mechanics
+Config.SurfaceVerticalDotMin = 1 -- legacy; prefer SurfaceVerticalDotMax below
+-- Use SurfaceVerticalDotMax for acceptance threshold. Lower means stricter vertical (e.g., 0.1 ≈ within ~6°).
+Config.SurfaceVerticalDotMax = 0.1
 
 -- Air jump (while falling, no wall): upward and forward boosts
 Config.AirJumpImpulseUp = 50

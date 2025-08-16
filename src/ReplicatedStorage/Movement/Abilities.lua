@@ -400,6 +400,13 @@ local function detectLedgeForMantle(root)
 	if not res.Instance.CanCollide then
 		return false
 	end
+	-- Verticality filter: near-vertical surfaces only (normal close to horizontal)
+	local n = res.Normal
+	local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+	local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+	if verticalDot > allowedDot then
+		return false
+	end
 	-- Check ledge height within window above waist (root center)
 	local waistY = root.Position.Y
 	local aboveWaist = topY - waistY
