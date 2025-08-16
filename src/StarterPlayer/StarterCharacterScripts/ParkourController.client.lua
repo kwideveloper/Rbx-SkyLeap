@@ -854,8 +854,21 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	if input.KeyCode == Enum.KeyCode.Q then
 		-- Dash: only spend stamina if dash actually triggers (respects cooldown)
 		if state.stamina.current >= Config.DashStaminaCost then
-			-- Disable dash during wall slide
+			local character = getCharacter()
+			if not character then
+				return
+			end
+			-- Disable dash during wall slide, wall run, vault, mantle
 			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				return
+			end
+			if WallRun.isActive(character) then
+				return
+			end
+			local cs = ReplicatedStorage:FindFirstChild("ClientState")
+			local isVaulting = cs and cs:FindFirstChild("IsVaulting")
+			local isMantling = cs and cs:FindFirstChild("IsMantling")
+			if (isVaulting and isVaulting.Value) or (isMantling and isMantling.Value) then
 				return
 			end
 			if Abilities.tryDash(character) then

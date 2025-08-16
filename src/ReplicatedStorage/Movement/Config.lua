@@ -138,9 +138,9 @@ Config.BunnyHopBaseBoost = 5 -- base horizontal speed added on perfect hop
 Config.BunnyHopPerStackBoost = 5 -- extra per additional stack
 Config.BunnyHopMomentumBonusBase = 7
 Config.BunnyHopMomentumBonusPerStack = 5
-Config.BunnyHopDirectionCarry = 0.5 -- INSTA REDIRECT=0 0..1 how much to preserve current travel direction over input
+Config.BunnyHopDirectionCarry = 0 -- INSTA REDIRECT=0 | 0..1 how much to preserve current travel direction over input
 Config.BunnyHopOppositeCancel = 1 -- 0..1 how much to cancel backward component vs desired direction on hop
-Config.BunnyHopPerpDampOnFlip = 0.5 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
+Config.BunnyHopPerpDampOnFlip = 1 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
 -- Hard reorientation on hop: completely retarget horizontal velocity to desired direction, preserving magnitude
 Config.BunnyHopReorientHard = true
 Config.BunnyHopLockSeconds = 0.6 -- brief window to lock horizontal velocity to the reoriented vector
@@ -205,8 +205,8 @@ Config.WallJumpAirControlSuppressSeconds = 0.2
 -- Vault (parkour over low obstacles)
 Config.VaultEnabled = true
 Config.VaultDetectionDistance = 4.5
-Config.VaultMinHeight = 0 -- studs above feet
-Config.VaultMaxHeight = 88 -- studs above feet
+Config.VaultMinHeight = 3 -- studs above feet
+Config.VaultMaxHeight = 5 -- studs above feet
 Config.VaultMinSpeed = 24 -- require decent speed (sprinting)
 Config.VaultUpBoost = 0
 Config.VaultForwardBoost = 40 -- 26
@@ -227,16 +227,20 @@ Config.VaultUpMax = 26
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.12
 Config.VaultAlignHoldSeconds = 0.08
+Config.VaultUseGroundHeight = true -- if true, measure obstacle height from ground under player instead of HRP feet
+Config.VaultApproachSpeedMin = 6
+Config.VaultFacingDotMin = 0.35
+Config.VaultApproachDotMin = 0.35
 
 -- Mantle (ledge grab over medium obstacles)
 Config.MantleEnabled = true
-Config.MantleDetectionDistance = 4.5 -- forward ray distance to detect a ledge
+Config.MantleDetectionDistance = 4 -- 4.5 -- forward ray distance to detect a ledge
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
-Config.MantleMinAboveWaist = 0
+Config.MantleMinAboveWaist = 0 -- 0
 Config.MantleMaxAboveWaist = 10
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
-Config.MantleDurationSeconds = 0.5 -- time to blend the movement
+Config.MantleDurationSeconds = 0.3 -- time to blend the movement
 Config.MantleCooldownSeconds = 0.35
 Config.MantleStaminaCost = 10
 -- Mantle approach gating: require facing and velocity towards wall

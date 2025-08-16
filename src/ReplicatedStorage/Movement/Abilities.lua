@@ -1195,6 +1195,25 @@ local function isVaultCandidate(root, humanoid)
 		end
 	end
 	local hit = res.Instance
+	-- Approach gating: require facing/motion toward the obstacle to prevent triggering when moving away/off edges
+	local toObstacle = (res.Position - root.Position)
+	local toObstacleHoriz = Vector3.new(toObstacle.X, 0, toObstacle.Z)
+	if toObstacleHoriz.Magnitude < 0.05 then
+		return false
+	end
+	local towards = toObstacleHoriz.Unit
+	local forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local faceDot = (forward.Magnitude > 0.01) and forward.Unit:Dot(towards) or -1
+	local vel = root.AssemblyLinearVelocity
+	local horiz = Vector3.new(vel.X, 0, vel.Z)
+	local speed = horiz.Magnitude
+	local approachDot = (horiz.Magnitude > 0.01) and horiz.Unit:Dot(towards) or -1
+	local minFace = Config.VaultFacingDotMin or 0.35
+	local minApproach = Config.VaultApproachDotMin or 0.35
+	local minSpeed = Config.VaultApproachSpeedMin or 6
+	if (faceDot < minFace) or (approachDot < minApproach) or (speed < minSpeed) then
+		return false
+	end
 	-- Attribute check: only block if attribute explicitly set to false; missing or true are allowed
 	local function getVaultAttr(inst)
 		local cur = inst
@@ -1213,13 +1232,26 @@ local function isVaultCandidate(root, humanoid)
 		return nil
 	end
 	local vattr = getVaultAttr(hit)
-	if vattr ~= true then
+	if vattr == false then
 		return false
 	end
 	if not hit.CanCollide then
 		return false
 	end
-	local feetY = root.Position.Y - ((root.Size and root.Size.Y or 2) * 0.5)
+	local feetY
+	if Config.VaultUseGroundHeight then
+		local downParams = RaycastParams.new()
+		downParams.FilterType = Enum.RaycastFilterType.Exclude
+		downParams.FilterDescendantsInstances = { root.Parent }
+		downParams.IgnoreWater = true
+		local start = root.Position + Vector3.new(0, (root.Size and root.Size.Y or 2) * 0.5, 0)
+		local down = workspace:Raycast(start, Vector3.new(0, -40, 0), downParams)
+		local groundY = down and down.Position and down.Position.Y
+			or (root.Position.Y - ((root.Size and root.Size.Y or 2) * 0.5))
+		feetY = groundY
+	else
+		feetY = root.Position.Y - ((root.Size and root.Size.Y or 2) * 0.5)
+	end
 	local h = topY - feetY
 	local minH = Config.VaultMinHeight or 1.0
 	local maxH = Config.VaultMaxHeight or 4.0
