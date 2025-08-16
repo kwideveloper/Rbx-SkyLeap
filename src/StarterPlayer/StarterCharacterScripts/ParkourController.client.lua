@@ -24,6 +24,76 @@ local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
 local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
+-- Helper to check vertical clearance to stand from crawl
+local function hasClearanceToStand(character)
+	local torso = character
+		and (
+			character:FindFirstChild("LowerTorso")
+			or character:FindFirstChild("Torso")
+			or character:FindFirstChild("UpperTorso")
+		)
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local sensor = torso or root
+	if not sensor then
+		return true
+	end
+	local up = Vector3.yAxis
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.IgnoreWater = true
+	local clearance = Config.CrawlStandUpHeight or 2
+	-- Raycast: start a hair below the torso top to avoid starting inside a roof
+	local origin = sensor.Position + (up * (math.max(0.1, (sensor.Size.Y * 0.5) - 0.05)))
+	local hit = workspace:Raycast(origin, up * (clearance + 0.1), params)
+	-- Fallback: Overlap a box above the torso if ray missed (handles thin/inside cases)
+	local boxBlocked = false
+	local boxCount = 0
+	local boxSizeY = clearance
+	local boxCenterY = origin.Y + (clearance * 0.5)
+	if not hit then
+		local overlap = OverlapParams.new()
+		overlap.FilterType = Enum.RaycastFilterType.Exclude
+		overlap.FilterDescendantsInstances = { character }
+		overlap.RespectCanCollide = true
+		local baseSize = (root and root.Size) or sensor.Size or Vector3.new(2, 2, 1)
+		local size = Vector3.new(math.max(0.6, baseSize.X * 0.7), boxSizeY, math.max(0.6, baseSize.Z * 0.7))
+		local center = Vector3.new(sensor.Position.X, boxCenterY, sensor.Position.Z)
+		local parts = workspace:GetPartBoundsInBox(CFrame.new(center), size, overlap)
+		boxCount = parts and #parts or 0
+		boxBlocked = (boxCount > 0)
+	end
+	if Config.DebugProne then
+		local hitName = hit and hit.Instance and hit.Instance:GetFullName() or "nil"
+		local partName = sensor and sensor.Name or "nil"
+		print(
+			"[Crawl] hasClearanceToStand part=",
+			partName,
+			"originY=",
+			origin.Y,
+			"clearance=",
+			clearance,
+			"rayHit=",
+			hitName,
+			"boxCount=",
+			boxCount,
+			"boxBlocked=",
+			boxBlocked,
+			"boxCenterY=",
+			boxCenterY,
+			"boxSizeY=",
+			boxSizeY
+		)
+	end
+	return (hit == nil) and (boxBlocked == false)
+end
+
+local function dbgProne(...)
+	if Config.DebugProne then
+		print("[Crawl]", ...)
+	end
+end
+
 local player = Players.LocalPlayer
 local proneDebugTicker = 0
 
@@ -61,6 +131,7 @@ local state = {
 	_crawlOrigJumpPower = nil,
 	_crawlOrigJumpHeight = nil,
 	_crawlOrigRootSize = nil,
+	_proneClearFrames = 0,
 }
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -817,6 +888,13 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 						state.slideEnd()
 					end
 					state.slideEnd = nil
+					-- If we are under a low obstacle after sliding, auto-crawl until there is space
+					local c = player.Character
+					if c and (not hasClearanceToStand(c)) then
+						dbgProne("Slide ended under obstacle -> entering crawl")
+						state.proneHeld = true
+						startCrawl(c)
+					end
 				end)
 			end
 		end
@@ -955,7 +1033,14 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 		state.proneHeld = false
 		local character = player.Character
 		if character then
-			stopCrawl(character)
+			-- If no clearance above, keep crawling
+			local canStand = hasClearanceToStand(character)
+			dbgProne("Z released; canStand=", canStand, "state.crawling=", state.crawling)
+			if canStand then
+				stopCrawl(character)
+			else
+				state.proneHeld = true -- keep holding logically until clearance
+			end
 		end
 	end
 	if input.KeyCode == Enum.KeyCode.W then
@@ -983,6 +1068,10 @@ RunService.RenderStepped:Connect(function(dt)
 	if not humanoid or not root then
 		return
 	end
+
+	-- Initialize debounce counter
+	state._proneClearFrames = state._proneClearFrames or 0
+	local neededClearFrames = 3
 
 	local speed = root.AssemblyLinearVelocity.Magnitude
 	if humanoid.MoveDirection.Magnitude > 0 then
@@ -1133,16 +1222,42 @@ RunService.RenderStepped:Connect(function(dt)
 			or Zipline.isActive(character)
 		then
 			state.proneHeld = false
+			state._proneClearFrames = 0
 			stopCrawl(character)
 		else
 			if not state.crawling then
 				startCrawl(character)
 			end
-			-- Movement is handled by default humanoid locomotion; we only resized HRP and limited speed/jump
+			-- Auto-stand when space available for several consecutive frames
+			if state.crawling and not UserInputService:IsKeyDown(Enum.KeyCode.Z) then
+				if hasClearanceToStand(character) then
+					state._proneClearFrames = (state._proneClearFrames or 0) + 1
+					if state._proneClearFrames >= neededClearFrames then
+						if Config.DebugProne then
+							dbgProne("Auto-stand after", state._proneClearFrames, "clear frames")
+						end
+						state.proneHeld = false
+						state._proneClearFrames = 0
+						stopCrawl(character)
+					end
+				else
+					state._proneClearFrames = 0
+				end
+			end
 		end
 	else
 		if state.crawling then
-			stopCrawl(character)
+			-- Try to stand up only if space exists (and keep requiring consecutive frames)
+			if hasClearanceToStand(character) then
+				state._proneClearFrames = (state._proneClearFrames or 0) + 1
+				if state._proneClearFrames >= neededClearFrames then
+					state._proneClearFrames = 0
+					stopCrawl(character)
+				end
+			else
+				state._proneClearFrames = 0
+				state.proneHeld = true -- remain crawling until free
+			end
 		end
 	end
 

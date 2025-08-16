@@ -1655,6 +1655,7 @@ end
 local function setCrawlCollisionMask(character)
 	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
 	local store = originalCollisionByPart[character]
+	local countOn, countOff = 0, 0
 	for _, d in ipairs(character:GetDescendants()) do
 		if d:IsA("BasePart") then
 			local name = d.Name
@@ -1663,7 +1664,15 @@ local function setCrawlCollisionMask(character)
 				store[d] = d.CanCollide
 			end
 			d.CanCollide = shouldCollide
+			if shouldCollide then
+				countOn = countOn + 1
+			else
+				countOff = countOff + 1
+			end
 		end
+	end
+	if Config and Config.DebugProne then
+		print("[Crawl] setCrawlCollisionMask on=", countOn, "off=", countOff)
 	end
 end
 
@@ -1675,9 +1684,11 @@ function Abilities.crawlBegin(character)
 	if crawlActive[character] then
 		return true
 	end
-	-- Use slide-like mask for crawl: only torso collides
 	setCrawlCollisionMask(character)
 	crawlActive[character] = {}
+	if Config and Config.DebugProne then
+		print("[Crawl] begin")
+	end
 	return true
 end
 
@@ -1691,8 +1702,10 @@ function Abilities.crawlEnd(character)
 		return
 	end
 	crawlActive[character] = nil
-	-- Restore original collisions
 	restoreCharacterCollision(character)
+	if Config and Config.DebugProne then
+		print("[Crawl] end -> collisions restored")
+	end
 end
 
 return Abilities
