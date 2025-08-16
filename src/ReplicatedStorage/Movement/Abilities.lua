@@ -99,6 +99,78 @@ local function restoreCharacterCollision(character)
 	originalCollisionByPart[character] = nil
 end
 
+-- For slide: only torso collides; disable hands/feet/limbs collisions to prevent snagging the floor
+local function setSlideCollisionMask(character)
+	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
+	local store = originalCollisionByPart[character]
+	local torsoWhitelist = { UpperTorso = true, LowerTorso = true, Torso = true }
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local shouldCollide = torsoWhitelist[d.Name] == true
+			if store[d] == nil then
+				store[d] = d.CanCollide
+			end
+			d.CanCollide = shouldCollide
+		end
+	end
+end
+
+-- Create a temporary reduced-height collider aligned so its bottom matches the original HRP bottom.
+-- Disables collisions on all character parts while active so only this collider interacts with the world.
+-- Returns a cleanup function to remove the collider and restore collisions.
+local function beginActionCollider(character, heightY, name)
+	local rootPart, humanoid = getCharacterParts(character)
+	if not rootPart or not humanoid or not heightY or heightY <= 0 then
+		return function() end
+	end
+	-- Do not modify character collisions; this is a non-colliding helper aligned to HRP bottom
+	local hrp = rootPart
+	local cf = hrp.CFrame
+	local up = cf.UpVector
+	local right = cf.RightVector
+	local look = cf.LookVector
+	local hrpSize = hrp.Size or Vector3.new(2, 2, 1)
+	local bottomWorld = cf.Position + up * -(hrpSize.Y * 0.5)
+	local center = bottomWorld + up * (heightY * 0.5)
+	local collider = Instance.new("Part")
+	collider.Name = (name or "Action") .. "Collider"
+	collider.Size = Vector3.new(hrpSize.X, heightY, hrpSize.Z)
+	collider.CFrame = CFrame.fromMatrix(center, right, up, look)
+	collider.Transparency = 1
+	collider.CanCollide = false
+	collider.CanQuery = true
+	collider.CanTouch = false
+	collider.Massless = true
+	collider.CastShadow = false
+	collider.Parent = hrp.Parent
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = collider
+	weld.Part1 = hrp
+	weld.Parent = collider
+	local cleaned = false
+	return function()
+		if cleaned then
+			return
+		end
+		cleaned = true
+		pcall(function()
+			collider:Destroy()
+		end)
+		-- No restore needed; we didn't alter character collisions
+	end
+end
+
+function Abilities.beginCrouchCollider(character)
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then
+		return function() end
+	end
+	local hrpSize = rootPart.Size or Vector3.new(2, 2, 1)
+	local targetY = (Config.CrouchColliderHeight or (hrpSize.Y * 0.6))
+	targetY = math.max(0.8, math.min(targetY, hrpSize.Y))
+	return beginActionCollider(character, targetY, "Crouch")
+end
+
 function Abilities.tryDash(character)
 	local now = os.clock()
 	if now - lastDashTick < Config.DashCooldownSeconds then
@@ -207,10 +279,12 @@ function Abilities.slide(character)
 	end
 
 	local originalWalkSpeed = humanoid.WalkSpeed
-	local originalHipHeight = humanoid.HipHeight
-
+	-- humanoid.HipHeight untouched; we won't alter Y or collisions
 	humanoid.WalkSpeed = originalWalkSpeed + Config.SlideSpeedBoost
-	humanoid.HipHeight = math.max(0, originalHipHeight + Config.SlideHipHeightDelta)
+	-- Limit collisions to torso only during slide to prevent limbs snagging
+	setSlideCollisionMask(character)
+	-- We previously created a collider; now we avoid any extra collider to prevent floor conflicts
+	local endCollider = nil
 
 	-- Optional slide animations: Start -> Loop -> End
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
@@ -269,8 +343,12 @@ function Abilities.slide(character)
 	local endSlide = function()
 		if humanoid and humanoid.Parent then
 			humanoid.WalkSpeed = originalWalkSpeed
-			humanoid.HipHeight = originalHipHeight
 		end
+		if endCollider then
+			endCollider()
+		end
+		-- Restore body collisions after slide
+		restoreCharacterCollision(character)
 		-- Stop loop and optionally play end
 		if startTrack then
 			pcall(function()
@@ -1519,6 +1597,102 @@ function Abilities.tryVault(character)
 		end)
 	end
 	return true
+end
+
+-- Create a colliding proxy collider for low-profile locomotion (e.g., crawl)
+-- Disables character collisions and welds a smaller collider that actually collides with the world.
+-- Returns a cleanup that destroys the proxy and restores character collisions.
+local function beginProxyCollider(character, heightY, name)
+	local rootPart, humanoid = getCharacterParts(character)
+	if not rootPart or not humanoid or not heightY or heightY <= 0 then
+		return function() end
+	end
+	-- Disable character part collisions
+	disableCharacterCollision(character)
+	local hrp = rootPart
+	local cf = hrp.CFrame
+	local up = cf.UpVector
+	local right = cf.RightVector
+	local look = cf.LookVector
+	local hrpSize = hrp.Size or Vector3.new(2, 2, 1)
+	local bottomWorld = cf.Position + up * -(hrpSize.Y * 0.5)
+	local center = bottomWorld + up * (heightY * 0.5)
+	local collider = Instance.new("Part")
+	collider.Name = (name or "Proxy") .. "Collider"
+	collider.Size = Vector3.new(hrpSize.X, heightY, hrpSize.Z)
+	collider.CFrame = CFrame.fromMatrix(center, right, up, look)
+	collider.Transparency = 1
+	collider.CanCollide = true
+	collider.CanQuery = true
+	collider.CanTouch = true
+	collider.Massless = true
+	collider.CastShadow = false
+	collider.Parent = hrp.Parent
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = collider
+	weld.Part1 = hrp
+	weld.Parent = collider
+	local cleaned = false
+	return function()
+		if cleaned then
+			return
+		end
+		cleaned = true
+		pcall(function()
+			collider:Destroy()
+		end)
+		restoreCharacterCollision(character)
+	end
+end
+
+local crawlActive = {}
+
+function Abilities.crawlIsActive(character)
+	return crawlActive[character] ~= nil
+end
+
+-- For crawl: collide only with LowerTorso (or Torso for R6); disable other parts
+local function setCrawlCollisionMask(character)
+	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
+	local store = originalCollisionByPart[character]
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local name = d.Name
+			local shouldCollide = (name == "LowerTorso") or (name == "Torso")
+			if store[d] == nil then
+				store[d] = d.CanCollide
+			end
+			d.CanCollide = shouldCollide
+		end
+	end
+end
+
+function Abilities.crawlBegin(character)
+	local root, humanoid = getCharacterParts(character)
+	if not root or not humanoid then
+		return false
+	end
+	if crawlActive[character] then
+		return true
+	end
+	-- Use slide-like mask for crawl: only torso collides
+	setCrawlCollisionMask(character)
+	crawlActive[character] = {}
+	return true
+end
+
+function Abilities.crawlMaintain(character, dt)
+	-- No-op: locomotion handled by Humanoid; proxy collider handles world collisions
+end
+
+function Abilities.crawlEnd(character)
+	local data = crawlActive[character]
+	if not data then
+		return
+	end
+	crawlActive[character] = nil
+	-- Restore original collisions
+	restoreCharacterCollision(character)
 end
 
 return Abilities

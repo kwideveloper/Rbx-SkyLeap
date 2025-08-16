@@ -45,7 +45,7 @@ local Animations = {
 	ClimbEnd = "",
 
 	-- Crouch / Prone (hold Z)
-	Crouch = "rbxassetid://73367679132673",
+	Crouch = "rbxassetid://75303378392203",
 }
 
 -- Internal cache of Animation instances by name

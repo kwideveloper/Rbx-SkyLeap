@@ -55,6 +55,12 @@ local state = {
 	styleCommitAmountValue = nil,
 	pendingPadTick = nil,
 	wallAttachLockedUntil = nil,
+	crawling = false,
+	_crawlOrigWalkSpeed = nil,
+	_crawlUseJumpPower = nil,
+	_crawlOrigJumpPower = nil,
+	_crawlOrigJumpHeight = nil,
+	_crawlOrigRootSize = nil,
 }
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -613,6 +619,93 @@ local function tryPlayProneAnimation(humanoid)
 	return track
 end
 
+local function startCrawl(character)
+	if state.crawling then
+		return
+	end
+	local humanoid = getHumanoid(character)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
+		return
+	end
+	-- Block if conflicting states
+	if
+		state.sliding
+		or WallRun.isActive(character)
+		or Climb.isActive(character)
+		or (state.isMantlingValue and state.isMantlingValue.Value)
+		or Zipline.isActive(character)
+	then
+		return
+	end
+	-- Begin crawl via Abilities (sets proxy collider and handles collisions)
+	if not Abilities.crawlBegin(character) then
+		return
+	end
+	state.crawling = true
+	-- Save originals
+	state._crawlOrigWalkSpeed = humanoid.WalkSpeed
+	state._crawlUseJumpPower = humanoid.UseJumpPower
+	state._crawlOrigJumpPower = humanoid.JumpPower
+	state._crawlOrigJumpHeight = humanoid.JumpHeight
+	-- Speed and jump
+	local crawlSpeed = Config.CrawlSpeed
+		or math.max(2, math.floor((state._crawlOrigWalkSpeed or Config.BaseWalkSpeed) * 0.5))
+	humanoid.WalkSpeed = crawlSpeed
+	if humanoid.UseJumpPower then
+		humanoid.JumpPower = 0
+	else
+		humanoid.JumpHeight = 0
+	end
+	-- Play crouch/crawl loop animation
+	if state.proneTrack then
+		pcall(function()
+			state.proneTrack:Stop(0.1)
+		end)
+		state.proneTrack = nil
+	end
+	state.proneTrack = tryPlayProneAnimation(humanoid)
+	if state.proneTrack then
+		state.proneTrack.Looped = true
+	end
+end
+
+local function stopCrawl(character)
+	if not state.crawling then
+		return
+	end
+	state.crawling = false
+	local humanoid = getHumanoid(character)
+	-- End crawl via Abilities (removes proxy and restores collisions)
+	Abilities.crawlEnd(character)
+	if humanoid then
+		if state._crawlOrigWalkSpeed ~= nil then
+			humanoid.WalkSpeed = state._crawlOrigWalkSpeed
+		end
+		if state._crawlUseJumpPower then
+			if state._crawlOrigJumpPower ~= nil then
+				humanoid.JumpPower = state._crawlOrigJumpPower
+			end
+		else
+			if state._crawlOrigJumpHeight ~= nil then
+				humanoid.JumpHeight = state._crawlOrigJumpHeight
+			end
+		end
+	end
+	-- Stop crawl animation
+	if state.proneTrack then
+		pcall(function()
+			state.proneTrack:Stop(0.15)
+		end)
+		state.proneTrack = nil
+	end
+	-- Clear saved originals
+	state._crawlOrigWalkSpeed = nil
+	state._crawlUseJumpPower = nil
+	state._crawlOrigJumpPower = nil
+	state._crawlOrigJumpHeight = nil
+end
+
 local function enterProne(character)
 	if state.proneActive then
 		return
@@ -767,7 +860,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 	elseif input.KeyCode == Enum.KeyCode.Z then
 		state.proneHeld = true
-		enterProne(character)
+		startCrawl(character)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
 		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
@@ -862,7 +955,7 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 		state.proneHeld = false
 		local character = player.Character
 		if character then
-			exitProne(character)
+			stopCrawl(character)
 		end
 	end
 	if input.KeyCode == Enum.KeyCode.W then
@@ -1029,9 +1122,9 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Prone posture enforcement (hold-to-stay)
+	-- Crawl (hold-to-stay)
 	if state.proneHeld then
-		-- If player started an incompatible state, leave prone
+		-- If player started uncompatible state, end crawl
 		if
 			state.sliding
 			or WallRun.isActive(character)
@@ -1040,32 +1133,16 @@ RunService.RenderStepped:Connect(function(dt)
 			or Zipline.isActive(character)
 		then
 			state.proneHeld = false
-			exitProne(character)
+			stopCrawl(character)
 		else
-			if not state.proneActive then
-				enterProne(character)
+			if not state.crawling then
+				startCrawl(character)
 			end
-			-- Keep speed and hip height constrained while prone
-			humanoid.WalkSpeed = Config.ProneWalkSpeed
-			if state.proneOriginalHipHeight ~= nil then
-				humanoid.HipHeight = math.max(0, state.proneOriginalHipHeight + (Config.ProneHipHeightDelta or 0))
-			end
-			proneDebugTicker = proneDebugTicker + dt
-			if proneDebugTicker > 0.5 then
-				proneDebugTicker = 0
-				warn(
-					"[Prone] tick held=true active=",
-					state.proneActive,
-					" ws=",
-					humanoid.WalkSpeed,
-					" hip=",
-					humanoid.HipHeight
-				)
-			end
+			-- Movement is handled by default humanoid locomotion; we only resized HRP and limited speed/jump
 		end
 	else
-		if state.proneActive then
-			exitProne(character)
+		if state.crawling then
+			stopCrawl(character)
 		end
 	end
 

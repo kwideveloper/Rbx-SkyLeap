@@ -39,11 +39,14 @@ Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
 Config.SlideCooldownSeconds = 1.0
 
--- Prone (lie down / crawl)
+-- Prone / Crawl
 Config.ProneWalkSpeed = 8
 Config.ProneHipHeightDelta = -2.2
 Config.ProneCameraOffsetY = -2.5
 Config.DebugProne = false
+-- Crawl geometry/speed
+Config.CrawlRootHeight = 0 -- studs height for HumanoidRootPart while crawling
+Config.CrawlSpeed = 8
 
 -- Wall run
 -- Wall running configuration:
@@ -227,7 +230,7 @@ Config.MantleDetectionDistance = 4.5 -- forward ray distance to detect a ledge
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
 Config.MantleMinAboveWaist = 0
 Config.MantleMaxAboveWaist = 10
-Config.MantleForwardOffset = 1.2 -- 1.2 -- how far onto the platform to place the character
+Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
 Config.MantleDurationSeconds = 0.5 -- time to blend the movement
 Config.MantleCooldownSeconds = 0.35
