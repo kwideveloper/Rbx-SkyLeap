@@ -407,6 +407,27 @@ local function detectLedgeForMantle(root)
 	if verticalDot > allowedDot then
 		return false
 	end
+	-- Attribute gate: if any ancestor has Mantle == false, disallow mantle
+	local function getMantleAttr(inst)
+		local cur = inst
+		for _ = 1, 5 do
+			if not cur then
+				break
+			end
+			if typeof(cur.GetAttribute) == "function" then
+				local val = cur:GetAttribute("Mantle")
+				if val ~= nil then
+					return val
+				end
+			end
+			cur = cur.Parent
+		end
+		return nil
+	end
+	local mAttr = getMantleAttr(res.Instance)
+	if mAttr == false then
+		return false
+	end
 	-- Check ledge height within window above waist (root center)
 	local waistY = root.Position.Y
 	local aboveWaist = topY - waistY
