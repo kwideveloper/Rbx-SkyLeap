@@ -515,6 +515,25 @@ function Abilities.tryMantle(character)
 	if not ok then
 		return false
 	end
+	-- Approach gating: require facing and velocity towards the wall to avoid auto-catching edges when falling off
+	local toWall = (hitRes.Position - root.Position)
+	local toWallHoriz = Vector3.new(toWall.X, 0, toWall.Z)
+	if toWallHoriz.Magnitude < 0.05 then
+		return false
+	end
+	local towards = toWallHoriz.Unit
+	local forward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	local faceDot = (forward.Magnitude > 0.01) and forward.Unit:Dot(towards) or -1
+	local vel = root.AssemblyLinearVelocity
+	local horiz = Vector3.new(vel.X, 0, vel.Z)
+	local speed = horiz.Magnitude
+	local approachDot = (horiz.Magnitude > 0.01) and horiz.Unit:Dot(towards) or -1
+	local minFace = Config.MantleFacingDotMin or 0.35
+	local minApproach = Config.MantleApproachDotMin or 0.35
+	local minSpeed = Config.MantleApproachSpeedMin or 6
+	if (faceDot < minFace) or (approachDot < minApproach) or (speed < minSpeed) then
+		return false
+	end
 
 	lastMantleTick = now
 	-- Publish mantling flag (for UI/gating) at start

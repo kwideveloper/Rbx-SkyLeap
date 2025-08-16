@@ -229,6 +229,10 @@ Config.MantleUpClearance = 5 -- 1.5 -- extra vertical clearance above top to ens
 Config.MantleDurationSeconds = 0.25 -- time to blend the movement
 Config.MantleCooldownSeconds = 0.35
 Config.MantleStaminaCost = 10
+-- Mantle approach gating: require facing and velocity towards wall
+Config.MantleApproachSpeedMin = 6 -- min horizontal speed towards wall to allow mantle
+Config.MantleFacingDotMin = 0.35 -- dot(root forward, towards-wall) >= this
+Config.MantleApproachDotMin = 0.35 -- dot(velocity, towards-wall) >= this
 Config.MantleWallSlideSuppressSeconds = 0.6 -- extra window after mantle to suppress wall slide
 Config.MantleGroundedConfirmSeconds = 1 -- require being grounded this long before re-enabling wall slide
 
