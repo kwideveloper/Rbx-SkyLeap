@@ -237,7 +237,7 @@ Config.MantleEnabled = true
 Config.MantleDetectionDistance = 4 -- 4.5 -- forward ray distance to detect a ledge
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
 Config.MantleMinAboveWaist = 0 -- 0
-Config.MantleMaxAboveWaist = 10
+Config.MantleMaxAboveWaist = 8
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
 Config.MantleDurationSeconds = 0.3 -- time to blend the movement
@@ -249,6 +249,9 @@ Config.MantleFacingDotMin = 0.35 -- dot(root forward, towards-wall) >= this
 Config.MantleApproachDotMin = 0.35 -- dot(velocity, towards-wall) >= this
 Config.MantleWallSlideSuppressSeconds = 0.6 -- extra window after mantle to suppress wall slide
 Config.MantleGroundedConfirmSeconds = 1 -- require being grounded this long before re-enabling wall slide
+Config.MantleUseMoveDirFallback = true
+Config.MantleSpeedRelaxDot = 0.9
+Config.MantleSpeedRelaxFactor = 0.4
 
 -- Trails
 Config.TrailEnabled = true

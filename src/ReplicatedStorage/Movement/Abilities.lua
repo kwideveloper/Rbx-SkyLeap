@@ -609,6 +609,26 @@ function Abilities.tryMantle(character)
 	local minFace = Config.MantleFacingDotMin or 0.35
 	local minApproach = Config.MantleApproachDotMin or 0.35
 	local minSpeed = Config.MantleApproachSpeedMin or 6
+	-- Fallbacks: if facing is very strong, allow reduced approachDot requirement; also consider Humanoid.MoveDirection when AssemblyLinearVelocity is small
+	if Config.MantleUseMoveDirFallback then
+		local hum = humanoid
+		if hum then
+			local md = hum.MoveDirection
+			if md.Magnitude > 0.01 and horiz.Magnitude < 1.0 then
+				local mdHoriz = Vector3.new(md.X, 0, md.Z).Unit
+				approachDot = mdHoriz:Dot(towards)
+				-- Treat speed as WalkSpeed scale in this corner case
+				speed = math.max(speed, hum.WalkSpeed * 0.35)
+			end
+		end
+		local relaxFace = Config.MantleSpeedRelaxDot or 0.9
+		local relaxFactor = Config.MantleSpeedRelaxFactor or 0.4
+		if faceDot >= relaxFace then
+			-- Reduce required approach and speed thresholds when perfectly facing the wall (straight-on)
+			minApproach = math.min(minApproach, minApproach * relaxFactor)
+			minSpeed = math.min(minSpeed, minSpeed * relaxFactor)
+		end
+	end
 	if (faceDot < minFace) or (approachDot < minApproach) or (speed < minSpeed) then
 		return false
 	end
