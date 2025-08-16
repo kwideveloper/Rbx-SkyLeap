@@ -8,6 +8,7 @@ local Abilities = {}
 local lastDashTick = 0
 local lastSlideTick = 0
 local lastVaultTick = 0
+local lastMantleTick = 0
 local originalPhysByPart = {}
 
 local function getCharacterParts(character)
@@ -67,41 +68,7 @@ local function raycastForward(root, distance)
 	return workspace:Raycast(origin, root.CFrame.LookVector * distance, params)
 end
 
-local function isVaultCandidate(root, humanoid)
-	if not (Config.VaultEnabled ~= false) then
-		return false
-	end
-	if humanoid.WalkSpeed < (Config.VaultMinSpeed or 24) then
-		return false
-	end
-	local res = raycastForward(root, Config.VaultDetectionDistance or 4.5)
-	if not res or not res.Instance then
-		return false
-	end
-	local hit = res.Instance
-	if not hit.CanCollide then
-		return false
-	end
-	local feetY = root.Position.Y - ((root.Size and root.Size.Y or 2) * 0.5)
-	local topY = res.Position.Y
-	local h = topY - feetY
-	local minH = Config.VaultMinHeight or 1.0
-	local maxH = Config.VaultMaxHeight or 4.0
-	if h < minH or h > maxH then
-		return false
-	end
-	return true, res
-end
-
-local function pickVaultAnimation()
-	local keys = Config.VaultAnimationKeys or {}
-	if #keys == 0 then
-		return nil
-	end
-	local idx = math.random(1, #keys)
-	local key = keys[idx]
-	return Animations and Animations.get and Animations.get(key) or nil
-end
+-- (isVaultCandidate and pickVaultAnimation defined later with expanded detection)
 
 -- Collision toggling for vault
 local originalCollisionByPart = {}
@@ -344,7 +311,493 @@ local function computeObstacleTopY(inst)
 	return (inst and inst.Position and inst.Position.Y) or 0
 end
 
-local function sampleObstacleTopY(root, distance)
+-- Forward declarations for helper detectors used by mantle and vault
+local sampleObstacleTopY
+local detectObstacleWithThreeRays
+local boxDetectFrontTopY
+
+-- Mantle helpers
+local function detectLedgeForMantle(root)
+	local distance = Config.MantleDetectionDistance or 4.5
+	-- Reuse three-ray detector to find a front obstacle and estimate its top
+	local topY, res = detectObstacleWithThreeRays(root, distance)
+	if not res or not res.Instance or not topY then
+		-- Try widened sampling fan
+		topY, res = sampleObstacleTopY(root, distance)
+		if not res or not res.Instance or not topY then
+			-- Fallback: small box overlap in front
+			local topY2, res2 = boxDetectFrontTopY(root, distance)
+			if not res2 or not res2.Instance or not topY2 then
+				-- Extended yaw sweep based on horizontal velocity or facing; helpful after walljump
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = { root.Parent }
+				params.IgnoreWater = true
+				local halfH = (root.Size and root.Size.Y or 2) * 0.5
+				local baseDir
+				do
+					local vel = root.AssemblyLinearVelocity
+					local horiz = Vector3.new(vel.X, 0, vel.Z)
+					if horiz.Magnitude > 1.0 then
+						baseDir = horiz.Unit
+					else
+						baseDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+						if baseDir.Magnitude < 0.01 then
+							baseDir = Vector3.new(0, 0, 1)
+						else
+							baseDir = baseDir.Unit
+						end
+					end
+				end
+				local yawList = {
+					0,
+					math.rad(15),
+					-math.rad(15),
+					math.rad(30),
+					-math.rad(30),
+					math.rad(45),
+					-math.rad(45),
+					math.rad(60),
+					-math.rad(60),
+					math.rad(80),
+					-math.rad(80),
+				}
+				local bestY, bestRes = nil, nil
+				for _, yaw in ipairs(yawList) do
+					local dir = (
+						CFrame.fromMatrix(Vector3.new(), root.CFrame.XVector, root.CFrame.YVector, baseDir)
+						* CFrame.Angles(0, yaw, 0)
+					).LookVector
+					local back = -dir
+					local points = {
+						root.Position + Vector3.new(0, -halfH + 0.1, 0),
+						root.Position,
+						root.Position + Vector3.new(0, halfH - 0.1, 0),
+					}
+					for _, p in ipairs(points) do
+						local origin = p + back * 0.6
+						local r = workspace:Raycast(origin, dir * (distance + 0.6), params)
+						if r and r.Instance then
+							local ty = computeObstacleTopY(r.Instance)
+							if (not bestY) or (ty > bestY) then
+								bestY = ty
+								bestRes = r
+							end
+						end
+					end
+				end
+				if bestRes and bestY then
+					topY, res = bestY, bestRes
+				else
+					return false
+				end
+			else
+				topY, res = topY2, res2
+			end
+		end
+	end
+	-- Require a solid, collidable surface
+	if not res.Instance.CanCollide then
+		return false
+	end
+	-- Check ledge height within window above waist (root center)
+	local waistY = root.Position.Y
+	local aboveWaist = topY - waistY
+	local minH = Config.MantleMinAboveWaist or 0
+	local maxH = Config.MantleMaxAboveWaist or 10
+	if aboveWaist < minH or aboveWaist > maxH then
+		return false
+	end
+	return true, res, topY
+end
+
+function Abilities.isMantleCandidate(character)
+	local root, humanoid = getParts(character)
+	if not root or not humanoid then
+		return false
+	end
+	-- Consider mantle candidate if ledge is detectable ahead even without input (use extended sweep)
+	local distance = Config.MantleDetectionDistance or 4.5
+	local ok = detectLedgeForMantle(root)
+	if ok == true then
+		return true
+	end
+	-- Fallback: quick velocity-facing sweep like in detectLedgeForMantle extended branch
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { root.Parent }
+	params.IgnoreWater = true
+	local halfH = (root.Size and root.Size.Y or 2) * 0.5
+	local baseDir
+	local vel = root.AssemblyLinearVelocity
+	local horiz = Vector3.new(vel.X, 0, vel.Z)
+	if horiz.Magnitude > 1.0 then
+		baseDir = horiz.Unit
+	else
+		baseDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		if baseDir.Magnitude < 0.01 then
+			baseDir = Vector3.new(0, 0, 1)
+		else
+			baseDir = baseDir.Unit
+		end
+	end
+	local yawList = { 0, math.rad(20), -math.rad(20), math.rad(40), -math.rad(40) }
+	for _, yaw in ipairs(yawList) do
+		local dir = (
+			CFrame.fromMatrix(Vector3.new(), root.CFrame.XVector, root.CFrame.YVector, baseDir)
+			* CFrame.Angles(0, yaw, 0)
+		).LookVector
+		local back = -dir
+		local points = {
+			root.Position + Vector3.new(0, -halfH + 0.1, 0),
+			root.Position,
+			root.Position + Vector3.new(0, halfH - 0.1, 0),
+		}
+		for _, p in ipairs(points) do
+			local origin = p + back * 0.6
+			local r = workspace:Raycast(origin, dir * (distance + 0.6), params)
+			if r and r.Instance and r.Instance.CanCollide then
+				local topY = computeObstacleTopY(r.Instance)
+				local waistY = root.Position.Y
+				local above = topY - waistY
+				local minH = Config.MantleMinAboveWaist or 0
+				local maxH = Config.MantleMaxAboveWaist or 10
+				if above >= minH and above <= maxH then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+function Abilities.tryMantle(character)
+	if not (Config.MantleEnabled ~= false) then
+		return false
+	end
+	local now = os.clock()
+	if (now - lastMantleTick) < (Config.MantleCooldownSeconds or 0.35) then
+		return false
+	end
+	local root, humanoid = getParts(character)
+	if not root or not humanoid then
+		return false
+	end
+	local ok, hitRes, topY = detectLedgeForMantle(root)
+	if not ok then
+		return false
+	end
+
+	lastMantleTick = now
+	-- Publish mantling flag (for UI/gating) at start
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState") or Instance.new("Folder")
+		if not cs.Parent then
+			cs.Name = "ClientState"
+			cs.Parent = rs
+		end
+		local flag = cs:FindFirstChild("IsMantling")
+		if not flag then
+			flag = Instance.new("BoolValue")
+			flag.Name = "IsMantling"
+			flag.Value = false
+			flag.Parent = cs
+		end
+		flag.Value = true
+	end)
+
+	-- Compute two-phase positions: lift vertically first, then move forward onto platform
+	local halfH = (root.Size and root.Size.Y or 2) * 0.5
+	local surfaceNormal = hitRes.Normal or -root.CFrame.LookVector
+	local intoPlatform = -surfaceNormal
+	intoPlatform = Vector3.new(intoPlatform.X, 0, intoPlatform.Z)
+	if intoPlatform.Magnitude < 0.05 then
+		intoPlatform = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	end
+	intoPlatform = intoPlatform.Unit
+	local fwdOff = Config.MantleForwardOffset or 1.2
+	local upClear = Config.MantleUpClearance or 1.5
+
+	-- Phase 1: pure vertical lift to just above the ledge (align XZ with hit point for curved surfaces)
+	local liftY = topY + halfH + upClear
+	local contactXZ = Vector3.new(
+		(hitRes.Position and hitRes.Position.X) or root.Position.X,
+		0,
+		(hitRes.Position and hitRes.Position.Z) or root.Position.Z
+	)
+	local liftPos = Vector3.new(contactXZ.X, liftY, contactXZ.Z)
+
+	-- Phase 2: robust landing for curved surfaces
+	local function findLanding()
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { root.Parent }
+		params.IgnoreWater = true
+		-- 1) Try exact top cap solve if part top is horizontal (cylinder, wedge top, etc.)
+		do
+			local part = hitRes.Instance
+			if part and part:IsA("BasePart") then
+				local cf = part.CFrame
+				local up = cf.UpVector
+				if math.abs(up:Dot(Vector3.yAxis)) >= 0.9 then
+					local size = part.Size
+					local topCenter = cf.Position + (up * (size.Y * 0.5))
+					local rxDir = cf.RightVector
+					local rzDir = cf.LookVector
+					local rX = math.max(0.1, (size.X * 0.5) - 0.05)
+					local rZ = math.max(0.1, (size.Z * 0.5) - 0.05)
+					-- Vector from top center to our contact XZ
+					local toEdge = Vector3.new(contactXZ.X - topCenter.X, 0, contactXZ.Z - topCenter.Z)
+					local u = toEdge:Dot(rxDir)
+					local v = toEdge:Dot(rzDir)
+					-- Clamp inside ellipse
+					local denom = (u * u) / (rX * rX) + (v * v) / (rZ * rZ)
+					if denom > 1 then
+						local scale = 1 / math.sqrt(denom)
+						u = u * scale
+						v = v * scale
+					end
+					-- Step inward slightly along inward vector to avoid side lip
+					local inward = -toEdge
+					local inwardLen = math.max(0.0001, inward.Magnitude)
+					local step = math.min(Config.MantleForwardOffset or 1.2, inwardLen - 0.02)
+					local iu = (inward:Dot(rxDir) / inwardLen) * step
+					local iv = (inward:Dot(rzDir) / inwardLen) * step
+					u = u - iu
+					v = v - iv
+					local px = topCenter.X + rxDir.X * u + rzDir.X * v
+					local pz = topCenter.Z + rxDir.Z * u + rzDir.Z * v
+					local y = topCenter.Y + halfH + 0.05
+					return Vector3.new(px, 0, pz), y
+				end
+			end
+		end
+		-- 2) Fallback search: step forward along (possibly re-sampled) inward and require an upward-facing hit
+		local maxDist = math.max(0.6, (Config.MantleForwardOffset or 1.2) * 2.0)
+		local steps = 12
+		local angleSteps = { 0, math.rad(12), -math.rad(12), math.rad(22), -math.rad(22) }
+		for _, ang in ipairs(angleSteps) do
+			for i = 1, steps do
+				local d = (maxDist * i) / steps
+				local dir = (CFrame.Angles(0, ang, 0) * CFrame.fromMatrix(
+					Vector3.new(),
+					Vector3.xAxis,
+					Vector3.yAxis,
+					intoPlatform
+				)).ZVector
+				-- Build a world-space direction from rotated frame (fallback if above math yields zero)
+				local into = Vector3.new(dir.X, 0, dir.Z)
+				if into.Magnitude < 0.01 then
+					into = intoPlatform
+				end
+				into = into.Unit
+				local testXZ = Vector3.new(contactXZ.X + into.X * d, 0, contactXZ.Z + into.Z * d)
+				local dropOrigin = Vector3.new(testXZ.X, liftY + 6, testXZ.Z)
+				local down = workspace:Raycast(dropOrigin, Vector3.new(0, -18, 0), params)
+				if down and down.Instance and down.Position and down.Normal then
+					-- Accept only upward-facing surfaces (avoid side hits)
+					if down.Normal:Dot(Vector3.yAxis) >= 0.8 then
+						return testXZ, down.Position.Y
+					end
+				end
+			end
+		end
+		-- 3) Last resort: straight inward by offset; height remains liftY
+		return Vector3.new(
+			contactXZ.X + intoPlatform.X * (Config.MantleForwardOffset or 1.2),
+			0,
+			contactXZ.Z + intoPlatform.Z * (Config.MantleForwardOffset or 1.2)
+		),
+			liftY
+	end
+	local finalXZ, groundY = findLanding()
+	local finalY = (groundY and (groundY + halfH + 0.05)) or liftY
+	local finalPos = Vector3.new(finalXZ.X, finalY, finalXZ.Z)
+
+	-- Optional mantle animation
+	local animInst = Animations and Animations.get and Animations.get("Mantle") or nil
+	local track = nil
+	if animInst then
+		local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+		animator.Parent = humanoid
+		pcall(function()
+			track = animator:LoadAnimation(animInst)
+		end)
+		if track then
+			track.Priority = Enum.AnimationPriority.Movement
+			-- Try to match playback to mantle duration
+			local dur = Config.MantleDurationSeconds or 0.22
+			local length = 0
+			pcall(function()
+				length = track.Length or 0
+			end)
+			local speed = 1.0
+			if dur > 0 and length > 0 then
+				speed = length / dur
+			end
+			track.Looped = false
+			track:Play(0.05, 1, speed)
+		end
+	end
+
+	-- Temporarily disable collisions for a clean pass-over and also on the obstacle to avoid lip snag
+	disableCharacterCollision(character)
+	local obstaclePrevByPart = {}
+	do
+		local obstaclePart = hitRes.Instance
+		local obstacleParts = {}
+		local function gather(inst)
+			local node = inst
+			local model = nil
+			for _ = 1, 5 do
+				if not node then
+					break
+				end
+				if node:IsA("Model") then
+					model = node
+					break
+				end
+				node = node.Parent
+			end
+			if model then
+				for _, d in ipairs(model:GetDescendants()) do
+					if d:IsA("BasePart") then
+						table.insert(obstacleParts, d)
+					end
+				end
+			else
+				if inst and inst:IsA("BasePart") then
+					table.insert(obstacleParts, inst)
+				end
+			end
+		end
+		gather(obstaclePart)
+		pcall(function()
+			for _, p in ipairs(obstacleParts) do
+				obstaclePrevByPart[p] = { collide = p.CanCollide, touch = p.CanTouch }
+				p.CanCollide = false
+				p.CanTouch = false
+			end
+		end)
+	end
+
+	-- Blend in two phases: vertical first, then forward onto platform, with live forward-clear detection
+	local startCF = root.CFrame
+	local liftCF = CFrame.new(liftPos, liftPos + intoPlatform)
+	local finalCF = CFrame.new(finalPos, finalPos + intoPlatform)
+	local finalCFCurrent = finalCF
+	local total = Config.MantleDurationSeconds or 0.22
+	local tLift = math.max(0.05, total * 0.65)
+	local tFwd = math.max(0.05, total - tLift)
+	local active = true
+	local prevAutoRotate = humanoid.AutoRotate
+	local prevState = humanoid:GetState()
+	local prevWalkSpeed = humanoid.WalkSpeed
+	humanoid.AutoRotate = false
+	humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+	local probeParams = RaycastParams.new()
+	probeParams.FilterType = Enum.RaycastFilterType.Exclude
+	probeParams.FilterDescendantsInstances = { root.Parent }
+	probeParams.IgnoreWater = true
+	task.spawn(function()
+		-- Phase 1: vertical lift with edge detection (do not break early)
+		local t0 = os.clock()
+		local edgeDetected = false
+		while active do
+			local alpha = math.clamp((os.clock() - t0) / math.max(0.001, tLift), 0, 1)
+			root.AssemblyLinearVelocity = Vector3.new()
+			root.CFrame = startCF:Lerp(liftCF, alpha)
+			-- Detect edge: when forward ray stops hitting, precompute landing exactly at MantleForwardOffset from contact
+			if not edgeDetected then
+				local curPos = root.CFrame.Position
+				local forwardBlocked =
+					workspace:Raycast(curPos, intoPlatform * math.max(1.0, (fwdOff or 1.0)), probeParams)
+				if not forwardBlocked then
+					local aheadXZ = Vector3.new(
+						contactXZ.X + intoPlatform.X * (fwdOff or 1.0),
+						0,
+						contactXZ.Z + intoPlatform.Z * (fwdOff or 1.0)
+					)
+					local dropOrigin = Vector3.new(aheadXZ.X, liftY + 12, aheadXZ.Z)
+					local down = workspace:Raycast(dropOrigin, Vector3.new(0, -36, 0), probeParams)
+					if down and down.Position and down.Normal and (down.Normal:Dot(Vector3.yAxis) >= 0.7) then
+						local landY = down.Position.Y
+						local posY = math.max(liftY, landY + halfH + 0.05)
+						local pos = Vector3.new(aheadXZ.X, posY, aheadXZ.Z)
+						finalCFCurrent = CFrame.new(pos, pos + intoPlatform)
+						edgeDetected = true
+					end
+				end
+			end
+			if alpha >= 1 then
+				break
+			end
+			task.wait()
+		end
+		-- Phase 2: forward motion to the dynamically chosen target (always from lift top)
+		local t1 = os.clock()
+		while active do
+			local alpha = math.clamp((os.clock() - t1) / math.max(0.001, tFwd), 0, 1)
+			root.AssemblyLinearVelocity = Vector3.new()
+			root.CFrame = liftCF:Lerp(finalCFCurrent, alpha)
+			if alpha >= 1 then
+				break
+			end
+			task.wait()
+		end
+		-- Done: restore collisions and hand control back to physics
+		active = false
+		restoreCharacterCollision(character)
+		-- Restore obstacle collision/touch locally
+		pcall(function()
+			for part, prev in pairs(obstaclePrevByPart) do
+				if part and part.Parent then
+					if prev.collide ~= nil then
+						part.CanCollide = prev.collide
+					end
+					if prev.touch ~= nil then
+						part.CanTouch = prev.touch
+					end
+				end
+			end
+		end)
+		if humanoid and humanoid.Parent then
+			-- Restore previous state as safely as possible
+			humanoid.AutoRotate = prevAutoRotate
+			local grounded = (humanoid.FloorMaterial ~= Enum.Material.Air)
+			if grounded then
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+				if typeof(prevWalkSpeed) == "number" and prevWalkSpeed > 0 then
+					humanoid.WalkSpeed = prevWalkSpeed
+				end
+			else
+				humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+			end
+		end
+		-- Stop mantle track shortly after
+		if track then
+			task.delay(0.1, function()
+				pcall(function()
+					track:Stop(0.1)
+				end)
+			end)
+		end
+		-- Clear mantling flag at end
+		pcall(function()
+			local rs = game:GetService("ReplicatedStorage")
+			local cs = rs:FindFirstChild("ClientState")
+			local flag = cs and cs:FindFirstChild("IsMantling")
+			if flag then
+				flag.Value = false
+			end
+		end)
+	end)
+
+	return true
+end
+
+sampleObstacleTopY = function(root, distance)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { root.Parent }
@@ -377,7 +830,7 @@ local function sampleObstacleTopY(root, distance)
 end
 
 -- Three-ray detector: feet, mid, and head
-local function detectObstacleWithThreeRays(root, distance)
+detectObstacleWithThreeRays = function(root, distance)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { root.Parent }
@@ -406,7 +859,7 @@ local function detectObstacleWithThreeRays(root, distance)
 end
 
 -- Fallback detection using a box overlap directly in front of the root (helps when rays start inside the wall)
-local function boxDetectFrontTopY(root, distance)
+boxDetectFrontTopY = function(root, distance)
 	local overlap = OverlapParams.new()
 	overlap.FilterType = Enum.RaycastFilterType.Exclude
 	overlap.FilterDescendantsInstances = { root.Parent }

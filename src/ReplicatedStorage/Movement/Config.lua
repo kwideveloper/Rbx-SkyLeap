@@ -3,8 +3,8 @@
 local Config = {}
 
 -- Core humanoid speeds
-Config.BaseWalkSpeed = 20
-Config.SprintWalkSpeed = 30
+Config.BaseWalkSpeed = 40 -- 20
+Config.SprintWalkSpeed = 60 -- 30
 
 -- Stamina
 Config.StaminaMax = 400 -- 200
@@ -203,6 +203,20 @@ Config.VaultUpMax = 26
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.12
 Config.VaultAlignHoldSeconds = 0.08
+
+-- Mantle (ledge grab over medium obstacles)
+Config.MantleEnabled = true
+Config.MantleDetectionDistance = 4.5 -- forward ray distance to detect a ledge
+-- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
+Config.MantleMinAboveWaist = 0
+Config.MantleMaxAboveWaist = 10
+Config.MantleForwardOffset = 2 -- 1.2 -- how far onto the platform to place the character
+Config.MantleUpClearance = 5 -- 1.5 -- extra vertical clearance above top to ensure space
+Config.MantleDurationSeconds = 0.5 -- time to blend the movement
+Config.MantleCooldownSeconds = 0.35
+Config.MantleStaminaCost = 10
+Config.MantleWallSlideSuppressSeconds = 0.6 -- extra window after mantle to suppress wall slide
+Config.MantleGroundedConfirmSeconds = 1 -- require being grounded this long before re-enabling wall slide
 
 -- Trails
 Config.TrailEnabled = true

@@ -310,6 +310,15 @@ local function ensureClientState()
 	end
 	state.isWallSlidingValue = isWallSliding
 
+	local isMantling = folder:FindFirstChild("IsMantling")
+	if not isMantling then
+		isMantling = Instance.new("BoolValue")
+		isMantling.Name = "IsMantling"
+		isMantling.Value = false
+		isMantling.Parent = folder
+	end
+	state.isMantlingValue = isMantling
+
 	local isClimbing = folder:FindFirstChild("IsClimbing")
 	if not isClimbing then
 		isClimbing = Instance.new("BoolValue")
@@ -650,6 +659,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if didVault then
 				return
 			end
+			-- (Mantle is now automatic; Space remains reserved for walljump/vault)
 			local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
 			if airborne then
 				-- Airborne: if near wall and can enter slide immediately, prefer starting slide first and block jump until pose snaps
@@ -1044,9 +1054,19 @@ RunService.RenderStepped:Connect(function(dt)
 		humanoid.FloorMaterial == Enum.Material.Air
 		and not Zipline.isActive(character)
 		and not Climb.isActive(character)
+		and not (state.isMantlingValue and state.isMantlingValue.Value)
 	then
 		-- Do not start slide if sprinting (wallrun has priority) or if out of stamina
-		if (not state.sprintHeld) and state.stamina.current > 0 then
+		local suppressUntil = state.wallSlideSuppressUntil or 0
+		local suppressedFlag = (state.wallSlideSuppressed == true)
+		local canStartSlide = (not suppressedFlag) and (os.clock() >= suppressUntil)
+		-- Extra gating: only attempt slide proximity if there is no mantle candidate ahead
+		local blockByMantleCandidate = false
+		if Abilities.isMantleCandidate then
+			blockByMantleCandidate = Abilities.isMantleCandidate(character) == true
+		end
+		-- Extra: while mantling or within a small window after, completely disable isNearWall to avoid edge flickers on curved surfaces
+		if not state.sprintHeld and state.stamina.current > 0 and canStartSlide and not blockByMantleCandidate then
 			-- Proximity check will internally start/stop slide as needed
 			WallJump.isNearWall(character)
 		end
@@ -1080,6 +1100,57 @@ RunService.RenderStepped:Connect(function(dt)
 		if isGrounded and isMovingForward and state.stamina.isSprinting then
 			if Abilities.tryVault(character) then
 				Style.addEvent(state.style, "Vault", 1)
+			end
+		end
+	end
+
+	-- Auto-mantle: when airborne, moving forward (by input or velocity), near a ledge at mantle height
+	if Config.MantleEnabled ~= false then
+		local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
+		local movingForward = humanoid.MoveDirection.Magnitude > 0.1
+		-- Allow mantle to trigger purely from velocity (e.g., after walljumps without input)
+		local movingByVelocity = false
+		do
+			local root = character:FindFirstChild("HumanoidRootPart")
+			if root then
+				local v = root.AssemblyLinearVelocity
+				local horiz = Vector3.new(v.X, 0, v.Z)
+				if horiz.Magnitude > 2 then
+					local fwd = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+					if fwd.Magnitude > 0.01 then
+						movingByVelocity = (fwd.Unit:Dot(horiz.Unit) > 0.3)
+					end
+				end
+			end
+		end
+		local movingAny = movingForward or movingByVelocity
+		-- Do not mantle during incompatible states
+		if airborne and movingAny and (not Zipline.isActive(character)) and (not Climb.isActive(character)) then
+			if state.stamina.current >= (Config.MantleStaminaCost or 0) then
+				local didMantle = false
+				if Abilities.tryMantle then
+					didMantle = Abilities.tryMantle(character)
+					if not didMantle then
+					end
+				end
+				if didMantle then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
+					Style.addEvent(state.style, "Mantle", 1)
+					-- Suppress wall slide immediately and for an extra window; clear after grounded confirm
+					state.wallSlideSuppressed = true
+					state.wallSlideSuppressUntil = os.clock() + (Config.MantleWallSlideSuppressSeconds or 0.6)
+					-- Stop any current wall slide / wall run to avoid conflicts
+					if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+						WallJump.stopSlide(character)
+					end
+					if WallRun.isActive(character) then
+						WallRun.stop(character)
+					end
+					-- HUD flag (optional)
+					if state.isMantlingValue then
+						state.isMantlingValue.Value = true
+					end
+				end
 			end
 		end
 	end
@@ -1151,6 +1222,25 @@ RunService.RenderStepped:Connect(function()
 		local lock = (Config.WallRunLockAfterWallJumpSeconds or 0.35)
 		if lock > 0 then
 			-- NOP: AirControl.apply uses MoveDirection/camera; we rely on our short lock and fixed velocity to dominate initial frames
+		end
+	end
+	-- Mantle grounded confirmation: only clear suppression after being grounded for X seconds
+	local groundedConfirm = Config.MantleGroundedConfirmSeconds or 0.2
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local airborne = (humanoid.FloorMaterial == Enum.Material.Air)
+		if not airborne then
+			-- Start or continue grounded timer
+			state._mantleGroundedSince = state._mantleGroundedSince or os.clock()
+			local okToClear = (os.clock() - (state._mantleGroundedSince or 0)) >= groundedConfirm
+			if okToClear then
+				state.wallSlideSuppressUntil = 0
+				state.wallSlideSuppressed = false
+			end
+		else
+			-- Reset timer while airborne
+			state._mantleGroundedSince = nil
 		end
 	end
 end)

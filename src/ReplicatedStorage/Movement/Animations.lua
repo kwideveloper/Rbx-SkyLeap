@@ -34,6 +34,9 @@ local Animations = {
 	-- Vault_Dash = "",
 	-- Vault_TwoHanded = "",
 
+	-- Mantle (ledge grab)
+	Mantle = "",
+
 	-- Climb (optional)
 	ClimbStart = "",
 	ClimbLoop = "",

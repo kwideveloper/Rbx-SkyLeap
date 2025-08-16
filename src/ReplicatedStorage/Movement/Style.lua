@@ -194,6 +194,10 @@ function Style.addEvent(state, event, magnitude)
 	elseif event == "Vault" then
 		bonus = Config.StyleVaultBonus or 12
 		pushAction(state, "Vault")
+	elseif event == "Mantle" then
+		-- Treat mantle similar to vault for scoring
+		bonus = Config.StyleVaultBonus or 12
+		pushAction(state, "Mantle")
 	elseif event == "GroundSlide" then
 		bonus = Config.StyleGroundSlideBonus or 8
 		pushAction(state, "GroundSlide")
