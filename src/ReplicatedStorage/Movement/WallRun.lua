@@ -38,10 +38,13 @@ local function findWall(rootPart)
 				-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
 				local allowedByClimbableRule = (not isClimbable) or wallRunOverride
 				if allowedByClimbableRule then
+					local mult = inst:GetAttribute("WallRunSpeedMultiplier")
+					mult = (type(mult) == "number" and mult > 0) and mult or 1
 					return {
 						normal = result.Normal,
 						position = result.Position,
 						instance = inst,
+						speedMult = mult,
 					}
 				end
 			end
@@ -103,6 +106,8 @@ function WallRun.tryStart(character)
 		originalAutoRotate = originalAutoRotate,
 		token = token,
 		lastWallNormal = hit.normal,
+		wallInstance = hit.instance,
+		speedMult = hit.speedMult or 1,
 	}
 
 	task.delay(Config.WallRunMaxDurationSeconds, function()
@@ -185,7 +190,17 @@ function WallRun.maintain(character)
 	local look = tangent
 	rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + look, up)
 
-	local horizontal = tangent * Config.WallRunSpeed + (-normal * Config.WallStickVelocity)
+	-- Dynamic wallrun speed based on current horizontal speed and optional per-wall multiplier
+	local vel = rootPart.AssemblyLinearVelocity
+	local horiz = Vector3.new(vel.X, 0, vel.Z)
+	local baseSpeed = horiz.Magnitude
+	if baseSpeed < (Config.WallRunMinSpeed or 25) then
+		baseSpeed = Config.WallRunMinSpeed or 25
+	end
+	local mult = data.speedMult or 1
+	local desiredSpeed = baseSpeed * mult
+
+	local horizontal = tangent * desiredSpeed + (-normal * Config.WallStickVelocity)
 	local newVel = Vector3.new(horizontal.X, -Config.WallRunDownSpeed, horizontal.Z)
 	rootPart.AssemblyLinearVelocity = newVel
 	return true

@@ -528,8 +528,28 @@ function WallJump.tryJump(character)
 		end
 	end
 
-	local away = hit.Normal * (Config.WallJumpImpulseAway or 120)
-	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45), 0)
+	-- Per-wall multipliers (optional): read up to a few ancestors
+	local function getAttrNum(inst, name)
+		local cur = inst
+		for _ = 1, 5 do
+			if not cur then
+				break
+			end
+			if typeof(cur.GetAttribute) == "function" then
+				local v = cur:GetAttribute(name)
+				if type(v) == "number" then
+					return v
+				end
+			end
+			cur = cur.Parent
+		end
+		return nil
+	end
+	local upMul = getAttrNum(hit.Instance, "WallJumpUpMultiplier") or 1
+	local awayMul = getAttrNum(hit.Instance, "WallJumpAwayMultiplier") or 1
+
+	local away = hit.Normal * ((Config.WallJumpImpulseAway or 120) * awayMul)
+	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45) * upMul, 0)
 
 	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
 	rootPart.AssemblyLinearVelocity = away + up
