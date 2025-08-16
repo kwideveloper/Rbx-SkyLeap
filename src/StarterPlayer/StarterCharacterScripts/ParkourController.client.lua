@@ -1116,7 +1116,13 @@ RunService.RenderStepped:Connect(function(dt)
 		)
 	) or 0
 	if (not state.wallAttachLockedUntil) or (os.clock() >= acUnlock) then
-		AirControl.apply(character, dt)
+		local allowAC = true
+		if state._suppressAirControlUntil and os.clock() < state._suppressAirControlUntil then
+			allowAC = false
+		end
+		if allowAC then
+			AirControl.apply(character, dt)
+		end
 	end
 
 	-- Global unfreeze/cleanup watchdog: ensure AutoRotate and animations aren't left frozen after actions
@@ -1278,6 +1284,8 @@ do
 				state.wallAttachLockedUntil = os.clock() + (Config.WallRunLockAfterWallJumpSeconds or 0.25)
 				-- Removed camera nudge on walljump per request
 				maybeConsumePadThenBump("WallJump")
+				-- Suppress air control briefly to prevent immediate input from reducing away impulse
+				state._suppressAirControlUntil = os.clock() + (Config.WallJumpAirControlSuppressSeconds or 0.2)
 			end
 			return ok
 		end

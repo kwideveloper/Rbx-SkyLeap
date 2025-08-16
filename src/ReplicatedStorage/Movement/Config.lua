@@ -192,6 +192,9 @@ Config.StyleCommitInactivitySeconds = 3.0
 Config.MaxWallChainPerSurface = 3
 Config.StyleComboPopupWindowSeconds = 0.2 -- time to aggregate combo increases into a single popup
 
+-- Wall jump control gating
+Config.WallJumpAirControlSuppressSeconds = 0.2
+
 -- Vault (parkour over low obstacles)
 Config.VaultEnabled = true
 Config.VaultDetectionDistance = 4.5
