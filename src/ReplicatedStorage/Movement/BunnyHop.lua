@@ -118,14 +118,66 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	if blended.Magnitude > 0 then
 		blended = blended.Unit
 	else
-		blended = travelDir
+		blended = moveDir.Magnitude > 0 and moveDir or travelDir
 	end
 
-	-- Additive impulse along blended direction; preserve perpendicular momentum
+	local newHoriz
+	if Config.BunnyHopReorientHard then
+		-- Hard reorientation: keep magnitude, replace direction with intent (or blended if no input)
+		local baseDir = (moveDir.Magnitude > 0.01) and moveDir or blended
+		if baseDir.Magnitude > 0 then
+			newHoriz = baseDir.Unit * horizMag
+		else
+			newHoriz = horiz
+		end
+	else
+		-- Soft redirection (previous logic)
+		if moveDir.Magnitude > 0.01 and horizMag > 0.01 then
+			local intentDot = moveDir:Dot(horiz.Unit)
+			if intentDot < -0.2 then
+				local perp = horiz - (horiz.Unit:Dot(moveDir) * moveDir * horizMag)
+				local perpDamp = math.clamp(Config.BunnyHopPerpDampOnFlip or 0.4, 0, 1)
+				local desiredMag = horizMag
+				newHoriz = moveDir * desiredMag + perp * (1 - perpDamp)
+			else
+				local oppositeCancel = math.clamp(Config.BunnyHopOppositeCancel or 0.6, 0, 1)
+				local backDot = (-moveDir):Dot(horiz.Unit)
+				if backDot > 0 then
+					local cancelMag = backDot * horizMag * oppositeCancel
+					horiz = horiz + (moveDir * cancelMag)
+				end
+				newHoriz = horiz
+			end
+		else
+			newHoriz = horiz
+		end
+	end
+
+	-- Additive impulse along blended direction
 	local bonus = (Config.BunnyHopBaseBoost or 6) + (Config.BunnyHopPerStackBoost or 3) * (state.stacks - 1)
-	local delta = blended * bonus
-	local newHoriz = horiz + delta
+	local maxAdd = math.max(0, Config.BunnyHopMaxAddPerHop or bonus)
+	local delta = blended * math.min(bonus, maxAdd)
+	newHoriz = newHoriz + delta
+	-- Clamp total horizontal speed
+	local cap = (Config.BunnyHopTotalSpeedCap or Config.AirControlTotalSpeedCap or 999)
+	local nhMag = Vector3.new(newHoriz.X, 0, newHoriz.Z).Magnitude
+	if nhMag > cap then
+		newHoriz = newHoriz.Unit * cap
+	end
 	root.AssemblyLinearVelocity = Vector3.new(newHoriz.X, vel.Y, newHoriz.Z)
+
+	-- Briefly lock horizontal to eliminate drift/drag before physics applies, for an instant redirection feel
+	local lockDur = math.max(0, Config.BunnyHopLockSeconds or 0)
+	if lockDur > 0 then
+		local startT = os.clock()
+		task.spawn(function()
+			while (os.clock() - startT) < lockDur do
+				local curV = root.AssemblyLinearVelocity
+				root.AssemblyLinearVelocity = Vector3.new(newHoriz.X, curV.Y, newHoriz.Z)
+				task.wait()
+			end
+		end)
+	end
 
 	-- Momentum bonus
 	if momentumState and Momentum.addBonus then

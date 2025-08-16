@@ -847,13 +847,39 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.sprintHeld then
 		if not state.stamina.isSprinting then
 			if Stamina.setSprinting(state.stamina, true) then
-				humanoid.WalkSpeed = Config.SprintWalkSpeed
+				-- start ramp towards sprint speed
+				state._sprintRampT0 = os.clock()
+				state._sprintBaseSpeed = humanoid.WalkSpeed
 			end
+		else
+			-- ramp up while holding sprint
+			local t0 = state._sprintRampT0 or os.clock()
+			local base = state._sprintBaseSpeed or Config.BaseWalkSpeed
+			local dur = math.max(0.01, Config.SprintAccelSeconds or 0.3)
+			local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
+			humanoid.WalkSpeed = base + (Config.SprintWalkSpeed - base) * alpha
 		end
 	else
 		if state.stamina.isSprinting then
-			Stamina.setSprinting(state.stamina, false)
+			-- ramp down to base speed
+			local t0 = state._sprintDecelT0 or os.clock()
+			state._sprintDecelT0 = t0
+			local cur = humanoid.WalkSpeed
+			local dur = math.max(0.01, Config.SprintDecelSeconds or 0.2)
+			local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
+			humanoid.WalkSpeed = cur + (Config.BaseWalkSpeed - cur) * alpha
+			if alpha >= 1 then
+				Stamina.setSprinting(state.stamina, false)
+				state._sprintRampT0 = nil
+				state._sprintDecelT0 = nil
+				state._sprintBaseSpeed = nil
+			end
+		else
+			-- ensure at base
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
+			state._sprintRampT0 = nil
+			state._sprintDecelT0 = nil
+			state._sprintBaseSpeed = nil
 		end
 	end
 
@@ -1091,6 +1117,54 @@ RunService.RenderStepped:Connect(function(dt)
 	) or 0
 	if (not state.wallAttachLockedUntil) or (os.clock() >= acUnlock) then
 		AirControl.apply(character, dt)
+	end
+
+	-- Global unfreeze/cleanup watchdog: ensure AutoRotate and animations aren't left frozen after actions
+	local anyActionActive = false
+	if WallRun.isActive(character) then
+		anyActionActive = true
+	end
+	if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+		anyActionActive = true
+	end
+	if Climb.isActive(character) then
+		anyActionActive = true
+	end
+	if Zipline.isActive(character) then
+		anyActionActive = true
+	end
+	if state.isMantlingValue and state.isMantlingValue.Value then
+		anyActionActive = true
+	end
+	if not anyActionActive then
+		-- Restore autorotate if disabled by previous action
+		if humanoid.AutoRotate == false then
+			humanoid.AutoRotate = true
+		end
+		-- Restore safe humanoid state from RunningNoPhysics if not in any action
+		local hs = humanoid:GetState()
+		if hs == Enum.HumanoidStateType.RunningNoPhysics then
+			if humanoid.FloorMaterial == Enum.Material.Air then
+				humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+			else
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			end
+		end
+		-- Stop frozen zero-speed tracks if any
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		if animator then
+			local tracks = animator:GetPlayingAnimationTracks()
+			for _, tr in ipairs(tracks) do
+				local ok, spd = pcall(function()
+					return tr.Speed
+				end)
+				if ok and (spd == 0) then
+					pcall(function()
+						tr:Stop(0.1)
+					end)
+				end
+			end
+		end
 	end
 
 	-- Auto-vault while sprinting towards low obstacle
