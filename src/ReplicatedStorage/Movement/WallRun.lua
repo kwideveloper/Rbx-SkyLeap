@@ -99,6 +99,16 @@ function WallRun.tryStart(character)
 	humanoid.AutoRotate = false
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
 	local token = {}
+	-- One-time target speed based on current horizontal momentum and per-wall multiplier
+	local vel0 = rootPart.AssemblyLinearVelocity
+	local horiz0 = Vector3.new(vel0.X, 0, vel0.Z)
+	local baseSpeed0 = horiz0.Magnitude
+	if baseSpeed0 < (Config.WallRunMinSpeed or 25) then
+		baseSpeed0 = (Config.WallRunMinSpeed or 25)
+	end
+	local mult0 = hit.speedMult or 1
+	local cap0 = (Config.AirControlTotalSpeedCap or 999)
+	local targetSpeed = math.min(baseSpeed0 * mult0, cap0)
 	active[character] = {
 		humanoid = humanoid,
 		originalWalkSpeed = originalWalkSpeed,
@@ -108,6 +118,7 @@ function WallRun.tryStart(character)
 		lastWallNormal = hit.normal,
 		wallInstance = hit.instance,
 		speedMult = hit.speedMult or 1,
+		targetSpeed = targetSpeed,
 	}
 
 	task.delay(Config.WallRunMaxDurationSeconds, function()
@@ -193,15 +204,18 @@ function WallRun.maintain(character)
 	-- Dynamic wallrun speed based on current horizontal speed and optional per-wall multiplier
 	local vel = rootPart.AssemblyLinearVelocity
 	local horiz = Vector3.new(vel.X, 0, vel.Z)
-	local baseSpeed = horiz.Magnitude
-	if baseSpeed < (Config.WallRunMinSpeed or 25) then
-		baseSpeed = Config.WallRunMinSpeed or 25
-	end
-	local mult = data.speedMult or 1
-	local desiredSpeed = baseSpeed * mult
+	local desiredSpeed = data.targetSpeed or (Config.WallRunMinSpeed or 25)
 
 	local horizontal = tangent * desiredSpeed + (-normal * Config.WallStickVelocity)
 	local newVel = Vector3.new(horizontal.X, -Config.WallRunDownSpeed, horizontal.Z)
+	local cap = (Config.AirControlTotalSpeedCap or 0)
+	if cap and cap > 0 then
+		local nh = Vector3.new(newVel.X, 0, newVel.Z)
+		local m = nh.Magnitude
+		if m > cap then
+			newVel = Vector3.new(nh.Unit.X * cap, newVel.Y, nh.Unit.Z * cap)
+		end
+	end
 	rootPart.AssemblyLinearVelocity = newVel
 	return true
 end
