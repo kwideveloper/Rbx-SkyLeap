@@ -699,7 +699,13 @@ local function startCrawl(character)
 	if not humanoid or not root then
 		return
 	end
-	-- Block if conflicting states
+	-- Block if not grounded or conflicting states
+	if humanoid.FloorMaterial == Enum.Material.Air then
+		if Config.DebugProne then
+			dbgProne("startCrawl rejected: airborne")
+		end
+		return
+	end
 	if
 		state.sliding
 		or WallRun.isActive(character)
@@ -709,7 +715,7 @@ local function startCrawl(character)
 	then
 		return
 	end
-	-- Begin crawl via Abilities (sets proxy collider and handles collisions)
+	-- Begin crawl via Abilities (sets mask)
 	if not Abilities.crawlBegin(character) then
 		return
 	end
@@ -937,6 +943,14 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			end
 		end
 	elseif input.KeyCode == Enum.KeyCode.Z then
+		local character = getCharacter()
+		local humanoid = character and getHumanoid(character)
+		if not humanoid or humanoid.FloorMaterial == Enum.Material.Air then
+			if Config.DebugProne then
+				dbgProne("Ignored Z: airborne or no humanoid")
+			end
+			return
+		end
 		state.proneHeld = true
 		startCrawl(character)
 	elseif input.KeyCode == Enum.KeyCode.Space then
@@ -1225,23 +1239,35 @@ RunService.RenderStepped:Connect(function(dt)
 			state._proneClearFrames = 0
 			stopCrawl(character)
 		else
-			if not state.crawling then
-				startCrawl(character)
-			end
-			-- Auto-stand when space available for several consecutive frames
-			if state.crawling and not UserInputService:IsKeyDown(Enum.KeyCode.Z) then
-				if hasClearanceToStand(character) then
-					state._proneClearFrames = (state._proneClearFrames or 0) + 1
-					if state._proneClearFrames >= neededClearFrames then
-						if Config.DebugProne then
-							dbgProne("Auto-stand after", state._proneClearFrames, "clear frames")
-						end
-						state.proneHeld = false
-						state._proneClearFrames = 0
-						stopCrawl(character)
+			-- If left the ground, end manual crouch (Z rule)
+			if humanoid.FloorMaterial == Enum.Material.Air then
+				if state.crawling then
+					if Config.DebugProne then
+						dbgProne("End crawl: became airborne")
 					end
-				else
+					state.proneHeld = false
 					state._proneClearFrames = 0
+					stopCrawl(character)
+				end
+			else
+				if not state.crawling then
+					startCrawl(character)
+				end
+				-- Auto-stand when space available for several consecutive frames
+				if state.crawling and not UserInputService:IsKeyDown(Enum.KeyCode.Z) then
+					if hasClearanceToStand(character) then
+						state._proneClearFrames = (state._proneClearFrames or 0) + 1
+						if state._proneClearFrames >= neededClearFrames then
+							if Config.DebugProne then
+								dbgProne("Auto-stand after", state._proneClearFrames, "clear frames")
+							end
+							state.proneHeld = false
+							state._proneClearFrames = 0
+							stopCrawl(character)
+						end
+					else
+						state._proneClearFrames = 0
+					end
 				end
 			end
 		end
@@ -1747,4 +1773,47 @@ RunService.Stepped:Connect(function(_time, dt)
 	move.h = (state.keys.D and 1 or 0) - (state.keys.A and 1 or 0)
 	move.v = (state.keys.W and 1 or 0) - (state.keys.S and 1 or 0)
 	Climb.maintain(character, move)
+end)
+
+-- Low-frequency auto clearance sampler (passive)
+local _autoCrawlT0 = 0
+RunService.RenderStepped:Connect(function(dt)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid then
+		return
+	end
+	if Config.CrawlAutoEnabled == false then
+		return
+	end
+	local now = os.clock()
+	local interval = Config.CrawlAutoSampleSeconds or 0.12
+	if (now - _autoCrawlT0) < interval then
+		return
+	end
+	_autoCrawlT0 = now
+	-- Skip if incompatible actions
+	if
+		state.sliding
+		or WallRun.isActive(character)
+		or Climb.isActive(character)
+		or (state.isMantlingValue and state.isMantlingValue.Value)
+		or Zipline.isActive(character)
+	then
+		return
+	end
+	-- Optional: ground-only to avoid catching ceilings mid-air
+	if (Config.CrawlAutoGroundOnly ~= false) and humanoid.FloorMaterial == Enum.Material.Air then
+		return
+	end
+	-- If there is NO clearance and we are not crawling, auto-enter crawl and hold until free
+	if not state.crawling and not state.proneHeld then
+		if not hasClearanceToStand(character) then
+			if Config.DebugProne then
+				dbgProne("Auto-crawl: detected low clearance nearby")
+			end
+			state.proneHeld = true
+			startCrawl(character)
+		end
+	end
 end)

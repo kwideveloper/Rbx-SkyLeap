@@ -48,6 +48,9 @@ Config.DebugProne = false
 Config.CrawlRootHeight = 0 -- studs height for HumanoidRootPart while crawling
 Config.CrawlSpeed = 8
 Config.CrawlStandUpHeight = 2.2
+Config.CrawlAutoEnabled = true
+Config.CrawlAutoSampleSeconds = 0.12
+Config.CrawlAutoGroundOnly = true
 
 -- Wall run
 -- Wall running configuration:
