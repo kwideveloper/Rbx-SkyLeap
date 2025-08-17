@@ -13,7 +13,7 @@ local Animations = {
 	ZiplineEnd = "",
 
 	-- Slide
-	SlideStart = "rbxassetid://101238020195899",
+	SlideStart = "rbxassetid://120165028828087",
 	SlideLoop = "",
 	SlideEnd = "",
 

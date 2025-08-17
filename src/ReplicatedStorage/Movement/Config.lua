@@ -231,6 +231,7 @@ Config.VaultUseGroundHeight = true -- if true, measure obstacle height from grou
 Config.VaultApproachSpeedMin = 6
 Config.VaultFacingDotMin = 0.35
 Config.VaultApproachDotMin = 0.35
+Config.VaultForwardUseHeight = false -- if true, adds VaultForwardGainPerHeight * needUp to forward speed; else constant boost
 
 -- Mantle (ledge grab over medium obstacles)
 Config.MantleEnabled = true

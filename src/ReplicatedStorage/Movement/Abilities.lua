@@ -1321,7 +1321,10 @@ function Abilities.tryVault(character)
 	local upV = math.max(requiredUp, upMin)
 	-- If a cap exists but is below the physics requirement, prefer the requirement to ensure clearance
 	local forwardBase = (Config.VaultForwardBoost or 26)
-	local forwardGain = (Config.VaultForwardGainPerHeight or 2.5) * needUp
+	local forwardGain = 0
+	if Config.VaultForwardUseHeight then
+		forwardGain = (Config.VaultForwardGainPerHeight or 2.5) * needUp
+	end
 	local forward = root.CFrame.LookVector * (forwardBase + forwardGain)
 	local up = Vector3.new(0, upV, 0)
 	root.AssemblyLinearVelocity = Vector3.new(forward.X, up.Y, forward.Z)
