@@ -23,8 +23,8 @@ Config.MomentumSuperJumpThreshold = 65
 Config.MomentumAirDashThreshold = 45
 
 -- Dash
-Config.DashImpulse = 50
-Config.DashCooldownSeconds = 1.25
+Config.DashImpulse = 60
+Config.DashCooldownSeconds = 0 -- 1.25
 Config.DashStaminaCost = 20
 Config.DashVfxDuration = 0.2
 Config.DashDurationSeconds = 0.18 -- 0.18
@@ -33,10 +33,10 @@ Config.DashSpeed = 70
 -- Slide
 Config.SlideDurationSeconds = 0.5
 -- Distance-based ground slide: total horizontal distance traveled over the slide duration
-Config.SlideDistanceStuds = 5
+Config.SlideDistanceStuds = 10
 -- Extra forward burst at the start of the slide (studs/s added, decays over SlideImpulseSeconds)
-Config.SlideForwardImpulse = 30
-Config.SlideImpulseSeconds = 0.12
+Config.SlideForwardImpulse = 60
+Config.SlideImpulseSeconds = 0.15
 Config.SlideSpeedBoost = 0
 -- Jump carry from slide (percentages of current horizontal speed)
 -- Example: if speed=50 and VerticalPercent=0.3 -> +15 studs/s vertical on jump frame
@@ -172,8 +172,10 @@ Config.LaunchPadCarryFactor = 1 -- 0..1 how much of current velocity to preserve
 Config.LaunchPadCooldownSeconds = 0 -- 0.35
 Config.LaunchPadMinUpLift = 0 -- 12  -- ensures detachment from ground even on forward pads
 -- If true, interpret UpSpeed/ForwardSpeed as distances (studs). We'll convert to velocities.
-Config.LaunchPadDistanceMode = true
+Config.LaunchPadDistanceMode = false
 Config.LaunchPadMinFlightTime = 0.25 -- seconds for forward travel conversion
+-- Default flight time when UpSpeed==0 to map ForwardSpeed to exact distance
+Config.LaunchPadDefaultForwardFlightTime = 1.0 -- seconds
 
 -- Style / Combo system
 Config.StyleEnabled = true
@@ -287,6 +289,6 @@ Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 
 -- Debug flags
 Config.DebugLaunchPad = true
-Config.DebugLandingRoll = true
+Config.DebugLandingRoll = false
 
 return Config

@@ -1829,7 +1829,16 @@ PadTriggered.OnClientEvent:Connect(function(newVel)
 	-- Client-side application to ensure impulse even if Touched misses a frame
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if root and typeof(newVel) == "Vector3" then
+		if humanoid then
+			pcall(function()
+				humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+			end)
+		end
+		pcall(function()
+			root.CFrame = root.CFrame + Vector3.new(0, 0.05, 0)
+		end)
 		root.AssemblyLinearVelocity = newVel
 	end
 	-- Mark as eligible for chaining

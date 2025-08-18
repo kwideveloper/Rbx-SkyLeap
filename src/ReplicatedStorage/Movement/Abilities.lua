@@ -185,7 +185,12 @@ function Abilities.tryDash(character)
 
 	lastDashTick = now
 
-	-- Ground dash: set a target horizontal velocity and zero vertical velocity to ignore gravity
+	-- Only allow dash while airborne
+	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		return false
+	end
+
+	-- Fixed-distance dash: set a constant horizontal velocity and zero vertical velocity
 	local moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
 	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
 	if moveDir.Magnitude < 0.05 then
@@ -194,17 +199,8 @@ function Abilities.tryDash(character)
 	if moveDir.Magnitude > 0 then
 		moveDir = moveDir.Unit
 	end
-
-	-- Speed-scaled distance: only full distance at max sprint speed
-	local curVel = rootPart.AssemblyLinearVelocity
-	local curHoriz = Vector3.new(curVel.X, 0, curVel.Z)
-	local curSpeed = curHoriz.Magnitude
-	local refSpeed = math.max(0.01, Config.SprintWalkSpeed or 50)
 	local dashDur = Config.DashDurationSeconds or 0.18
-	local baseDistance = (Config.DashSpeed or 70) * dashDur
-	local ratio = math.clamp(curSpeed / refSpeed, 0, 1)
-	local scaledDistance = baseDistance * ratio
-	local desiredSpeed = math.max(curSpeed, scaledDistance / dashDur)
+	local desiredSpeed = (Config.DashSpeed or 70)
 
 	-- Completely horizontal, without vertical component (ignoring gravity)
 	local desiredHorizontal = moveDir * desiredSpeed
@@ -413,36 +409,33 @@ function Abilities.slide(character)
 		loopTrack = playTrack(loopId, true, nil)
 	end
 
-	-- Distance-based motion like dash: maintain a constant horizontal velocity for the slide duration
+	-- Fixed-distance slide: maintain a constant horizontal velocity for the slide duration
 	local desiredDistance = Config.SlideDistanceStuds or 0
 	local slideDuration = math.max(0.001, Config.SlideDurationSeconds or 0.5)
-	-- Prefer current horizontal velocity direction/speed so slide never slows you down
-	local curVel = rootPart.AssemblyLinearVelocity
-	local curHoriz = Vector3.new(curVel.X, 0, curVel.Z)
-	local curSpeed = curHoriz.Magnitude
-	local refSpeed = math.max(0.01, Config.SprintWalkSpeed or 50)
-	local speedRatio = math.clamp(curSpeed / refSpeed, 0, 1)
-	local moveDir
-	if curSpeed > 0.5 then
-		moveDir = curHoriz.Unit
-	else
-		moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
-		moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
-		if moveDir.Magnitude < 0.05 then
-			moveDir = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
-		end
-		if moveDir.Magnitude > 0 then
-			moveDir = moveDir.Unit
-		end
+	local moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
+	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+	if moveDir.Magnitude < 0.05 then
+		moveDir = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
 	end
-	-- Only reach full configured distance at max sprint speed
-	local scaledDistance = (desiredDistance > 0) and (desiredDistance * speedRatio) or 0
-	local minSlideSpeed = (scaledDistance > 0) and (scaledDistance / slideDuration) or 0
-	local desiredSpeed = math.max(minSlideSpeed, curSpeed)
-	local desiredHorizontal = moveDir * desiredSpeed
-	-- Initial forward impulse boost that eases out quickly
-	local impulseBoost = math.max(0, Config.SlideForwardImpulse or 0)
-	local impulseWindow = math.max(0.01, Config.SlideImpulseSeconds or 0.1)
+	if moveDir.Magnitude > 0 then
+		moveDir = moveDir.Unit
+	end
+	local minSlideSpeed = (desiredDistance > 0) and (desiredDistance / slideDuration) or 0
+
+	-- Impulse-based slide: inject a horizontal boost that decays over slideDuration
+	local v0 = rootPart.AssemblyLinearVelocity
+	local horiz0 = Vector3.new(v0.X, 0, v0.Z)
+	local slideDir = moveDir
+	local origAlong0 = horiz0:Dot(slideDir)
+	local baseBoost = Config.SlideForwardImpulse
+	if (not baseBoost) or baseBoost <= 0 then
+		baseBoost = minSlideSpeed
+	end
+	-- Initial one-frame injection preserves vertical
+	local injected = horiz0 + (slideDir * baseBoost)
+	rootPart.AssemblyLinearVelocity = Vector3.new(injected.X, v0.Y, injected.Z)
+	local impulseWindow = slideDuration
+	local baselineMag = math.max(horiz0.Magnitude, minSlideSpeed)
 
 	-- Reduce friction and hand control to physics for the duration (dash-like behavior)
 	local originalAutoRotate = humanoid.AutoRotate
@@ -502,14 +495,11 @@ function Abilities.slide(character)
 		local t0 = os.clock()
 		local steerDir = moveDir
 		while stillSliding and (os.clock() - t0) < slideDuration do
-			-- Easing for forward impulse (linear decay)
+			-- Decay factor 1 -> 0 over the slide duration
 			local elapsed = os.clock() - t0
-			local boost = 0
-			if impulseBoost > 0 and elapsed < impulseWindow then
-				local alpha = 1 - math.clamp(elapsed / impulseWindow, 0, 1)
-				boost = impulseBoost * alpha
-			end
-			-- Recompute steering direction from input each frame; fallback to current velocity
+			local alpha = math.clamp(elapsed / math.max(0.001, slideDuration), 0, 1)
+			local decay = 1 - alpha
+			-- Steering direction from input
 			local input = humanoid.MoveDirection
 			local dir = nil
 			if input.Magnitude > 0.05 then
@@ -517,23 +507,19 @@ function Abilities.slide(character)
 				if dir.Magnitude > 0.01 then
 					dir = dir.Unit
 				end
-			else
-				local v = rootPart.AssemblyLinearVelocity
-				local v2 = Vector3.new(v.X, 0, v.Z)
-				if v2.Magnitude > 0.05 then
-					dir = v2.Unit
-				end
 			end
 			if dir then
 				steerDir = dir
 			end
-			-- Maintain at least the target slide speed; never slow below current horizontal speed
+			-- Project current horizontal velocity onto steerDir and apply decayed boost toward minSlideSpeed
 			local vcur = rootPart.AssemblyLinearVelocity
-			local spdCur = Vector3.new(vcur.X, 0, vcur.Z).Magnitude
-			local spdTarget = math.max(minSlideSpeed, spdCur)
-			local horiz = (steerDir * (spdTarget + boost))
-			-- Keep strictly horizontal movement and suppress vertical to avoid tipping over
-			rootPart.AssemblyLinearVelocity = Vector3.new(horiz.X, 0, horiz.Z)
+			local curH = Vector3.new(vcur.X, 0, vcur.Z)
+			local along = curH:Dot(steerDir)
+			local perp = curH - steerDir * along
+			local targetAlong = math.max(minSlideSpeed, baselineMag)
+			local newAlong = targetAlong + (math.max(0, along - targetAlong) * decay)
+			local newH = perp + steerDir * newAlong
+			rootPart.AssemblyLinearVelocity = Vector3.new(newH.X, 0, newH.Z)
 			task.wait()
 		end
 	end)

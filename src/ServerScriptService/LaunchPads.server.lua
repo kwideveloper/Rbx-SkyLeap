@@ -62,6 +62,7 @@ local function applyLaunch(character, humanoid, pad)
 
 	local upSpeed = tonumber(pad:GetAttribute("UpSpeed")) or Config.LaunchPadUpSpeed or 80
 	local fwdSpeed = tonumber(pad:GetAttribute("ForwardSpeed")) or (Config.LaunchPadForwardSpeed or 90)
+	local fwdSpeedOriginal = fwdSpeed -- keep original studs (distance) when distance mode is on
 	local carry = tonumber(pad:GetAttribute("CarryFactor")) or (Config.LaunchPadCarryFactor or 0.25)
 	local minUp = tonumber(pad:GetAttribute("UpLift")) or (Config.LaunchPadMinUpLift or 0)
 
@@ -75,20 +76,18 @@ local function applyLaunch(character, humanoid, pad)
 	if forwardHoriz.Magnitude > 0 then
 		forwardHoriz = forwardHoriz.Unit
 	end
-	-- Build impulse; optionally convert distances to velocities
+	local forwardHorizToSend = forwardHoriz -- send to client
+	-- Precompute horizontal decomposition (along pad and perpendicular)
+	local velHoriz = Vector3.new(vel.X, 0, vel.Z)
+	local along = 0
+	local perp = velHoriz
+	if forwardHoriz.Magnitude > 0 then
+		along = velHoriz:Dot(forwardHoriz)
+		perp = velHoriz - forwardHoriz * along
+	end
+	-- Distance mode disabled: treat attributes as simple velocity adds
 	local upAddMag = math.max(0, upSpeed)
 	local fwdAddMag = math.max(0, fwdSpeed)
-	if Config.LaunchPadDistanceMode then
-		local g = workspace and workspace.Gravity or 196.2
-		-- Convert desired vertical distance (studs) to initial up velocity
-		upAddMag = math.sqrt(math.max(0, 2 * g * upAddMag))
-		-- Estimate airtime from up velocity (symmetric flight)
-		local tFlight = math.max((2 * upAddMag) / g, Config.LaunchPadMinFlightTime or 0.25)
-		-- Convert forward distance to horizontal velocity
-		if fwdAddMag > 0 then
-			fwdAddMag = fwdAddMag / tFlight
-		end
-	end
 	local add = (upDir * upAddMag) + (forwardHoriz * fwdAddMag)
 
 	-- Ensure a minimum upward impulse always for consistent lift
@@ -97,14 +96,6 @@ local function applyLaunch(character, humanoid, pad)
 		add = add + Vector3.new(0, needUp, 0)
 	end
 
-	-- Preserve momentum consistently: split horizontal into along-pad and perpendicular
-	local velHoriz = Vector3.new(vel.X, 0, vel.Z)
-	local along = 0
-	local perp = velHoriz
-	if forwardHoriz.Magnitude > 0 then
-		along = velHoriz:Dot(forwardHoriz)
-		perp = velHoriz - forwardHoriz * along
-	end
 	local newHoriz = perp + forwardHoriz * (along + fwdAddMag)
 	-- Always elevate by at least the computed vertical impulse
 	local newVy = math.max(vel.Y + upAddMag, upAddMag)
