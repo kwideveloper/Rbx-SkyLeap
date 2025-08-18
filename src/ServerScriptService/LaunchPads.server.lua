@@ -9,7 +9,9 @@ local Config = require(ReplicatedStorage.Movement.Config)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
-local recentLaunch = {} -- [character] = cooldownUntil
+local recentLaunch = {} -- [character] = cooldownUntil (global)
+local recentByPad = {} -- [character] = { [pad] = cooldownUntil }
+local launchLock = {} -- short reentry lock per character
 
 local function isCharacter(part)
 	if not part then
@@ -29,12 +31,29 @@ end
 local function applyLaunch(character, humanoid, pad)
 	-- Cooldown per character to avoid re-triggering multiple frames
 	local now = os.clock()
+	-- Hard short lock to prevent multiple Touched in same frame
+	local lockUntil = launchLock[character] or 0
+	if now < lockUntil then
+		return
+	end
+	-- Resolve cooldown seconds with safe fallback when attribute is missing or <= 0
+	local cdAttr = tonumber(pad:GetAttribute("CooldownSeconds"))
+	local cdSec = (cdAttr and cdAttr > 0) and cdAttr or (Config.LaunchPadCooldownSeconds or 0.35)
+	-- Character-level cooldown (global)
 	local untilTs = recentLaunch[character] or 0
 	if now < untilTs then
 		return
 	end
-	recentLaunch[character] = now
-		+ (tonumber(pad:GetAttribute("CooldownSeconds")) or Config.LaunchPadCooldownSeconds or 0.35)
+	-- Character + Pad cooldown (per-pad)
+	recentByPad[character] = recentByPad[character] or {}
+	local untilPad = recentByPad[character][pad] or 0
+	if now < untilPad then
+		return
+	end
+	-- Set both cooldowns and set lock (lock at least 0.3s or 25% of cd)
+	recentLaunch[character] = now + cdSec
+	recentByPad[character][pad] = now + cdSec
+	launchLock[character] = now + math.max(0.3, cdSec * 0.25)
 
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -50,23 +69,86 @@ local function applyLaunch(character, humanoid, pad)
 	local carryVel = vel * math.clamp(carry, 0, 1)
 
 	-- Compose impulse from both components
-	local upDir = pad.CFrame.UpVector
+	local upDir = Vector3.yAxis -- world-up for deterministic vertical
 	local fwdDir = pad.CFrame.LookVector
 	local forwardHoriz = Vector3.new(fwdDir.X, 0, fwdDir.Z)
 	if forwardHoriz.Magnitude > 0 then
 		forwardHoriz = forwardHoriz.Unit
 	end
-	local add = (upDir * math.max(0, upSpeed)) + (forwardHoriz * math.max(0, fwdSpeed))
-
-	-- Ensure a minimum upward impulse to detach from ground when touching anchored pads
-	if humanoid.FloorMaterial ~= Enum.Material.Air then
-		local needUp = math.max(0, minUp - add.Y)
-		if needUp > 0 then
-			add = add + Vector3.new(0, needUp, 0)
+	-- Build impulse; optionally convert distances to velocities
+	local upAddMag = math.max(0, upSpeed)
+	local fwdAddMag = math.max(0, fwdSpeed)
+	if Config.LaunchPadDistanceMode then
+		local g = workspace and workspace.Gravity or 196.2
+		-- Convert desired vertical distance (studs) to initial up velocity
+		upAddMag = math.sqrt(math.max(0, 2 * g * upAddMag))
+		-- Estimate airtime from up velocity (symmetric flight)
+		local tFlight = math.max((2 * upAddMag) / g, Config.LaunchPadMinFlightTime or 0.25)
+		-- Convert forward distance to horizontal velocity
+		if fwdAddMag > 0 then
+			fwdAddMag = fwdAddMag / tFlight
 		end
 	end
+	local add = (upDir * upAddMag) + (forwardHoriz * fwdAddMag)
 
-	local newVel = carryVel + add
+	-- Ensure a minimum upward impulse always for consistent lift
+	local needUp = math.max(0, minUp - add.Y)
+	if needUp > 0 then
+		add = add + Vector3.new(0, needUp, 0)
+	end
+
+	-- Preserve momentum consistently: split horizontal into along-pad and perpendicular
+	local velHoriz = Vector3.new(vel.X, 0, vel.Z)
+	local along = 0
+	local perp = velHoriz
+	if forwardHoriz.Magnitude > 0 then
+		along = velHoriz:Dot(forwardHoriz)
+		perp = velHoriz - forwardHoriz * along
+	end
+	local newHoriz = perp + forwardHoriz * (along + fwdAddMag)
+	-- Always elevate by at least the computed vertical impulse
+	local newVy = math.max(vel.Y + upAddMag, upAddMag)
+	-- If grounded, enforce minimum uplift to detach
+	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		newVy = math.max(newVy, (minUp or 0))
+	end
+	local newVel = Vector3.new(newHoriz.X, newVy, newHoriz.Z)
+
+	-- Debug logging
+	pcall(function()
+		local cfg = require(game:GetService("ReplicatedStorage").Movement.Config)
+		if cfg.DebugLaunchPad then
+			print(
+				string.format(
+					"[LaunchPad] part=%s upSpeed=%.2f fwdSpeed=%.2f minUp=%.2f cd=%.2f",
+					pad:GetFullName(),
+					upSpeed,
+					fwdSpeed,
+					minUp,
+					cdSec
+				)
+			)
+			print(
+				string.format(
+					"[LaunchPad] velIn=(%.2f,%.2f,%.2f) horizAlong=%.2f horizPerpMag=%.2f",
+					vel.X,
+					vel.Y,
+					vel.Z,
+					along,
+					perp.Magnitude
+				)
+			)
+			print(
+				string.format(
+					"[LaunchPad] newVel=(%.2f,%.2f,%.2f) newHorizMag=%.2f",
+					newVel.X,
+					newVel.Y,
+					newVel.Z,
+					newHoriz.Magnitude
+				)
+			)
+		end
+	end)
 	root.AssemblyLinearVelocity = newVel
 
 	-- Put humanoid into Freefall to avoid ground friction suppressing the impulse
@@ -78,7 +160,7 @@ local function applyLaunch(character, humanoid, pad)
 	local player = game:GetService("Players"):GetPlayerFromCharacter(character)
 	if player then
 		pcall(function()
-			PadTriggered:FireClient(player)
+			PadTriggered:FireClient(player, newVel)
 		end)
 	end
 end

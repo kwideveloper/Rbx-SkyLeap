@@ -4,10 +4,10 @@ local Config = {}
 
 -- Core humanoid speeds
 Config.BaseWalkSpeed = 30 -- 20
-Config.SprintWalkSpeed = 50 -- 30
+Config.SprintWalkSpeed = 60 -- 30
 -- Sprint acceleration ramp
-Config.SprintAccelSeconds = 0.45 -- time to reach full sprint speed
-Config.SprintDecelSeconds = 0.20 -- time to return to base speed (when releasing sprint)
+Config.SprintAccelSeconds = 0.60 -- 0.45 time to reach full sprint speed
+Config.SprintDecelSeconds = 0.25 -- 0.20 time to return to base speed (when releasing sprint)
 
 -- Stamina
 Config.StaminaMax = 400 -- 200
@@ -27,17 +27,26 @@ Config.DashImpulse = 50
 Config.DashCooldownSeconds = 1.25
 Config.DashStaminaCost = 20
 Config.DashVfxDuration = 0.2
-Config.DashDurationSeconds = 0.18
+Config.DashDurationSeconds = 0.18 -- 0.18
 Config.DashSpeed = 70
 
 -- Slide
 Config.SlideDurationSeconds = 0.5
-Config.SlideSpeedBoost = 10
+-- Distance-based ground slide: total horizontal distance traveled over the slide duration
+Config.SlideDistanceStuds = 5
+-- Extra forward burst at the start of the slide (studs/s added, decays over SlideImpulseSeconds)
+Config.SlideForwardImpulse = 30
+Config.SlideImpulseSeconds = 0.12
+Config.SlideSpeedBoost = 0
+-- Jump carry from slide (percentages of current horizontal speed)
+-- Example: if speed=50 and VerticalPercent=0.3 -> +15 studs/s vertical on jump frame
+Config.SlideJumpVerticalPercent = 0.30 -- 0..1 fraction of horizontal speed added to vertical
+Config.SlideJumpHorizontalPercent = 0.15 -- 0..1 fraction added to horizontal magnitude
 Config.SlideFrictionMultiplier = 0.5
 Config.SlideHipHeightDelta = -1.2
 Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
-Config.SlideCooldownSeconds = 1.0
+Config.SlideCooldownSeconds = 0.75 -- 1.0
 
 -- Prone / Crawl
 Config.ProneWalkSpeed = 8
@@ -134,17 +143,17 @@ Config.CameraAlignBodyYawDeg = 45
 -- Bunny hop
 Config.BunnyHopWindowSeconds = 0.12 -- 0.12 time after landing to count as a perfect hop
 Config.BunnyHopMaxStacks = 3
-Config.BunnyHopBaseBoost = 5 -- base horizontal speed added on perfect hop
-Config.BunnyHopPerStackBoost = 5 -- extra per additional stack
-Config.BunnyHopMomentumBonusBase = 7
-Config.BunnyHopMomentumBonusPerStack = 5
+Config.BunnyHopBaseBoost = 2 -- base horizontal speed added on perfect hop
+Config.BunnyHopPerStackBoost = 2 -- extra per additional stack
+Config.BunnyHopMomentumBonusBase = 3 -- 7
+Config.BunnyHopMomentumBonusPerStack = 2 -- 5
 Config.BunnyHopDirectionCarry = 0 -- INSTA REDIRECT=0 | 0..1 how much to preserve current travel direction over input
 Config.BunnyHopOppositeCancel = 1 -- 0..1 how much to cancel backward component vs desired direction on hop
 Config.BunnyHopPerpDampOnFlip = 1 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
 -- Hard reorientation on hop: completely retarget horizontal velocity to desired direction, preserving magnitude
 Config.BunnyHopReorientHard = true
 Config.BunnyHopLockSeconds = 0.6 -- brief window to lock horizontal velocity to the reoriented vector
-Config.BunnyHopMaxAddPerHop = 35 -- studs/s maximum speed added in a single hop
+Config.BunnyHopMaxAddPerHop = 5 -- studs/s maximum speed added in a single hop
 Config.BunnyHopTotalSpeedCap = 85 -- studs/s horizontal cap after applying hop (fallbacks to AirControlTotalSpeedCap)
 
 -- Air control (Quake/CS-style)
@@ -159,9 +168,12 @@ Config.AirControlTotalSpeedCap = 85 -- overall air speed cap (horizontal)
 -- LaunchPad (trampoline) defaults
 Config.LaunchPadUpSpeed = 80
 Config.LaunchPadForwardSpeed = 0
-Config.LaunchPadCarryFactor = 0 -- 0..1 how much of current velocity to preserve
-Config.LaunchPadCooldownSeconds = 0.35
-Config.LaunchPadMinUpLift = 12 -- ensures detachment from ground even on forward pads
+Config.LaunchPadCarryFactor = 1 -- 0..1 how much of current velocity to preserve
+Config.LaunchPadCooldownSeconds = 0 -- 0.35
+Config.LaunchPadMinUpLift = 0 -- 12  -- ensures detachment from ground even on forward pads
+-- If true, interpret UpSpeed/ForwardSpeed as distances (studs). We'll convert to velocities.
+Config.LaunchPadDistanceMode = true
+Config.LaunchPadMinFlightTime = 0.25 -- seconds for forward travel conversion
 
 -- Style / Combo system
 Config.StyleEnabled = true
@@ -272,5 +284,9 @@ Config.TrailHandsEnabled = true
 Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail
 Config.TrailHandsLifetimeFactor = 0.5 -- lifetime relative to main trail
 Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
+
+-- Debug flags
+Config.DebugLaunchPad = true
+Config.DebugLandingRoll = true
 
 return Config

@@ -224,7 +224,10 @@ local function setupCharacter(character)
 	humanoid.StateChanged:Connect(function(old, new)
 		if new == Enum.HumanoidStateType.Freefall then
 			local root = character:FindFirstChild("HumanoidRootPart")
-			lastAirY = root and root.Position.Y or nil
+			-- Track peak height during this airborne phase for reliable roll on high launches
+			local y = root and root.Position.Y or nil
+			lastAirY = y
+			state._peakAirY = y
 			rollPending = true
 			-- Start jump loop while airborne if configured (only if no vault/mantle/wallrun/slide/zipline)
 			local allowJumpLoop = not (state.isVaultingValue and state.isVaultingValue.Value)
@@ -260,6 +263,34 @@ local function setupCharacter(character)
 			local loopAllowed = not (state.isVaultingValue and state.isVaultingValue.Value)
 			local loopAnim = loopAllowed and Animations and Animations.get and Animations.get("Jump") or nil
 			local startTrack
+			-- Carry part of slide momentum into jump (extra vertical and horizontal)
+			do
+				local root = character:FindFirstChild("HumanoidRootPart")
+				if root then
+					local v = root.AssemblyLinearVelocity
+					local horiz = Vector3.new(v.X, 0, v.Z)
+					local spd = horiz.Magnitude
+					local upGain = (Config.SlideJumpVerticalPercent or 0.30) * spd
+					local fwdGain = (Config.SlideJumpHorizontalPercent or 0.15) * spd
+					local dir = nil
+					if spd > 0.05 then
+						dir = horiz.Unit
+					else
+						dir = Vector3.new(
+							character.PrimaryPart.CFrame.LookVector.X,
+							0,
+							character.PrimaryPart.CFrame.LookVector.Z
+						)
+						if dir.Magnitude > 0.01 then
+							dir = dir.Unit
+						end
+					end
+					-- One-frame injection to shape jump start
+					local vy = v.Y + upGain
+					local vxz = dir * (Vector3.new(v.X, 0, v.Z).Magnitude + fwdGain)
+					root.AssemblyLinearVelocity = Vector3.new(vxz.X, vy, vxz.Z)
+				end
+			end
 			if startAnim then
 				pcall(function()
 					startTrack = animator:LoadAnimation(startAnim)
@@ -304,7 +335,20 @@ local function setupCharacter(character)
 		elseif (new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running) and rollPending then
 			local root = character:FindFirstChild("HumanoidRootPart")
 			if root and lastAirY then
-				local drop = math.max(0, (lastAirY - root.Position.Y))
+				local peakY = state._peakAirY or lastAirY
+				local drop = math.max(0, (peakY - root.Position.Y))
+				local cfgDbg = require(ReplicatedStorage.Movement.Config).DebugLandingRoll
+				if cfgDbg then
+					print(
+						string.format(
+							"[LandingRoll] peakY=%.2f y=%.2f drop=%.2f threshold=%d",
+							peakY,
+							root.Position.Y,
+							drop,
+							20
+						)
+					)
+				end
 				if drop >= minRollDrop then
 					-- Play LandRoll animation if configured
 					local anim = Animations and Animations.get and Animations.get("LandRoll")
@@ -324,6 +368,7 @@ local function setupCharacter(character)
 				end
 			end
 			rollPending = false
+			state._peakAirY = nil
 			lastAirY = nil
 			-- Stop jump loop on landing/running
 			if jumpLoopTrack then
@@ -969,6 +1014,18 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
 		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
+		-- If dashing or sliding, cancel those states to avoid animation overlap
+		pcall(function()
+			local Abilities = require(ReplicatedStorage.Movement.Abilities)
+			if Abilities and Abilities.cancelDash then
+				Abilities.cancelDash(character)
+			end
+		end)
+		if state.sliding and state.slideEnd then
+			state.sliding = false
+			state.slideEnd()
+			state.slideEnd = nil
+		end
 		if Zipline.isActive(character) then
 			-- Jump off the zipline. Force a jump frame after detaching
 			Zipline.stop(character)
@@ -1107,6 +1164,14 @@ RunService.RenderStepped:Connect(function(dt)
 		Momentum.decay(state.momentum, dt)
 	end
 
+	-- Track peak height while airborne to trigger landing roll reliably (e.g., after LaunchPads)
+	if humanoid.FloorMaterial == Enum.Material.Air then
+		local y = root.Position.Y
+		if state._peakAirY == nil or y > (state._peakAirY or -math.huge) then
+			state._peakAirY = y
+		end
+	end
+
 	-- Style/Combo tick
 	local styleCtx = {
 		dt = dt,
@@ -1198,43 +1263,45 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	state.styleLastMult = curMult
 
-	-- Sprinting and stamina updates
-	if state.sprintHeld then
-		if not state.stamina.isSprinting then
-			if Stamina.setSprinting(state.stamina, true) then
-				-- start ramp towards sprint speed
-				state._sprintRampT0 = os.clock()
-				state._sprintBaseSpeed = humanoid.WalkSpeed
+	-- Sprinting and stamina updates (do not override WalkSpeed while sliding; Abilities.slide manages it)
+	if not state.sliding then
+		if state.sprintHeld then
+			if not state.stamina.isSprinting then
+				if Stamina.setSprinting(state.stamina, true) then
+					-- start ramp towards sprint speed
+					state._sprintRampT0 = os.clock()
+					state._sprintBaseSpeed = humanoid.WalkSpeed
+				end
+			else
+				-- ramp up while holding sprint
+				local t0 = state._sprintRampT0 or os.clock()
+				local base = state._sprintBaseSpeed or Config.BaseWalkSpeed
+				local dur = math.max(0.01, Config.SprintAccelSeconds or 0.3)
+				local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
+				humanoid.WalkSpeed = base + (Config.SprintWalkSpeed - base) * alpha
 			end
 		else
-			-- ramp up while holding sprint
-			local t0 = state._sprintRampT0 or os.clock()
-			local base = state._sprintBaseSpeed or Config.BaseWalkSpeed
-			local dur = math.max(0.01, Config.SprintAccelSeconds or 0.3)
-			local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
-			humanoid.WalkSpeed = base + (Config.SprintWalkSpeed - base) * alpha
-		end
-	else
-		if state.stamina.isSprinting then
-			-- ramp down to base speed
-			local t0 = state._sprintDecelT0 or os.clock()
-			state._sprintDecelT0 = t0
-			local cur = humanoid.WalkSpeed
-			local dur = math.max(0.01, Config.SprintDecelSeconds or 0.2)
-			local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
-			humanoid.WalkSpeed = cur + (Config.BaseWalkSpeed - cur) * alpha
-			if alpha >= 1 then
-				Stamina.setSprinting(state.stamina, false)
+			if state.stamina.isSprinting then
+				-- ramp down to base speed
+				local t0 = state._sprintDecelT0 or os.clock()
+				state._sprintDecelT0 = t0
+				local cur = humanoid.WalkSpeed
+				local dur = math.max(0.01, Config.SprintDecelSeconds or 0.2)
+				local alpha = math.clamp((os.clock() - t0) / dur, 0, 1)
+				humanoid.WalkSpeed = cur + (Config.BaseWalkSpeed - cur) * alpha
+				if alpha >= 1 then
+					Stamina.setSprinting(state.stamina, false)
+					state._sprintRampT0 = nil
+					state._sprintDecelT0 = nil
+					state._sprintBaseSpeed = nil
+				end
+			else
+				-- ensure at base
+				humanoid.WalkSpeed = Config.BaseWalkSpeed
 				state._sprintRampT0 = nil
 				state._sprintDecelT0 = nil
 				state._sprintBaseSpeed = nil
 			end
-		else
-			-- ensure at base
-			humanoid.WalkSpeed = Config.BaseWalkSpeed
-			state._sprintRampT0 = nil
-			state._sprintDecelT0 = nil
-			state._sprintBaseSpeed = nil
 		end
 	end
 
@@ -1327,8 +1394,10 @@ RunService.RenderStepped:Connect(function(dt)
 		local _cur, s = Stamina.tickWithGate(state.stamina, dt, allowRegen)
 		stillSprinting = s
 	end
-	if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
-		humanoid.WalkSpeed = Config.BaseWalkSpeed
+	if not state.sliding then
+		if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
+			humanoid.WalkSpeed = Config.BaseWalkSpeed
+		end
 	end
 
 	-- Wall slide stamina drain (half sprint rate) while active
@@ -1756,8 +1825,14 @@ do
 end
 
 -- Pad trigger from server; do NOT bump combo immediately. Only make it eligible for chaining.
-PadTriggered.OnClientEvent:Connect(function()
-	-- Remember pad time; consume on the next qualifying action within chain window
+PadTriggered.OnClientEvent:Connect(function(newVel)
+	-- Client-side application to ensure impulse even if Touched misses a frame
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and typeof(newVel) == "Vector3" then
+		root.AssemblyLinearVelocity = newVel
+	end
+	-- Mark as eligible for chaining
 	state.pendingPadTick = os.clock()
 end)
 

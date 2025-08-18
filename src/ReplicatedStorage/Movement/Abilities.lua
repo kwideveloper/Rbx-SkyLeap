@@ -10,6 +10,7 @@ local lastSlideTick = 0
 local lastVaultTick = 0
 local lastMantleTick = 0
 local originalPhysByPart = {}
+local dashActive = {}
 
 local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -194,42 +195,47 @@ function Abilities.tryDash(character)
 		moveDir = moveDir.Unit
 	end
 
-	--Completely horizontal, without vertical component (ignoring gravity)
-	local desiredHorizontal = moveDir * Config.DashSpeed
+	-- Speed-scaled distance: only full distance at max sprint speed
+	local curVel = rootPart.AssemblyLinearVelocity
+	local curHoriz = Vector3.new(curVel.X, 0, curVel.Z)
+	local curSpeed = curHoriz.Magnitude
+	local refSpeed = math.max(0.01, Config.SprintWalkSpeed or 50)
+	local dashDur = Config.DashDurationSeconds or 0.18
+	local baseDistance = (Config.DashSpeed or 70) * dashDur
+	local ratio = math.clamp(curSpeed / refSpeed, 0, 1)
+	local scaledDistance = baseDistance * ratio
+	local desiredSpeed = math.max(curSpeed, scaledDistance / dashDur)
+
+	-- Completely horizontal, without vertical component (ignoring gravity)
+	local desiredHorizontal = moveDir * desiredSpeed
 	local desiredVel = Vector3.new(desiredHorizontal.X, 0, desiredHorizontal.Z)
 	rootPart.AssemblyLinearVelocity = desiredVel
 
 	-- Play dash animation if available (uses preloaded cache if present)
+	local dashTrack = nil
 	do
-		local humanoid = humanoid
 		local animInst = Animations and Animations.get and Animations.get("Dash")
 		if humanoid and animInst then
 			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 			animator.Parent = humanoid
-			local track = nil
 			pcall(function()
-				track = animator:LoadAnimation(animInst)
+				dashTrack = animator:LoadAnimation(animInst)
 			end)
-			if track then
-				track.Priority = Enum.AnimationPriority.Action
+			if dashTrack then
+				dashTrack.Priority = Enum.AnimationPriority.Action
 				-- Match animation playback to dash duration if possible
 				local playbackSpeed = 1.0
 				local dashDur = Config.DashDurationSeconds or 0
 				local length = 0
 				pcall(function()
-					length = track.Length or 0
+					length = dashTrack.Length or 0
 				end)
 				if dashDur > 0 and length > 0 then
 					playbackSpeed = length / dashDur
 				end
-				track.Looped = false
-				track.TimePosition = 0
-				track:Play(0.05, 1, playbackSpeed)
-				task.delay(Config.DashDurationSeconds + 0.25, function()
-					pcall(function()
-						track:Stop(0.1)
-					end)
-				end)
+				dashTrack.Looped = false
+				dashTrack.TimePosition = 0
+				dashTrack:Play(0.05, 1, playbackSpeed)
 			end
 		end
 	end
@@ -245,16 +251,55 @@ function Abilities.tryDash(character)
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- This state allows us to have complete control over physics
 
 	local stillValid = true
-	task.delay(Config.DashDurationSeconds, function()
+	-- Publish dashing flag
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState") or Instance.new("Folder")
+		if not cs.Parent then
+			cs.Name = "ClientState"
+			cs.Parent = rs
+		end
+		local flag = cs:FindFirstChild("IsDashing")
+		if not flag then
+			flag = Instance.new("BoolValue")
+			flag.Name = "IsDashing"
+			flag.Value = false
+			flag.Parent = cs
+		end
+		flag.Value = true
+	end)
+
+	local function endDash()
+		if not stillValid then
+			return
+		end
 		stillValid = false
 		humanoid.AutoRotate = originalAutoRotate
 		restoreCharacterFriction(character)
-
-		-- Restore the normal behavior of gravity after Dash
+		pcall(function()
+			if dashTrack then
+				dashTrack:Stop(0.1)
+			end
+		end)
+		-- Restore normal behavior of gravity after Dash
 		if humanoid and humanoid.Parent then
 			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 		end
-	end)
+		-- Clear flag
+		pcall(function()
+			local rs = game:GetService("ReplicatedStorage")
+			local cs = rs:FindFirstChild("ClientState")
+			local flag = cs and cs:FindFirstChild("IsDashing")
+			if flag then
+				flag.Value = false
+			end
+		end)
+		dashActive[character] = nil
+	end
+
+	task.delay(Config.DashDurationSeconds, endDash)
+	-- Expose cancel handle
+	dashActive[character] = { endDash = endDash }
 
 	-- Constantly update the speed during the Dash to maintain the perfectly horizontal movement
 	task.spawn(function()
@@ -268,6 +313,13 @@ function Abilities.tryDash(character)
 	return true
 end
 
+function Abilities.cancelDash(character)
+	local data = dashActive[character]
+	if data and data.endDash then
+		data.endDash()
+	end
+end
+
 function Abilities.slide(character)
 	local now = os.clock()
 	if (now - lastSlideTick) < (Config.SlideCooldownSeconds or 0) then
@@ -277,10 +329,17 @@ function Abilities.slide(character)
 	if not rootPart or not humanoid then
 		return function() end
 	end
+	-- Require minimum speed to start slide (50% of sprint speed)
+	local curVelForGate = rootPart.AssemblyLinearVelocity
+	local horizForGate = Vector3.new(curVelForGate.X, 0, curVelForGate.Z)
+	local speedForGate = horizForGate.Magnitude
+	local minReq = 0.5 * (Config.SprintWalkSpeed or 50)
+	if speedForGate < minReq then
+		return function() end
+	end
 
 	local originalWalkSpeed = humanoid.WalkSpeed
-	-- humanoid.HipHeight untouched; we won't alter Y or collisions
-	humanoid.WalkSpeed = originalWalkSpeed + Config.SlideSpeedBoost
+	-- humanoid.HipHeight untouched; movement will be applied as velocity, not WalkSpeed
 	-- Limit collisions to torso only during slide to prevent limbs snagging
 	setSlideCollisionMask(character)
 	-- We previously created a collider; now we avoid any extra collider to prevent floor conflicts
@@ -294,7 +353,7 @@ function Abilities.slide(character)
 	local endId = Animations and Animations.SlideEnd or ""
 	local startTrack, loopTrack
 
-	local function playTrack(id, looped)
+	local function playTrack(id, looped, desiredDurationSeconds)
 		if not id or id == "" then
 			return nil
 		end
@@ -321,26 +380,82 @@ function Abilities.slide(character)
 		end
 		track.Priority = Enum.AnimationPriority.Movement
 		track.Looped = looped and true or false
-		track:Play(0.05, 1, 1.0)
+		-- Time-scale playback to fit a desired duration when provided (e.g., ground slide)
+		local speed = 1.0
+		if desiredDurationSeconds and desiredDurationSeconds > 0 then
+			local length = 0
+			pcall(function()
+				length = track.Length or 0
+			end)
+			if length > 0 then
+				-- Play the entire authored clip within the desired window
+				speed = length / desiredDurationSeconds
+			end
+		end
+		track:Play(0.05, 1, speed)
 		return track
 	end
 
 	-- Play Start then Loop (if provided). If only Start exists, it will play once.
 	if startId ~= "" then
-		startTrack = playTrack(startId, false)
+		-- If there is no loop, compress/expand the start clip to the slide duration so it fully plays
+		local desired = (loopId == "") and (Config.SlideDurationSeconds or 0) or nil
+		startTrack = playTrack(startId, false, desired)
 		if startTrack and loopId ~= "" then
 			-- When start ends, begin loop
 			startTrack.Stopped:Connect(function()
 				if loopTrack == nil then
-					loopTrack = playTrack(loopId, true)
+					loopTrack = playTrack(loopId, true, nil)
 				end
 			end)
 		end
 	elseif loopId ~= "" then
-		loopTrack = playTrack(loopId, true)
+		loopTrack = playTrack(loopId, true, nil)
 	end
 
+	-- Distance-based motion like dash: maintain a constant horizontal velocity for the slide duration
+	local desiredDistance = Config.SlideDistanceStuds or 0
+	local slideDuration = math.max(0.001, Config.SlideDurationSeconds or 0.5)
+	-- Prefer current horizontal velocity direction/speed so slide never slows you down
+	local curVel = rootPart.AssemblyLinearVelocity
+	local curHoriz = Vector3.new(curVel.X, 0, curVel.Z)
+	local curSpeed = curHoriz.Magnitude
+	local refSpeed = math.max(0.01, Config.SprintWalkSpeed or 50)
+	local speedRatio = math.clamp(curSpeed / refSpeed, 0, 1)
+	local moveDir
+	if curSpeed > 0.5 then
+		moveDir = curHoriz.Unit
+	else
+		moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
+		moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+		if moveDir.Magnitude < 0.05 then
+			moveDir = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
+		end
+		if moveDir.Magnitude > 0 then
+			moveDir = moveDir.Unit
+		end
+	end
+	-- Only reach full configured distance at max sprint speed
+	local scaledDistance = (desiredDistance > 0) and (desiredDistance * speedRatio) or 0
+	local minSlideSpeed = (scaledDistance > 0) and (scaledDistance / slideDuration) or 0
+	local desiredSpeed = math.max(minSlideSpeed, curSpeed)
+	local desiredHorizontal = moveDir * desiredSpeed
+	-- Initial forward impulse boost that eases out quickly
+	local impulseBoost = math.max(0, Config.SlideForwardImpulse or 0)
+	local impulseWindow = math.max(0.01, Config.SlideImpulseSeconds or 0.1)
+
+	-- Reduce friction and hand control to physics for the duration (dash-like behavior)
+	local originalAutoRotate = humanoid.AutoRotate
+	setCharacterFriction(character, 0, 0)
+	humanoid.AutoRotate = false
+	local jumpConn = nil
+
+	-- Control flag for movement loop; set to false on early cancel or natural end
+	local stillSliding = true
+
 	local endSlide = function()
+		-- Stop movement loop immediately
+		stillSliding = false
 		if humanoid and humanoid.Parent then
 			humanoid.WalkSpeed = originalWalkSpeed
 		end
@@ -349,6 +464,15 @@ function Abilities.slide(character)
 		end
 		-- Restore body collisions after slide
 		restoreCharacterCollision(character)
+		-- Restore friction/autorotate
+		humanoid.AutoRotate = originalAutoRotate
+		restoreCharacterFriction(character)
+		if jumpConn then
+			pcall(function()
+				jumpConn:Disconnect()
+			end)
+			jumpConn = nil
+		end
 		-- Stop loop and optionally play end
 		if startTrack then
 			pcall(function()
@@ -362,12 +486,65 @@ function Abilities.slide(character)
 			loopTrack = nil
 		end
 		if endId ~= "" then
-			playTrack(endId, false)
+			playTrack(endId, false, nil)
 		end
 	end
 
 	lastSlideTick = now
-	task.delay(Config.SlideDurationSeconds, endSlide)
+
+	-- Maintain horizontal velocity for the duration while preserving vertical component
+	task.delay(slideDuration, function()
+		stillSliding = false
+		endSlide()
+	end)
+
+	task.spawn(function()
+		local t0 = os.clock()
+		local steerDir = moveDir
+		while stillSliding and (os.clock() - t0) < slideDuration do
+			-- Easing for forward impulse (linear decay)
+			local elapsed = os.clock() - t0
+			local boost = 0
+			if impulseBoost > 0 and elapsed < impulseWindow then
+				local alpha = 1 - math.clamp(elapsed / impulseWindow, 0, 1)
+				boost = impulseBoost * alpha
+			end
+			-- Recompute steering direction from input each frame; fallback to current velocity
+			local input = humanoid.MoveDirection
+			local dir = nil
+			if input.Magnitude > 0.05 then
+				dir = Vector3.new(input.X, 0, input.Z)
+				if dir.Magnitude > 0.01 then
+					dir = dir.Unit
+				end
+			else
+				local v = rootPart.AssemblyLinearVelocity
+				local v2 = Vector3.new(v.X, 0, v.Z)
+				if v2.Magnitude > 0.05 then
+					dir = v2.Unit
+				end
+			end
+			if dir then
+				steerDir = dir
+			end
+			-- Maintain at least the target slide speed; never slow below current horizontal speed
+			local vcur = rootPart.AssemblyLinearVelocity
+			local spdCur = Vector3.new(vcur.X, 0, vcur.Z).Magnitude
+			local spdTarget = math.max(minSlideSpeed, spdCur)
+			local horiz = (steerDir * (spdTarget + boost))
+			-- Keep strictly horizontal movement and suppress vertical to avoid tipping over
+			rootPart.AssemblyLinearVelocity = Vector3.new(horiz.X, 0, horiz.Z)
+			task.wait()
+		end
+	end)
+
+	-- Immediately end slide when a jump begins so vertical physics from jump are not overridden
+	jumpConn = humanoid.StateChanged:Connect(function(_old, new)
+		if new == Enum.HumanoidStateType.Jumping then
+			endSlide()
+		end
+	end)
+
 	return endSlide
 end
 
