@@ -133,6 +133,7 @@ local state = {
 	_crawlOrigRootSize = nil,
 	_proneClearFrames = 0,
 	_airDashResetDone = false,
+	doubleJumpCharges = 0,
 }
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -263,6 +264,13 @@ local function setupCharacter(character)
 				if Abilities and Abilities.resetAirDashCharges then
 					Abilities.resetAirDashCharges(character)
 				end
+				-- Double jump: refill per airtime
+				local maxDJ = Config.DoubleJumpMax or 0
+				if Config.DoubleJumpEnabled and maxDJ > 0 then
+					state.doubleJumpCharges = maxDJ
+				else
+					state.doubleJumpCharges = 0
+				end
 			end
 		elseif new == Enum.HumanoidStateType.Jumping then
 			-- Play one-shot JumpStart, then transition to Jump loop (unless blocked)
@@ -344,6 +352,8 @@ local function setupCharacter(character)
 		elseif new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
 			-- Allow next airtime to reset dash charges again
 			state._airDashResetDone = false
+			-- Double jump tracker cleared on landing
+			state.doubleJumpCharges = 0
 			local root = character:FindFirstChild("HumanoidRootPart")
 			if rollPending and root and lastAirY then
 				local peakY = state._peakAirY or lastAirY
@@ -1127,6 +1137,47 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					else
 						if WallJump.tryJump(character) then
 							state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+							return
+						end
+					end
+				end
+				-- Double Jump: if enabled and charges remain, consume one and apply impulse
+				if Config.DoubleJumpEnabled and (state.doubleJumpCharges or 0) > 0 then
+					if state.stamina.current >= (Config.DoubleJumpStaminaCost or 0) then
+						-- Disallow double jump during zipline/climb/active wallrun/slide
+						if
+							not Zipline.isActive(character)
+							and not Climb.isActive(character)
+							and not WallRun.isActive(character)
+							and not (WallJump.isWallSliding and WallJump.isWallSliding(character))
+						then
+							-- Velocity: keep horizontal, set vertical to desired impulse
+							local v = character.HumanoidRootPart.AssemblyLinearVelocity
+							local horiz = Vector3.new(v.X, 0, v.Z)
+							local vy = math.max(Config.DoubleJumpImpulse or 50, 0)
+							character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(horiz.X, vy, horiz.Z)
+							-- Play optional double jump animation
+							local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+							animator.Parent = humanoid
+							local djAnim = Animations
+								and Animations.get
+								and (Animations.get("DoubleJump") or Animations.get("Jump"))
+							if djAnim then
+								pcall(function()
+									local tr = animator:LoadAnimation(djAnim)
+									if tr then
+										tr.Priority = Enum.AnimationPriority.Action
+										tr.Looped = false
+										tr:Play(0.05, 1, 1.0)
+									end
+								end)
+							end
+							-- Spend resources
+							state.doubleJumpCharges = math.max(0, (state.doubleJumpCharges or 0) - 1)
+							state.stamina.current =
+								math.max(0, state.stamina.current - (Config.DoubleJumpStaminaCost or 0))
+							-- Update style (treat as Jump event)
+							Style.addEvent(state.style, "DoubleJump", 1)
 							return
 						end
 					end

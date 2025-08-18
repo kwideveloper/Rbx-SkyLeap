@@ -21,6 +21,7 @@ local Animations = {
 	JumpStart = "rbxassetid://104518933369704", -- custom jump start animation
 	Jump = "rbxassetid://134519357945550",
 	LandRoll = "rbxassetid://138804567004011", -- landing roll after high fall
+	DoubleJump = "", -- optional; fallback to Jump if empty
 
 	-- Run / Locomotion
 	Run = "rbxassetid://129741854679661",

@@ -30,6 +30,12 @@ Config.DashVfxDuration = 0.2
 Config.DashDurationSeconds = 0.18 -- 0.18
 Config.DashSpeed = 70
 
+-- Double Jump
+Config.DoubleJumpEnabled = true
+Config.DoubleJumpMax = 1 -- extra jumps allowed while airborne
+Config.DoubleJumpStaminaCost = 15
+Config.DoubleJumpImpulse = 50 -- vertical speed applied on double jump
+
 -- Air dash charges (per airtime)
 Config.DashAirChargesDefault = 1
 Config.DashAirChargesMax = 1
