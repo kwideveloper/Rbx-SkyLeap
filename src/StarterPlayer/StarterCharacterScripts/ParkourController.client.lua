@@ -132,6 +132,7 @@ local state = {
 	_crawlOrigJumpHeight = nil,
 	_crawlOrigRootSize = nil,
 	_proneClearFrames = 0,
+	_airDashResetDone = false,
 }
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -255,6 +256,14 @@ local function setupCharacter(character)
 				end)
 				jumpLoopTrack = nil
 			end
+			-- Reset air dash charges once per airtime
+			if not state._airDashResetDone then
+				state._airDashResetDone = true
+				local Abilities = require(ReplicatedStorage.Movement.Abilities)
+				if Abilities and Abilities.resetAirDashCharges then
+					Abilities.resetAirDashCharges(character)
+				end
+			end
 		elseif new == Enum.HumanoidStateType.Jumping then
 			-- Play one-shot JumpStart, then transition to Jump loop (unless blocked)
 			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
@@ -332,9 +341,11 @@ local function setupCharacter(character)
 					end
 				end
 			end
-		elseif (new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running) and rollPending then
+		elseif new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
+			-- Allow next airtime to reset dash charges again
+			state._airDashResetDone = false
 			local root = character:FindFirstChild("HumanoidRootPart")
-			if root and lastAirY then
+			if rollPending and root and lastAirY then
 				local peakY = state._peakAirY or lastAirY
 				local drop = math.max(0, (peakY - root.Position.Y))
 				local cfgDbg = require(ReplicatedStorage.Movement.Config).DebugLandingRoll

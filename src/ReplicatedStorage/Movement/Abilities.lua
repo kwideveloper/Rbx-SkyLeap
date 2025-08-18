@@ -11,6 +11,7 @@ local lastVaultTick = 0
 local lastMantleTick = 0
 local originalPhysByPart = {}
 local dashActive = {}
+local airDashCharges = {} -- [character]=currentCharges
 
 local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -190,6 +191,16 @@ function Abilities.tryDash(character)
 		return false
 	end
 
+	-- Enforce per-airtime dash charges
+	local charges = airDashCharges[character]
+	if charges == nil then
+		charges = Config.DashAirChargesDefault or 1
+		airDashCharges[character] = charges
+	end
+	if (charges or 0) <= 0 then
+		return false
+	end
+
 	-- Fixed-distance dash: set a constant horizontal velocity and zero vertical velocity
 	local moveDir = (humanoid.MoveDirection.Magnitude > 0.05) and humanoid.MoveDirection or rootPart.CFrame.LookVector
 	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
@@ -305,6 +316,9 @@ function Abilities.tryDash(character)
 			task.wait()
 		end
 	end)
+
+	-- Decrement charge (after dash is started)
+	airDashCharges[character] = math.max(0, (airDashCharges[character] or 0) - 1)
 
 	return true
 end
@@ -1924,6 +1938,16 @@ function Abilities.crawlEnd(character)
 	if Config and Config.DebugProne then
 		print("[Crawl] end -> collisions restored")
 	end
+end
+
+function Abilities.resetAirDashCharges(character)
+	airDashCharges[character] = Config.DashAirChargesDefault or 1
+end
+
+function Abilities.addAirDashCharge(character, amount)
+	local cur = airDashCharges[character] or 0
+	local maxC = Config.DashAirChargesMax or (Config.DashAirChargesDefault or 1)
+	airDashCharges[character] = math.min(maxC, cur + (amount or 1))
 end
 
 return Abilities

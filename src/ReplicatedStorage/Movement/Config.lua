@@ -30,6 +30,10 @@ Config.DashVfxDuration = 0.2
 Config.DashDurationSeconds = 0.18 -- 0.18
 Config.DashSpeed = 70
 
+-- Air dash charges (per airtime)
+Config.DashAirChargesDefault = 1
+Config.DashAirChargesMax = 1
+
 -- Slide
 Config.SlideDurationSeconds = 0.5
 -- Distance-based ground slide: total horizontal distance traveled over the slide duration
