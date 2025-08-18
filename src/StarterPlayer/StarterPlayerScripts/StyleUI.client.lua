@@ -23,17 +23,6 @@ screenGui.ResetOnSpawn = false
 
 local root = screenGui:WaitForChild("Root")
 
-do
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = root
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1
-	stroke.Color = Color3.fromRGB(70, 140, 255)
-	stroke.Transparency = 0.25
-	stroke.Parent = root
-end
-
 local title = root:FindFirstChild("Title")
 
 local styleFrame = root:FindFirstChild("Style")
@@ -44,66 +33,65 @@ do
 	scoreLabel = scope:FindFirstChild("Score")
 end
 
-local comboFrame = root:FindFirstChild("Combo")
+local comboContainer = root:FindFirstChild("Combo")
+local comboFrame = comboContainer and (comboContainer:FindFirstChild("Frame") or comboContainer)
 
-local multLabel = comboFrame:FindFirstChild("Multiplier")
+local multLabel = comboFrame and comboFrame:FindFirstChild("Multiplier")
+local comboLabel = comboFrame and comboFrame:FindFirstChild("Combo")
+-- Bind existing ComboRing only (do not create UI)
+local comboRing = (comboFrame and comboFrame:FindFirstChild("ComboRing")) or nil
 
-local comboLabel = comboFrame:FindFirstChild("Combo")
-
--- Compact combo timeout ring at top-right of root
-local comboRing = root:FindFirstChild("ComboRing")
-local comboRingTicks = {}
-local TOTAL_TICKS = 12
-if not comboRing then
-	comboRing = Instance.new("Frame")
-	comboRing.Name = "ComboRing"
-	comboRing.Size = UDim2.new(0, 26, 0, 26)
-	comboRing.Position = UDim2.new(1, -34, 0, 6)
-	comboRing.BackgroundTransparency = 1
-	comboRing.Parent = root
-	-- Background ring stroke
-	local bg = Instance.new("Frame")
-	bg.Name = "Bg"
-	bg.Size = UDim2.new(1, 0, 1, 0)
-	bg.BackgroundTransparency = 1
-	bg.Parent = comboRing
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.fromRGB(40, 60, 90)
-	stroke.Transparency = 0.3
-	stroke.Parent = bg
-	-- Build tick holders
-	for i = 1, TOTAL_TICKS do
-		local holder = Instance.new("Frame")
-		holder.Name = "H" .. i
-		holder.Size = UDim2.new(1, 0, 1, 0)
-		holder.BackgroundTransparency = 1
-		holder.Rotation = (i - 1) * (360 / TOTAL_TICKS)
-		holder.Parent = comboRing
-		local tick = Instance.new("Frame")
-		tick.Name = "T"
-		tick.AnchorPoint = Vector2.new(0.5, 0)
-		tick.Position = UDim2.new(0.5, 0, 0, 2)
-		tick.Size = UDim2.new(0, 3, 0, 7)
-		tick.BackgroundColor3 = Color3.fromRGB(120, 220, 255)
-		tick.BorderSizePixel = 0
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(1, 0)
-		corner.Parent = tick
-		tick.Parent = holder
-		comboRingTicks[i] = tick
+-- Detect ring structure (ticks vs pie masks) without creating anything
+local ringMode = nil -- "ticks" | "pie" | nil
+local ringTicks = nil
+local maskLeft, maskRight, fillLeft, fillRight = nil, nil, nil, nil
+local function bindComboRing()
+	ringMode = nil
+	ringTicks = nil
+	maskLeft, maskRight, fillLeft, fillRight = nil, nil, nil, nil
+	comboContainer = root:FindFirstChild("Combo")
+	comboFrame = comboContainer and (comboContainer:FindFirstChild("Frame") or comboContainer)
+	-- Prefer ring directly under Combo (as in your template); fallback to under Frame
+	comboRing = (comboContainer and comboContainer:FindFirstChild("ComboRing"))
+		or (comboFrame and comboFrame:FindFirstChild("ComboRing"))
+	if not comboRing then
+		return
 	end
-else
-	-- Rebind existing ticks if present
-	comboRingTicks = {}
-	for i = 1, TOTAL_TICKS do
-		local h = comboRing:FindFirstChild("H" .. i)
-		local t = h and h:FindFirstChild("T")
-		if t then
-			comboRingTicks[i] = t
+	-- Try ticks pattern: children H1..Hn; each H may contain a child tick named T/Tick, or be the tick itself
+	local pairsList = {}
+	for _, child in ipairs(comboRing:GetChildren()) do
+		if typeof(child.Name) == "string" and child.Name:match("^H%d+") then
+			local num = tonumber(child.Name:match("^H(%d+)") or "") or 0
+			local tick = child:FindFirstChild("T") or child:FindFirstChild("Tick") or child
+			table.insert(pairsList, { idx = num, inst = tick })
 		end
 	end
+	if #pairsList > 0 then
+		table.sort(pairsList, function(a, b)
+			return (a.idx or 0) < (b.idx or 0)
+		end)
+		local ticks = {}
+		for _, it in ipairs(pairsList) do
+			table.insert(ticks, it.inst)
+		end
+		ringMode = "ticks"
+		ringTicks = ticks
+		return
+	end
+	-- Try pie masks pattern
+	maskLeft = comboRing:FindFirstChild("MaskLeft")
+	maskRight = comboRing:FindFirstChild("MaskRight")
+	fillLeft = maskLeft and maskLeft:FindFirstChild("Fill") or nil
+	fillRight = maskRight and maskRight:FindFirstChild("Fill") or nil
+	if maskLeft and maskRight and fillLeft and fillRight then
+		ringMode = "pie"
+		return
+	end
+	-- Otherwise unsupported template
+	ringMode = nil
 end
+
+bindComboRing()
 
 local baseTextSize = setmetatable({}, { __mode = "k" })
 local function tweenTextBump(label)
@@ -156,6 +144,16 @@ local function getScoreAnchor()
 	return UDim2.fromOffset(screenGui.AbsoluteSize.X * 0.5, 40)
 end
 
+local function getScoreBelowAnchor()
+	if scoreLabel then
+		local p = scoreLabel.AbsolutePosition
+		local s = scoreLabel.AbsoluteSize
+		-- bottom-center of the score label, with a small gap below
+		return UDim2.fromOffset(p.X + (s.X * 0.5), p.Y + s.Y + 6)
+	end
+	return getScoreAnchor()
+end
+
 local function spawnScoreFly(text)
 	local fly = Instance.new("TextLabel")
 	fly.Name = "FlyScore"
@@ -164,21 +162,21 @@ local function spawnScoreFly(text)
 	fly.Font = Enum.Font.GothamBlack
 	fly.TextSize = 28
 	fly.TextColor3 = Color3.fromRGB(255, 230, 120)
-	fly.AnchorPoint = Vector2.new(0.5, 0.5)
-	fly.Position = getScoreAnchor()
+	fly.AnchorPoint = Vector2.new(0.5, 0.0)
+	fly.Position = getScoreBelowAnchor()
 	fly.Parent = screenGui
-	-- First rise up slowly, then fly to leaderboard
-	local rise = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	-- First drop slightly (downwards), then fly to leaderboard
+	local drop = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local target = getLeaderboardAnchor()
-	local afterRisePos = UDim2.fromOffset(fly.Position.X.Offset, fly.Position.Y.Offset - 22)
-	TweenService:Create(fly, rise, { Position = afterRisePos, TextTransparency = 0 }):Play()
-	task.delay(0.36, function()
+	local afterDropPos = UDim2.fromOffset(fly.Position.X.Offset, fly.Position.Y.Offset + 22)
+	TweenService:Create(fly, drop, { Position = afterDropPos, TextTransparency = 0 }):Play()
+	task.delay(drop.Time + 0.01, function()
 		local flyInfo = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 		TweenService:Create(fly, flyInfo, { Position = target, TextTransparency = 0.1 }):Play()
-		task.delay(0.56, function()
+		task.delay(flyInfo.Time + 0.01, function()
 			local out = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			TweenService:Create(fly, out, { TextTransparency = 1 }):Play()
-			task.delay(0.26, function()
+			task.delay(out.Time + 0.01, function()
 				fly:Destroy()
 			end)
 		end)
@@ -229,7 +227,7 @@ local function spawnComboPopup(text, amount)
 	-- Randomized diagonal travel
 	local dirX = (math.random(0, 1) == 0) and -1 or 1
 	local travelX = dirX * math.random(40, 100) -- px
-	local travelY = -math.random(80, 160) -- upwards
+	local travelY = math.random(80, 160) -- downwards
 
 	local p1 = UDim2.new(
 		label.Position.X.Scale,
@@ -358,25 +356,58 @@ local function step()
 	lastCombo = combo
 	lastMult = mult
 
-	-- Update ring ticks based on remaining time
-	if comboRing and comboRingTicks and comboRemainV and comboMaxV then
+	-- Update ring based on remaining time
+	-- Rebind if UI got replaced or ring not yet bound
+	if (not comboRing) or not comboRing.Parent then
+		bindComboRing()
+	end
+	if comboRing and comboRemainV and comboMaxV then
 		local max = (comboMaxV.Value or 3)
 		local remain = (comboRemainV.Value or 0)
 		if combo > 0 and max > 0 then
 			comboRing.Visible = true
 			local t = math.clamp(remain / max, 0, 1)
-			local lit = math.clamp(math.floor(t * TOTAL_TICKS + 0.5), 0, TOTAL_TICKS)
-			for i = 1, TOTAL_TICKS do
-				local tick = comboRingTicks[i]
-				if tick then
-					if i <= lit then
-						tick.BackgroundColor3 = colorForTimerRatio(t)
-						tick.BackgroundTransparency = 0
-					else
-						tick.BackgroundColor3 = Color3.fromRGB(80, 90, 120)
-						tick.BackgroundTransparency = 0.5
+			local col = colorForTimerRatio(t)
+			if not ringMode then
+				bindComboRing()
+			end
+			if ringMode == "ticks" and ringTicks then
+				local TOTAL_TICKS = #ringTicks
+				local lit = math.clamp(math.floor(t * TOTAL_TICKS + 0.5), 0, TOTAL_TICKS)
+				for i = 1, TOTAL_TICKS do
+					local tick = ringTicks[i]
+					if tick then
+						if i <= lit then
+							pcall(function()
+								if tick:IsA("ImageLabel") or tick:IsA("ImageButton") then
+									tick.ImageColor3 = col
+									tick.BackgroundTransparency = 1
+								else
+									tick.BackgroundColor3 = col
+									tick.BackgroundTransparency = 0
+								end
+							end)
+						else
+							pcall(function()
+								if tick:IsA("ImageLabel") or tick:IsA("ImageButton") then
+									tick.ImageColor3 = Color3.fromRGB(80, 90, 120)
+									tick.BackgroundTransparency = 1
+								else
+									tick.BackgroundColor3 = Color3.fromRGB(80, 90, 120)
+									tick.BackgroundTransparency = 0.5
+								end
+							end)
+						end
 					end
 				end
+			elseif ringMode == "pie" and fillLeft and fillRight then
+				local angle = t * 360
+				local rightAngle = math.clamp(angle, 0, 180)
+				local leftAngle = math.clamp(angle - 180, 0, 180)
+				fillRight.Rotation = rightAngle - 90
+				fillLeft.Rotation = leftAngle - 90
+				fillRight.BackgroundColor3 = col
+				fillLeft.BackgroundColor3 = col
 			end
 		else
 			comboRing.Visible = false

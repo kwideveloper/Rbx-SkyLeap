@@ -55,6 +55,26 @@ function Abilities.isDashReady()
 	return (now - lastDashTick) >= Config.DashCooldownSeconds
 end
 
+-- Full availability check for dash (cooldown + airborne + remaining air charges)
+function Abilities.isDashAvailable(character)
+	local now = os.clock()
+	if (now - lastDashTick) < (Config.DashCooldownSeconds or 0) then
+		return false
+	end
+	local rootPart, humanoid = getCharacterParts(character)
+	if not rootPart or not humanoid then
+		return false
+	end
+	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		return false
+	end
+	local charges = airDashCharges[character]
+	if charges == nil then
+		charges = Config.DashAirChargesDefault or 1
+	end
+	return (charges or 0) > 0
+end
+
 function Abilities.isSlideReady()
 	local now = os.clock()
 	return (now - lastSlideTick) >= (Config.SlideCooldownSeconds or 0)

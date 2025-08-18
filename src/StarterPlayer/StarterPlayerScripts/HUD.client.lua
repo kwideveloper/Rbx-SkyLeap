@@ -128,6 +128,10 @@ local function getClientState()
 		folder and folder:FindFirstChild("IsAirborne") or nil,
 		folder and folder:FindFirstChild("IsWallRunning") or nil,
 		folder and folder:FindFirstChild("IsWallSliding") or nil,
+		folder and folder:FindFirstChild("IsVaulting") or nil,
+		folder and folder:FindFirstChild("IsMantling") or nil,
+		folder and folder:FindFirstChild("IsClimbing") or nil,
+		folder and folder:FindFirstChild("IsZiplining") or nil,
 		folder and folder:FindFirstChild("BunnyHopStacks") or nil,
 		folder and folder:FindFirstChild("BunnyHopFlash") or nil
 end
@@ -163,7 +167,7 @@ local function update()
 			return
 		end
 	end
-	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning, isWallSliding, bhStacks, bhFlash =
+	local folder, staminaValue, speedValue, isSprinting, isSliding, isAirborne, isWallRunning, isWallSliding, isVaulting, isMantling, isClimbing, isZiplining, bhStacks, bhFlash =
 		getClientState()
 	if not folder then
 		return
@@ -190,10 +194,25 @@ local function update()
 
 	-- Icons enabled/disabled based on stamina, state, and cooldowns
 	local Abilities = require(ReplicatedStorage.Movement.Abilities)
-	local canDash = staminaCurrent >= (C.DashStaminaCost or 0)
-		and Abilities.isDashReady()
-		and not (isWallRunning and isWallRunning.Value)
-		and not (isWallSliding and isWallSliding.Value)
+	local canDash = false
+	do
+		local character = game:GetService("Players").LocalPlayer.Character
+		if character and staminaCurrent >= (C.DashStaminaCost or 0) then
+			local blocked = false
+			if (isWallRunning and isWallRunning.Value) or (isWallSliding and isWallSliding.Value) then
+				blocked = true
+			end
+			if (isVaulting and isVaulting.Value) or (isMantling and isMantling.Value) then
+				blocked = true
+			end
+			if (isClimbing and isClimbing.Value) or (isZiplining and isZiplining.Value) then
+				blocked = true
+			end
+			if (not blocked) and Abilities.isDashAvailable and Abilities.isDashAvailable(character) then
+				canDash = true
+			end
+		end
+	end
 	local canSlide = (isSprinting and isSprinting.Value)
 		and staminaCurrent >= (C.SlideStaminaCost or 0)
 		and Abilities.isSlideReady()
