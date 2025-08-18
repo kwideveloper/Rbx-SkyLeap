@@ -46,6 +46,9 @@ local Animations = {
 
 	-- Crouch / Prone (hold Z)
 	Crouch = "rbxassetid://75303378392203",
+	-- Optional split variants; if left empty, code will fallback to `Crouch`
+	CrouchIdle = "",
+	CrouchMove = "rbxassetid://75303378392203",
 }
 
 -- Internal cache of Animation instances by name

@@ -717,9 +717,15 @@ end)
 -- Ensure camera align caches base motors on spawn
 -- (Removed CameraAlign setup; head tracking handled by HeadTracking.client.lua)
 
-local function tryPlayProneAnimation(humanoid)
+local function tryPlayProneAnimation(humanoid, key)
 	-- Prefer configured Crouch animation from Animations registry
-	local anim = Animations and Animations.get and Animations.get("Crouch") or nil
+	local anim = nil
+	if key and Animations and Animations.get then
+		anim = Animations.get(key)
+	end
+	if not anim then
+		anim = Animations and Animations.get and Animations.get("Crouch") or nil
+	end
 	if not anim then
 		-- Fallback: legacy folder-based animations if present
 		local rs = game:GetService("ReplicatedStorage")
@@ -797,7 +803,26 @@ local function startCrawl(character)
 		end)
 		state.proneTrack = nil
 	end
-	state.proneTrack = tryPlayProneAnimation(humanoid)
+	local desiredKey = nil
+	do
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local moving = false
+		if root then
+			local v = root.AssemblyLinearVelocity
+			local horiz = Vector3.new(v.X, 0, v.Z)
+			local threshold = Config.CrawlAnimMoveThreshold or 0.1
+			moving = (horiz.Magnitude > threshold)
+		end
+		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
+			desiredKey = "CrouchMove"
+		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
+			desiredKey = "CrouchIdle"
+		else
+			desiredKey = "Crouch"
+		end
+	end
+	state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
+	state.proneTrackKey = desiredKey
 	if state.proneTrack then
 		state.proneTrack.Looped = true
 	end
@@ -867,7 +892,26 @@ local function enterProne(character)
 		end)
 		state.proneTrack = nil
 	end
-	state.proneTrack = tryPlayProneAnimation(humanoid)
+	local desiredKey = nil
+	do
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local moving = false
+		if root then
+			local v = root.AssemblyLinearVelocity
+			local horiz = Vector3.new(v.X, 0, v.Z)
+			local threshold = Config.CrawlAnimMoveThreshold or 0.1
+			moving = (horiz.Magnitude > threshold)
+		end
+		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
+			desiredKey = "CrouchMove"
+		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
+			desiredKey = "CrouchIdle"
+		else
+			desiredKey = "Crouch"
+		end
+	end
+	state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
+	state.proneTrackKey = desiredKey
 	state.proneActive = true
 end
 
@@ -893,6 +937,7 @@ local function exitProne(character)
 		end)
 		state.proneTrack = nil
 	end
+	state.proneTrackKey = nil
 	state.proneActive = false
 	state.proneOriginalWalkSpeed = nil
 	state.proneOriginalHipHeight = nil
@@ -1408,6 +1453,36 @@ RunService.RenderStepped:Connect(function(dt)
 	if not state.sliding then
 		if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
+		end
+	end
+
+	-- Swap crouch animations based on movement (idle vs move variants)
+	if state.proneTrack and (state.crawling or state.proneActive) then
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local moving = false
+		if root then
+			local v = root.AssemblyLinearVelocity
+			local horiz = Vector3.new(v.X, 0, v.Z)
+			local threshold = Config.CrawlAnimMoveThreshold or 0.1
+			moving = (horiz.Magnitude > threshold)
+		end
+		local desiredKey
+		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
+			desiredKey = "CrouchMove"
+		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
+			desiredKey = "CrouchIdle"
+		else
+			desiredKey = "Crouch"
+		end
+		if desiredKey ~= state.proneTrackKey then
+			pcall(function()
+				state.proneTrack:Stop(0.1)
+			end)
+			state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
+			if state.proneTrack then
+				state.proneTrack.Looped = true
+			end
+			state.proneTrackKey = desiredKey
 		end
 	end
 
