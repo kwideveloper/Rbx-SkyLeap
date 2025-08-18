@@ -25,6 +25,17 @@ local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
 local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
 -- Helper to check vertical clearance to stand from crawl
+local function buildPlayerCharacterExcludeList(selfCharacter)
+	local list = { selfCharacter }
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local ch = plr.Character
+		if ch and ch ~= selfCharacter then
+			table.insert(list, ch)
+		end
+	end
+	return list
+end
+
 local function hasClearanceToStand(character)
 	local torso = character
 		and (
@@ -40,7 +51,7 @@ local function hasClearanceToStand(character)
 	local up = Vector3.yAxis
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character }
+	params.FilterDescendantsInstances = buildPlayerCharacterExcludeList(character)
 	params.IgnoreWater = true
 	local clearance = Config.CrawlStandUpHeight or 2
 	-- Raycast: start a hair below the torso top to avoid starting inside a roof
@@ -54,7 +65,7 @@ local function hasClearanceToStand(character)
 	if not hit then
 		local overlap = OverlapParams.new()
 		overlap.FilterType = Enum.RaycastFilterType.Exclude
-		overlap.FilterDescendantsInstances = { character }
+		overlap.FilterDescendantsInstances = buildPlayerCharacterExcludeList(character)
 		overlap.RespectCanCollide = true
 		local baseSize = (root and root.Size) or sensor.Size or Vector3.new(2, 2, 1)
 		-- Use narrow sideways width and very shallow forward depth so front walls don't count as overhead

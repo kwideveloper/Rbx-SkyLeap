@@ -3,8 +3,8 @@
 local Config = {}
 
 -- Core humanoid speeds
-Config.BaseWalkSpeed = 30 -- 20
-Config.SprintWalkSpeed = 60 -- 30
+Config.BaseWalkSpeed = 25 -- 20
+Config.SprintWalkSpeed = 50 -- 30
 -- Sprint acceleration ramp
 Config.SprintAccelSeconds = 0.60 -- 0.45 time to reach full sprint speed
 Config.SprintDecelSeconds = 0.25 -- 0.20 time to return to base speed (when releasing sprint)
@@ -167,7 +167,7 @@ Config.BunnyHopDirectionCarry = 0 -- INSTA REDIRECT=0 | 0..1 how much to preserv
 Config.BunnyHopOppositeCancel = 1 -- 0..1 how much to cancel backward component vs desired direction on hop
 Config.BunnyHopPerpDampOnFlip = 1 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
 -- Hard reorientation on hop: completely retarget horizontal velocity to desired direction, preserving magnitude
-Config.BunnyHopReorientHard = true
+Config.BunnyHopReorientHard = false
 Config.BunnyHopLockSeconds = 0.6 -- brief window to lock horizontal velocity to the reoriented vector
 Config.BunnyHopMaxAddPerHop = 5 -- studs/s maximum speed added in a single hop
 Config.BunnyHopTotalSpeedCap = 85 -- studs/s horizontal cap after applying hop (fallbacks to AirControlTotalSpeedCap)
@@ -272,7 +272,7 @@ Config.MantleMinAboveWaist = 0 -- 0
 Config.MantleMaxAboveWaist = 10
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
-Config.MantleDurationSeconds = 0.22 -- baseline; may be overridden by preserve-speed
+Config.MantleDurationSeconds = 0.35 -- 0.22 -- baseline; may be overridden by preserve-speed
 Config.MantlePreserveSpeed = true
 Config.MantleMinHorizontalSpeed = 24 -- studs/s floor while mantling
 Config.MantleCooldownSeconds = 0.35
