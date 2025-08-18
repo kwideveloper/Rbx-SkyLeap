@@ -63,6 +63,12 @@ Config.ProneWalkSpeed = 8
 Config.ProneHipHeightDelta = -2.2
 Config.ProneCameraOffsetY = -2.5
 Config.DebugProne = false
+-- Crouch clearance probe (reduces false positives against front walls)
+Config.CrawlStandProbeSideWidth = 0.8 -- studs, sideways width of clearance box
+Config.CrawlStandProbeForwardDepth = 0.25 -- studs, forward depth of clearance box (keep small to ignore front walls)
+-- Obstacle local-collision toggles during vault/mantle (safer default: don't modify obstacles)
+Config.VaultDisableObstacleLocal = false
+Config.MantleDisableObstacleLocal = false
 -- Crawl geometry/speed
 Config.CrawlRootHeight = 0 -- studs height for HumanoidRootPart while crawling
 Config.CrawlSpeed = 8
@@ -233,8 +239,9 @@ Config.VaultMinHeight = 3 -- studs above feet
 Config.VaultMaxHeight = 5 -- studs above feet
 Config.VaultMinSpeed = 24 -- require decent speed (sprinting)
 Config.VaultUpBoost = 0
-Config.VaultForwardBoost = 40 -- 26
-Config.VaultDurationSeconds = 0.25 -- 0.35
+Config.VaultForwardBoost = 40 -- base minimum forward speed to ensure clearance
+Config.VaultDurationSeconds = 0.18 -- shorter for snappier feel
+Config.VaultPreserveSpeed = true -- preserve current horizontal speed if higher than base
 Config.VaultCooldownSeconds = 0.6
 -- Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Lazy", "Vault_Kong", "Vault_Dash", "Vault_TwoHanded" }
 Config.VaultAnimationKeys = { "Vault_Speed" }
@@ -249,8 +256,8 @@ Config.VaultUpMin = 8
 Config.VaultUpMax = 26
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
-Config.VaultAlignBlendSeconds = 0.12
-Config.VaultAlignHoldSeconds = 0.08
+Config.VaultAlignBlendSeconds = 0.06
+Config.VaultAlignHoldSeconds = 0.0
 Config.VaultUseGroundHeight = true -- if true, measure obstacle height from ground under player instead of HRP feet
 Config.VaultApproachSpeedMin = 6
 Config.VaultFacingDotMin = 0.35
@@ -262,10 +269,12 @@ Config.MantleEnabled = true
 Config.MantleDetectionDistance = 4 -- 4.5 -- forward ray distance to detect a ledge
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
 Config.MantleMinAboveWaist = 0 -- 0
-Config.MantleMaxAboveWaist = 8
+Config.MantleMaxAboveWaist = 10
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
-Config.MantleDurationSeconds = 0.3 -- time to blend the movement
+Config.MantleDurationSeconds = 0.22 -- baseline; may be overridden by preserve-speed
+Config.MantlePreserveSpeed = true
+Config.MantleMinHorizontalSpeed = 24 -- studs/s floor while mantling
 Config.MantleCooldownSeconds = 0.35
 Config.MantleStaminaCost = 10
 -- Mantle approach gating: require facing and velocity towards wall
@@ -280,6 +289,7 @@ Config.MantleSpeedRelaxFactor = 0.4
 
 -- Trails
 Config.TrailEnabled = true
+Config.TrailBodyPartName = "UpperTorso" -- fallback to "Torso" then HRP
 Config.TrailAttachmentNameA = "TrailA"
 Config.TrailAttachmentNameB = "TrailB"
 Config.TrailBaseTransparency = 0.6

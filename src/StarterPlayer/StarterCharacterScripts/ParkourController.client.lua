@@ -57,8 +57,13 @@ local function hasClearanceToStand(character)
 		overlap.FilterDescendantsInstances = { character }
 		overlap.RespectCanCollide = true
 		local baseSize = (root and root.Size) or sensor.Size or Vector3.new(2, 2, 1)
-		local size = Vector3.new(math.max(0.6, baseSize.X * 0.7), boxSizeY, math.max(0.6, baseSize.Z * 0.7))
-		local center = Vector3.new(sensor.Position.X, boxCenterY, sensor.Position.Z)
+		-- Use narrow sideways width and very shallow forward depth so front walls don't count as overhead
+		local side = Config.CrawlStandProbeSideWidth or math.max(0.6, baseSize.X * 0.4)
+		local depth = Config.CrawlStandProbeForwardDepth or 0.25
+		local size = Vector3.new(math.max(0.4, side), boxSizeY, math.max(0.2, depth))
+		-- Slightly pull the probe back towards the character's center to avoid entering the front wall
+		local back = -sensor.CFrame.LookVector
+		local center = Vector3.new(sensor.Position.X, boxCenterY, sensor.Position.Z) + (back * (depth * 0.5))
 		local parts = workspace:GetPartBoundsInBox(CFrame.new(center), size, overlap)
 		boxCount = parts and #parts or 0
 		boxBlocked = (boxCount > 0)
@@ -1732,6 +1737,13 @@ RunService.RenderStepped:Connect(function(dt)
 		anyActionActive = true
 	end
 	if not anyActionActive then
+		-- Safety: ensure collisions are restored after any action that might have disabled them
+		pcall(function()
+			local Abilities = require(ReplicatedStorage.Movement.Abilities)
+			if Abilities and Abilities.ensureCollisions then
+				Abilities.ensureCollisions(character)
+			end
+		end)
 		-- Restore autorotate if disabled by previous action
 		if humanoid.AutoRotate == false then
 			humanoid.AutoRotate = true

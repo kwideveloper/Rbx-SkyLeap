@@ -74,10 +74,32 @@ end
 
 -- Collision toggling for vault
 local originalCollisionByPart = {}
+local _collisionDisableCount = {}
+
+local function pushCollisionLayer(character)
+	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
+	local stack = originalCollisionByPart[character]
+	local layer = {}
+	table.insert(stack, layer)
+	return layer
+end
+
+local function popCollisionLayer(character)
+	local stack = originalCollisionByPart[character]
+	if not stack or #stack == 0 then
+		return nil
+	end
+	local layer = stack[#stack]
+	stack[#stack] = nil
+	if #stack == 0 then
+		originalCollisionByPart[character] = nil
+	end
+	return layer
+end
 
 local function disableCharacterCollision(character)
-	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
-	local store = originalCollisionByPart[character]
+	_collisionDisableCount[character] = (_collisionDisableCount[character] or 0) + 1
+	local store = pushCollisionLayer(character)
 	for _, part in ipairs(character:GetDescendants()) do
 		if part:IsA("BasePart") then
 			if store[part] == nil then
@@ -89,7 +111,13 @@ local function disableCharacterCollision(character)
 end
 
 local function restoreCharacterCollision(character)
-	local store = originalCollisionByPart[character]
+	if _collisionDisableCount[character] and _collisionDisableCount[character] > 0 then
+		_collisionDisableCount[character] = _collisionDisableCount[character] - 1
+		if _collisionDisableCount[character] > 0 then
+			return
+		end
+	end
+	local store = popCollisionLayer(character)
 	if not store then
 		return
 	end
@@ -98,13 +126,34 @@ local function restoreCharacterCollision(character)
 			part.CanCollide = prev
 		end
 	end
-	originalCollisionByPart[character] = nil
+	if _collisionDisableCount[character] and _collisionDisableCount[character] <= 0 then
+		_collisionDisableCount[character] = nil
+	end
+end
+
+-- Public safeguard: ensure collisions are restored for a character
+function Abilities.ensureCollisions(character)
+	-- If we have any stored layers, pop all and restore
+	while true do
+		local stack = originalCollisionByPart[character]
+		if not stack or #stack == 0 then
+			break
+		end
+		local store = popCollisionLayer(character)
+		if store then
+			for part, prev in pairs(store) do
+				if part and part:IsA("BasePart") then
+					part.CanCollide = prev
+				end
+			end
+		end
+	end
+	_collisionDisableCount[character] = nil
 end
 
 -- For slide: only torso collides; disable hands/feet/limbs collisions to prevent snagging the floor
 local function setSlideCollisionMask(character)
-	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
-	local store = originalCollisionByPart[character]
+	local store = pushCollisionLayer(character)
 	local torsoWhitelist = { UpperTorso = true, LowerTorso = true, Torso = true }
 	for _, d in ipairs(character:GetDescendants()) do
 		if d:IsA("BasePart") then
@@ -123,7 +172,7 @@ end
 local function beginActionCollider(character, heightY, name)
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid or not heightY or heightY <= 0 then
-		return function() end
+		return nil
 	end
 	-- Do not modify character collisions; this is a non-colliding helper aligned to HRP bottom
 	local hrp = rootPart
@@ -1135,10 +1184,12 @@ function Abilities.tryMantle(character)
 		end
 		gather(obstaclePart)
 		pcall(function()
-			for _, p in ipairs(obstacleParts) do
-				obstaclePrevByPart[p] = { collide = p.CanCollide, touch = p.CanTouch }
-				p.CanCollide = false
-				p.CanTouch = false
+			if Config.MantleDisableObstacleLocal ~= false then
+				for _, p in ipairs(obstacleParts) do
+					obstaclePrevByPart[p] = { collide = p.CanCollide, touch = p.CanTouch }
+					p.CanCollide = false
+					p.CanTouch = false
+				end
 			end
 		end)
 	end
@@ -1161,13 +1212,25 @@ function Abilities.tryMantle(character)
 	probeParams.FilterType = Enum.RaycastFilterType.Exclude
 	probeParams.FilterDescendantsInstances = { root.Parent }
 	probeParams.IgnoreWater = true
+	local preserveSpeed = Config.MantlePreserveSpeed
+	local minHz = Config.MantleMinHorizontalSpeed or 0
 	task.spawn(function()
 		-- Phase 1: vertical lift with edge detection (do not break early)
 		local t0 = os.clock()
 		local edgeDetected = false
 		while active do
 			local alpha = math.clamp((os.clock() - t0) / math.max(0.001, tLift), 0, 1)
-			root.AssemblyLinearVelocity = Vector3.new()
+			-- maintain horizontal speed if requested
+			if preserveSpeed then
+				local v = root.AssemblyLinearVelocity
+				local horiz = Vector3.new(v.X, 0, v.Z)
+				local dir = (horiz.Magnitude > 0.01) and horiz.Unit
+					or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+				local spd = math.max(horiz.Magnitude, minHz)
+				root.AssemblyLinearVelocity = Vector3.new(dir.X * spd, 0, dir.Z * spd)
+			else
+				root.AssemblyLinearVelocity = Vector3.new()
+			end
 			root.CFrame = startCF:Lerp(liftCF, alpha)
 			-- Detect edge: when forward ray stops hitting, precompute landing exactly at MantleForwardOffset from contact
 			if not edgeDetected then
@@ -1200,7 +1263,15 @@ function Abilities.tryMantle(character)
 		local t1 = os.clock()
 		while active do
 			local alpha = math.clamp((os.clock() - t1) / math.max(0.001, tFwd), 0, 1)
-			root.AssemblyLinearVelocity = Vector3.new()
+			if preserveSpeed then
+				local v = root.AssemblyLinearVelocity
+				local horiz = Vector3.new(v.X, 0, v.Z)
+				local dir = (horiz.Magnitude > 0.01) and horiz.Unit or intoPlatform
+				local spd = math.max(horiz.Magnitude, minHz)
+				root.AssemblyLinearVelocity = Vector3.new(dir.X * spd, 0, dir.Z * spd)
+			else
+				root.AssemblyLinearVelocity = Vector3.new()
+			end
 			root.CFrame = liftCF:Lerp(finalCFCurrent, alpha)
 			if alpha >= 1 then
 				break
@@ -1211,30 +1282,26 @@ function Abilities.tryMantle(character)
 		active = false
 		restoreCharacterCollision(character)
 		-- Restore obstacle collision/touch locally
-		pcall(function()
-			for part, prev in pairs(obstaclePrevByPart) do
-				if part and part.Parent then
-					if prev.collide ~= nil then
-						part.CanCollide = prev.collide
-					end
-					if prev.touch ~= nil then
-						part.CanTouch = prev.touch
-					end
+		for part, prev in pairs(obstaclePrevByPart) do
+			if part and part.Parent then
+				if prev.collide ~= nil then
+					part.CanCollide = prev.collide
+				end
+				if prev.touch ~= nil then
+					part.CanTouch = prev.touch
 				end
 			end
-		end)
-		if humanoid and humanoid.Parent then
-			-- Restore previous state as safely as possible
-			humanoid.AutoRotate = prevAutoRotate
-			local grounded = (humanoid.FloorMaterial ~= Enum.Material.Air)
-			if grounded then
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
-				if typeof(prevWalkSpeed) == "number" and prevWalkSpeed > 0 then
-					humanoid.WalkSpeed = prevWalkSpeed
-				end
-			else
-				humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+		end
+		-- Restore previous state as safely as possible
+		humanoid.AutoRotate = prevAutoRotate
+		local grounded = (humanoid.FloorMaterial ~= Enum.Material.Air)
+		if grounded then
+			humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			if typeof(prevWalkSpeed) == "number" and prevWalkSpeed > 0 then
+				humanoid.WalkSpeed = prevWalkSpeed
 			end
+		else
+			humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 		end
 		-- Stop mantle track shortly after
 		if track then
@@ -1245,6 +1312,32 @@ function Abilities.tryMantle(character)
 			end)
 		end
 		-- Clear mantling flag at end
+		pcall(function()
+			local rs = game:GetService("ReplicatedStorage")
+			local cs = rs:FindFirstChild("ClientState")
+			local flag = cs and cs:FindFirstChild("IsMantling")
+			if flag then
+				flag.Value = false
+			end
+		end)
+	end)
+
+	-- Hard failsafe: ensure cleanup runs even if animations/events are interrupted
+	task.delay((Config.MantleDurationSeconds or 0.22) + 0.6, function()
+		-- If any collision layers remain or mantle flag is still set, force-restore
+		pcall(function()
+			restoreCharacterCollision(character)
+		end)
+		for part, prev in pairs(obstaclePrevByPart) do
+			if part and part.Parent then
+				if prev.collide ~= nil then
+					part.CanCollide = prev.collide
+				end
+				if prev.touch ~= nil then
+					part.CanTouch = prev.touch
+				end
+			end
+		end
 		pcall(function()
 			local rs = game:GetService("ReplicatedStorage")
 			local cs = rs:FindFirstChild("ClientState")
@@ -1503,6 +1596,15 @@ function Abilities.tryVault(character)
 		forwardGain = (Config.VaultForwardGainPerHeight or 2.5) * needUp
 	end
 	local forward = root.CFrame.LookVector * (forwardBase + forwardGain)
+	if Config.VaultPreserveSpeed then
+		local v = root.AssemblyLinearVelocity
+		local horiz = Vector3.new(v.X, 0, v.Z)
+		local cur = horiz.Magnitude
+		local dir = (horiz.Magnitude > 0.01) and horiz.Unit
+			or Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		local target = math.max(cur, (forwardBase + forwardGain))
+		forward = dir * target
+	end
 	local up = Vector3.new(0, upV, 0)
 	root.AssemblyLinearVelocity = Vector3.new(forward.X, up.Y, forward.Z)
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
@@ -1547,10 +1649,12 @@ function Abilities.tryVault(character)
 			obstaclePrevCanCollide = obstaclePart.CanCollide
 			obstaclePrevCanTouch = obstaclePart.CanTouch
 		end
-		for _, p in ipairs(obstacleParts) do
-			obstaclePrevByPart[p] = { collide = p.CanCollide, touch = p.CanTouch }
-			p.CanCollide = false
-			p.CanTouch = false
+		if Config.VaultDisableObstacleLocal ~= false then
+			for _, p in ipairs(obstacleParts) do
+				obstaclePrevByPart[p] = { collide = p.CanCollide, touch = p.CanTouch }
+				p.CanCollide = false
+				p.CanTouch = false
+			end
 		end
 	end)
 
@@ -1714,18 +1818,16 @@ function Abilities.tryVault(character)
 				cleanupIK()
 				restoreCharacterCollision(character)
 				-- Restore obstacle collision/touch locally
-				pcall(function()
-					for part, prev in pairs(obstaclePrevByPart) do
-						if part and part.Parent then
-							if prev.collide ~= nil then
-								part.CanCollide = prev.collide
-							end
-							if prev.touch ~= nil then
-								part.CanTouch = prev.touch
-							end
+				for part, prev in pairs(obstaclePrevByPart) do
+					if part and part.Parent then
+						if prev.collide ~= nil then
+							part.CanCollide = prev.collide
+						end
+						if prev.touch ~= nil then
+							part.CanTouch = prev.touch
 						end
 					end
-				end)
+				end
 				-- Clear vaulting flag
 				local cs2 = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
 				local v2 = cs2 and cs2:FindFirstChild("IsVaulting")
@@ -1806,18 +1908,16 @@ function Abilities.tryVault(character)
 			stillVaulting = false
 			restoreCharacterCollision(character)
 			-- Restore obstacle collision/touch locally
-			pcall(function()
-				for part, prev in pairs(obstaclePrevByPart) do
-					if part and part.Parent then
-						if prev.collide ~= nil then
-							part.CanCollide = prev.collide
-						end
-						if prev.touch ~= nil then
-							part.CanTouch = prev.touch
-						end
+			for part, prev in pairs(obstaclePrevByPart) do
+				if part and part.Parent then
+					if prev.collide ~= nil then
+						part.CanCollide = prev.collide
+					end
+					if prev.touch ~= nil then
+						part.CanTouch = prev.touch
 					end
 				end
-			end)
+			end
 			local cs2 = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
 			local v2 = cs2 and cs2:FindFirstChild("IsVaulting")
 			if v2 then
@@ -1828,6 +1928,30 @@ function Abilities.tryVault(character)
 			endVaultNoAnim()
 		end)
 	end
+
+	-- Hard failsafe for vault: ensure collisions/flags restored even if interrupted
+	task.delay((Config.VaultDurationSeconds or 0.35) + 0.6, function()
+		pcall(function()
+			restoreCharacterCollision(character)
+		end)
+		for part, prev in pairs(obstaclePrevByPart) do
+			if part and part.Parent then
+				if prev.collide ~= nil then
+					part.CanCollide = prev.collide
+				end
+				if prev.touch ~= nil then
+					part.CanTouch = prev.touch
+				end
+			end
+		end
+		pcall(function()
+			local cs2 = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+			local v2 = cs2 and cs2:FindFirstChild("IsVaulting")
+			if v2 then
+				v2.Value = false
+			end
+		end)
+	end)
 	return true
 end
 
@@ -1885,8 +2009,7 @@ end
 
 -- For crawl: collide only with LowerTorso (or Torso for R6); disable other parts
 local function setCrawlCollisionMask(character)
-	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
-	local store = originalCollisionByPart[character]
+	local store = pushCollisionLayer(character)
 	local countOn, countOff = 0, 0
 	for _, d in ipairs(character:GetDescendants()) do
 		if d:IsA("BasePart") then

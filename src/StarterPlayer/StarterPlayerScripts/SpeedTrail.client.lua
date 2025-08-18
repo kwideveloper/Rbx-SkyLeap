@@ -19,24 +19,33 @@ local handB_L
 local handA_R
 local handB_R
 
+local function getTrailBodyPart(char)
+	local preferred = Config.TrailBodyPartName or "UpperTorso"
+	local part = char:FindFirstChild(preferred)
+		or char:FindFirstChild("UpperTorso")
+		or char:FindFirstChild("Torso")
+		or char:FindFirstChild("HumanoidRootPart")
+	return part
+end
+
 local function ensureAttachments(char)
-	local root = char:FindFirstChild("HumanoidRootPart")
-	if not root then
+	local part = getTrailBodyPart(char)
+	if not part then
 		return nil
 	end
-	local a = root:FindFirstChild(Config.TrailAttachmentNameA or "TrailA")
-	local b = root:FindFirstChild(Config.TrailAttachmentNameB or "TrailB")
+	local a = part:FindFirstChild(Config.TrailAttachmentNameA or "TrailA")
+	local b = part:FindFirstChild(Config.TrailAttachmentNameB or "TrailB")
 	if not a then
 		a = Instance.new("Attachment")
 		a.Name = Config.TrailAttachmentNameA or "TrailA"
 		a.Position = Vector3.new(0, 0.9, -0.5)
-		a.Parent = root
+		a.Parent = part
 	end
 	if not b then
 		b = Instance.new("Attachment")
 		b.Name = Config.TrailAttachmentNameB or "TrailB"
 		b.Position = Vector3.new(0, -0.9, 0.5)
-		b.Parent = root
+		b.Parent = part
 	end
 	return a, b
 end
