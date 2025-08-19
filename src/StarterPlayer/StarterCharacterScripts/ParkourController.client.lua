@@ -1096,10 +1096,14 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		state.proneHeld = true
 		startCrawl(character)
 	elseif input.KeyCode == Enum.KeyCode.R then
-		-- Grapple/Hook
+		-- Grapple/Hook toggle
 		local cam = workspace.CurrentCamera
 		if cam then
-			Grapple.tryFire(character, cam.CFrame)
+			if Grapple.isActive(character) then
+				Grapple.stop(character)
+			else
+				Grapple.tryFire(character, cam.CFrame)
+			end
 		end
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
@@ -1243,12 +1247,6 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 	end
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = false
-	end
-	if input.KeyCode == Enum.KeyCode.R then
-		local c = player.Character
-		if c then
-			Grapple.stop(c)
-		end
 	end
 	if input.KeyCode == Enum.KeyCode.Z then
 		state.proneHeld = false

@@ -306,6 +306,16 @@ Config.GrapplePullForce = 6000
 Config.GrappleReelSpeed = 28
 Config.GrappleRopeVisible = true
 Config.GrappleRopeThickness = 0.06
+-- Hook targeting
+Config.HookTag = "Hookable"
+Config.HookAutoRange = 90
+Config.HookCooldownSeconds = 1.5
+-- Hook approach controls
+Config.HookMaxApproachSpeed = 120 -- studs/s clamp for approach speed
+Config.HookAutoDetachDistance = 30 -- studs from target to auto-detach
+-- Hook line-of-sight controls
+Config.HookRequireLineOfSight = true -- require clear LOS to the hookable target
+Config.HookIgnoreTag = "HookIgnoreLOS" -- parts/models with this tag will be ignored for Line Of Sight (LOS) blocking
 
 -- Vertical wall climb (sprint into wall to climb up briefly)
 Config.VerticalClimbEnabled = true
