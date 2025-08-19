@@ -20,7 +20,6 @@ local BunnyHop = require(ReplicatedStorage.Movement.BunnyHop)
 local AirControl = require(ReplicatedStorage.Movement.AirControl)
 local Style = require(ReplicatedStorage.Movement.Style)
 local Grapple = require(ReplicatedStorage.Movement.Grapple)
-local RopeSwing = require(ReplicatedStorage.Movement.RopeSwing)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
@@ -1111,10 +1110,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				Abilities.cancelDash(character)
 			end
 		end)
-		-- Release rope swing if active
-		if Config.RopeReleaseOnJump and RopeSwing.isActive(character) then
-			RopeSwing.stop(character)
-		end
 		if state.sliding and state.slideEnd then
 			state.sliding = false
 			state.slideEnd()
@@ -1672,27 +1667,28 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Wall run requires sprint and stamina, and being near a wall; simulate real wall stick/run
-	if
+	-- Wall run requires sprint, movement, stamina, airborne, and no climb. Do not break wall slide unless wallrun actually starts.
+	local wantWallRun = (
 		not Zipline.isActive(character)
 		and state.sprintHeld
 		and state.stamina.isSprinting
+		and (humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0)
 		and state.stamina.current > 0
 		and humanoid.FloorMaterial == Enum.Material.Air
 		and not Climb.isActive(character)
-	then
+	)
+	if wantWallRun then
 		-- Exit prone if attempting wall behavior
 		if state.proneActive then
 			exitProne(character)
 		end
-		-- If slide is active, stop it because wall run has priority
-		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
-			WallJump.stopSlide(character)
-		end
 		if WallRun.isActive(character) then
 			WallRun.maintain(character)
 		else
-			WallRun.tryStart(character)
+			local started = WallRun.tryStart(character)
+			if started and (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
+				WallJump.stopSlide(character)
+			end
 		end
 	else
 		if WallRun.isActive(character) then
@@ -1873,18 +1869,12 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 
 -- Per-frame updates for added systems
--- Initialize rope swing listeners once
-task.defer(function()
-	pcall(function()
-		RopeSwing.init()
-	end)
-end)
 
 RunService.RenderStepped:Connect(function(dt)
 	local character = player.Character
 	if character then
 		Grapple.update(character, dt)
-		-- Rope swing handles attach/release internally via End.Touched
+		-- (rope swing removed)
 	end
 end)
 -- Chain-sensitive action events to Style

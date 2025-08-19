@@ -356,9 +356,9 @@ function WallJump.updateWallSlide(character, dt)
 
 	-- Stamina drain handled centrally in ParkourController; only react to stop when controller cuts stamina
 
-	-- If player initiated a jump, immediately stop sliding
+	-- If player initiated a jump, immediately stop sliding (ignore Jump held flag)
 	local state = humanoid:GetState()
-	if state == Enum.HumanoidStateType.Jumping or humanoid.Jump == true then
+	if state == Enum.HumanoidStateType.Jumping then
 		stopWallSlide(character)
 		return false
 	end
@@ -416,9 +416,11 @@ function WallJump.updateWallSlide(character, dt)
 		end
 	end
 
-	-- Apply the new speed (only while airborne)
+	-- Apply the new speed (only while airborne). Clamp downward speed, don't force extra downward when upward momentum exists.
 	if humanoid.FloorMaterial == Enum.Material.Air then
-		root.AssemblyLinearVelocity = newVelocity
+		local v = root.AssemblyLinearVelocity
+		local vy = math.max(-WALL_SLIDE_FALL_SPEED, v.Y)
+		root.AssemblyLinearVelocity = Vector3.new(newVelocity.X, vy, newVelocity.Z)
 	end
 
 	-- Orient character to face the wall (stable up axis)

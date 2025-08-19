@@ -307,14 +307,6 @@ Config.GrappleReelSpeed = 28
 Config.GrappleRopeVisible = true
 Config.GrappleRopeThickness = 0.06
 
--- Rope swing (lianas)
-Config.RopeSwingEnabled = true
-Config.RopeAttachRadius = 200 -- studs
-Config.RopePumpForce = 4500 -- force applied along tangent from MoveDirection
-Config.RopeReleaseOnJump = true -- pressing Space while attached releases
-Config.RopeGrabBoost = 500 -- initial rope velocity boost (studs/s) scaled by approach dir
-Config.RopeLetGoBoost = 250 -- boost applied to player on release along rope vel
-
 -- Hand trails
 Config.TrailHandsEnabled = true
 Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail
@@ -324,6 +316,5 @@ Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 -- Debug flags
 Config.DebugLaunchPad = false
 Config.DebugLandingRoll = false
-Config.DebugRopeSwing = true
 
 return Config
