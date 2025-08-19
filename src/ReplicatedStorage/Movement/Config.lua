@@ -80,6 +80,7 @@ Config.MantleDisableObstacleLocal = false
 -- Crawl geometry/speed
 Config.CrawlRootHeight = 1 -- studs height for HumanoidRootPart while crawling
 Config.CrawlSpeed = 2
+Config.CrawlRunSpeed = 6
 Config.CrawlStandUpHeight = 2
 Config.CrawlAutoEnabled = true
 Config.CrawlAutoSampleSeconds = 0.12

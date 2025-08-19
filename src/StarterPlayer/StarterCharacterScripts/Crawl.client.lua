@@ -134,6 +134,12 @@ local function exitCrawl()
 		state.conn = nil
 	end
 	if state.collisionPart and state.origCollisionSize then
+		print(
+			"[Crawl] Restoring CollisionPart size from "
+				.. tostring(state.collisionPart.Size)
+				.. " to "
+				.. tostring(state.origCollisionSize)
+		) -- Debug
 		state.collisionPart.Size = state.origCollisionSize
 	end
 	-- Restore joint offset if we adjusted it
@@ -177,7 +183,7 @@ local function exitCrawl()
 	state.origJointC1 = nil
 end
 
-local function enterCrawl()
+local function enterCrawl(autoActivated)
 	if state.isCrawling then
 		return
 	end
@@ -188,7 +194,7 @@ local function enterCrawl()
 		return
 	end
 	state.isCrawling = true
-	state.wantExit = false
+	state.wantExit = autoActivated or false -- If auto-activated, set wantExit to true for auto-exit
 	state.origWalkSpeed = state.humanoid.WalkSpeed
 	state.origCameraOffset = state.humanoid.CameraOffset
 	state.humanoid.WalkSpeed = Config.CrawlSpeed or 8
@@ -210,8 +216,19 @@ local function enterCrawl()
 		end)
 	end
 	state.collisionPart = findCollisionPart()
-	if state.collisionPart and not state.origCollisionSize then
-		state.origCollisionSize = state.collisionPart.Size
+	if state.collisionPart then
+		-- Check if we're being activated from slide system
+		local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local slideOriginalSize = cs and cs:FindFirstChild("SlideOriginalSize")
+		if slideOriginalSize and slideOriginalSize.Value and autoActivated then
+			-- Use the original size from slide system
+			state.origCollisionSize = slideOriginalSize.Value
+			print("[Crawl] Using slide original size: " .. tostring(state.origCollisionSize)) -- Debug
+		elseif not state.origCollisionSize then
+			-- Use current size as fallback
+			state.origCollisionSize = state.collisionPart.Size
+			print("[Crawl] Using current size as original: " .. tostring(state.origCollisionSize)) -- Debug
+		end
 	end
 	if state.collisionPart and state.origCollisionSize then
 		local newY = math.max(Config.CrawlRootHeight or 2, 0.5)
@@ -242,8 +259,6 @@ local function enterCrawl()
 			else
 				chosen.C1 = chosen.C1 * CFrame.new(0, 1, 0)
 			end
-		elseif Config.DebugProne then
-			print("[Crawl] No adjustable joint found for CollisionPart; skipping +1 offset")
 		end
 	end
 	-- Drive animations each frame and keep alignment
@@ -263,6 +278,7 @@ local function enterCrawl()
 		end
 		-- If user requested exit, attempt auto-stand when there is clearance
 		if state.wantExit and hasStandClearance() then
+			print("[Crawl] Auto-exit detected - clearance available, exiting crawl") -- Debug
 			exitCrawl()
 		end
 	end)
@@ -287,7 +303,7 @@ local function onInputBegan(input, processed)
 				exitCrawl()
 			end
 		else
-			enterCrawl()
+			enterCrawl(false) -- false = manually activated
 		end
 	end
 end
@@ -312,6 +328,22 @@ local function setup()
 			exitCrawl()
 		end
 	end)
+
+	-- Listen for automatic crawl activation from slide system
+	local function checkForAutoCrawl()
+		local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		if cs then
+			local shouldActivateCrawl = cs:FindFirstChild("ShouldActivateCrawl")
+			if shouldActivateCrawl and shouldActivateCrawl.Value and not state.isCrawling then
+				-- print("[Crawl] Auto-activation detected from slide system") -- Debug
+				shouldActivateCrawl.Value = false
+				enterCrawl(true) -- true = auto-activated
+			end
+		end
+	end
+
+	-- Check for auto-crawl every frame
+	RunService.Heartbeat:Connect(checkForAutoCrawl)
 end
 
 setup()

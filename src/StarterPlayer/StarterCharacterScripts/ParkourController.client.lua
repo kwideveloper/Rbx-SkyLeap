@@ -33,6 +33,8 @@ local state = {
 	stamina = Stamina.create(),
 	sliding = false,
 	slideEnd = nil,
+	crawling = false,
+	shouldActivateCrawl = false,
 	sprintHeld = false,
 	keys = { W = false, A = false, S = false, D = false },
 	clientStateFolder = nil,
@@ -474,6 +476,15 @@ local function setupCharacter(character)
 	if state.isSlidingValue then
 		state.isSlidingValue.Value = false
 	end
+	if state.isCrawlingValue then
+		state.isCrawlingValue.Value = false
+	end
+	if state.shouldActivateCrawlValue then
+		state.shouldActivateCrawlValue.Value = false
+	end
+	if state.slideOriginalSizeValue then
+		state.slideOriginalSizeValue.Value = Vector3.new(2, 4, 1) -- Default size
+	end
 	if state.isAirborneValue then
 		state.isAirborneValue.Value = false
 	end
@@ -526,6 +537,30 @@ local function ensureClientState()
 		isSliding.Parent = folder
 	end
 	state.isSlidingValue = isSliding
+
+	local isCrawling = folder:FindFirstChild("IsCrawling")
+	if not isCrawling then
+		isCrawling = Instance.new("BoolValue")
+		isCrawling.Name = "IsCrawling"
+		isCrawling.Parent = folder
+	end
+	state.isCrawlingValue = isCrawling
+
+	local shouldActivateCrawl = folder:FindFirstChild("ShouldActivateCrawl")
+	if not shouldActivateCrawl then
+		shouldActivateCrawl = Instance.new("BoolValue")
+		shouldActivateCrawl.Name = "ShouldActivateCrawl"
+		shouldActivateCrawl.Parent = folder
+	end
+	state.shouldActivateCrawlValue = shouldActivateCrawl
+
+	local slideOriginalSize = folder:FindFirstChild("SlideOriginalSize")
+	if not slideOriginalSize then
+		slideOriginalSize = Instance.new("Vector3Value")
+		slideOriginalSize.Name = "SlideOriginalSize"
+		slideOriginalSize.Parent = folder
+	end
+	state.slideOriginalSizeValue = slideOriginalSize
 
 	local isAirborne = folder:FindFirstChild("IsAirborne")
 	if not isAirborne then
@@ -1215,6 +1250,26 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	if state.isSlidingValue then
 		state.isSlidingValue.Value = state.sliding
+	end
+	if state.isCrawlingValue then
+		state.isCrawlingValue.Value = state.crawling or false
+	end
+
+	-- Check if crawl should be activated automatically (e.g., after slide with no clearance)
+	if state.shouldActivateCrawlValue and state.shouldActivateCrawlValue.Value then
+		print("[ParkourController] ShouldActivateCrawl detected, activating crawl mode") -- Debug
+		state.shouldActivateCrawlValue.Value = false
+		if not state.crawling then
+			-- Activate crawl mode automatically
+			state.crawling = true
+			print("[ParkourController] Crawl state set to true") -- Debug
+			-- Also trigger the crawl system if available
+			-- Note: Crawl is a local script, not a module, so we can't require it directly
+			-- The crawl state is already set to true, which should trigger the crawl system
+			print("[ParkourController] Crawl state activated, crawl system should handle the rest") -- Debug
+		else
+			print("[ParkourController] Already crawling, skipping activation") -- Debug
+		end
 	end
 	if state.isAirborneValue then
 		state.isAirborneValue.Value = (humanoid.FloorMaterial == Enum.Material.Air)

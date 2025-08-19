@@ -3,6 +3,7 @@
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
 local RunService = game:GetService("RunService")
+local OverlapParams = OverlapParams
 
 local Abilities = {}
 
@@ -397,6 +398,9 @@ function Abilities.slide(character)
 	-- Temporarily adjust the character CollisionPart similar to crawl but milder
 	local collisionPart = character:FindFirstChild("CollisionPart")
 	local origSize = collisionPart and collisionPart.Size
+	-- Store the original size before any modifications to preserve it
+	local originalSize = origSize
+	print("[Slide] Original CollisionPart size: " .. tostring(originalSize)) -- Debug
 	local chosenJoint
 	local origC0, origC1
 	if collisionPart and origSize then
@@ -539,6 +543,57 @@ function Abilities.slide(character)
 	-- Control flag for movement loop; set to false on early cancel or natural end
 	local stillSliding = true
 
+	-- Check if there's enough clearance to stand up after slide
+	local function hasStandClearance()
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local cp = collisionPart
+		if not root or not cp then
+			print("[Slide] hasStandClearance: No root or collisionPart") -- Debug
+			return true
+		end
+
+		local currentHeight = (cp and cp.Size and cp.Size.Y) or 1.4
+		local standHeight = originalSize and originalSize.Y or 2
+		local extra = math.max(0, standHeight - currentHeight)
+
+		print(
+			"[Slide] hasStandClearance: currentHeight="
+				.. currentHeight
+				.. ", standHeight="
+				.. standHeight
+				.. ", extra="
+				.. extra
+				.. ", originalSize="
+				.. tostring(originalSize)
+		) -- Debug
+
+		if extra <= 0.05 then
+			print("[Slide] hasStandClearance: No extra height needed") -- Debug
+			return true
+		end
+
+		local side = (root.Size and root.Size.X) or 1
+		local forward = 0.25
+		local up = root.CFrame.UpVector
+		local right = root.CFrame.RightVector
+		local look = root.CFrame.LookVector
+		local center = root.Position + up * (currentHeight * 0.5 + extra * 0.5) + look * (forward * 0.5)
+		local boxCFrame = CFrame.fromMatrix(center, right, up, look)
+		local size = Vector3.new(side, extra, forward)
+
+		local params = OverlapParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { character }
+		params.RespectCanCollide = true
+
+		local parts = workspace:GetPartBoundsInBox(boxCFrame, size, params)
+		local hasClearance = #parts == 0
+
+		print("[Slide] hasStandClearance: Found " .. #parts .. " parts, hasClearance=" .. tostring(hasClearance)) -- Debug
+
+		return hasClearance
+	end
+
 	local endSlide = function()
 		-- Stop movement loop immediately
 		stillSliding = false
@@ -574,11 +629,36 @@ function Abilities.slide(character)
 				end
 			end)
 		end
-		-- Restore CollisionPart geometry/joint
-		if collisionPart and origSize then
-			pcall(function()
-				collisionPart.Size = origSize
-			end)
+		-- Check clearance BEFORE restoring CollisionPart size
+		if collisionPart and originalSize then
+			-- Check clearance while still in slide size (smaller CollisionPart)
+			if not hasStandClearance() then
+				-- No clearance - keep the small size and activate crawl
+				print("[Slide] No clearance detected, keeping small size and activating crawl") -- Debug
+
+				-- Store the original size in ClientState so crawl can use it
+				local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+				local originalSizeValue = cs and cs:FindFirstChild("SlideOriginalSize")
+				if originalSizeValue then
+					originalSizeValue.Value = originalSize
+					print("[Slide] Stored original size in ClientState: " .. tostring(originalSize)) -- Debug
+				end
+
+				-- Signal to ParkourController that crawl should be activated
+				local shouldCrawl = cs and cs:FindFirstChild("ShouldActivateCrawl")
+				if shouldCrawl then
+					shouldCrawl.Value = true
+					print("[Slide] ShouldActivateCrawl signal sent") -- Debug
+				else
+					print("[Slide] ShouldActivateCrawl signal sent") -- Debug
+				end
+			else
+				-- Safe to restore normal size
+				print("[Slide] Clearance OK, restoring normal size") -- Debug
+				pcall(function()
+					collisionPart.Size = originalSize
+				end)
+			end
 		end
 		if chosenJoint then
 			pcall(function()
