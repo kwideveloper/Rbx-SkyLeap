@@ -48,6 +48,15 @@ Config.SlideDistanceStuds = 10
 Config.SlideForwardImpulse = 60
 Config.SlideImpulseSeconds = 0.15
 Config.SlideSpeedBoost = 0
+-- Slide input/requirements
+Config.SlideRequireSprint = true -- only allow slide while sprinting
+Config.SlideMinSpeedFractionOfSprint = 0.5 -- minimum speed fraction of sprint speed to start
+-- Slide collider adjustments (kept subtle vs crawl)
+Config.SlideColliderHeight = 1.4 -- reduced character collider height during slide
+Config.SlideJointOffsetUp = 0.5 -- raise collider locally to avoid clipping the ground when compressed
+-- Slide camera offset (lower view slightly during slide)
+Config.SlideCameraOffsetY = -1.0
+Config.SlideCameraLerpSeconds = 0.12
 -- Jump carry from slide (percentages of current horizontal speed)
 -- Example: if speed=50 and VerticalPercent=0.3 -> +15 studs/s vertical on jump frame
 Config.SlideJumpVerticalPercent = 0.30 -- 0..1 fraction of horizontal speed added to vertical
@@ -59,9 +68,8 @@ Config.SlideVfxDuration = 0.25
 Config.SlideCooldownSeconds = 0.75 -- 1.0
 
 -- Prone / Crawl
-Config.ProneWalkSpeed = 8
-Config.ProneHipHeightDelta = 0 -- Keep character at normal height during crawl
 Config.ProneCameraOffsetY = -2.5
+Config.CrawlCameraLerpSeconds = 0.12
 Config.DebugProne = false
 -- Crouch clearance probe (reduces false positives against front walls)
 Config.CrawlStandProbeSideWidth = 0.8 -- studs, sideways width of clearance box
@@ -71,7 +79,7 @@ Config.VaultDisableObstacleLocal = false
 Config.MantleDisableObstacleLocal = false
 -- Crawl geometry/speed
 Config.CrawlRootHeight = 1 -- studs height for HumanoidRootPart while crawling
-Config.CrawlSpeed = 8
+Config.CrawlSpeed = 2
 Config.CrawlStandUpHeight = 2
 Config.CrawlAutoEnabled = true
 Config.CrawlAutoSampleSeconds = 0.12

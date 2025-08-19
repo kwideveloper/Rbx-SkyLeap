@@ -151,7 +151,23 @@ local function exitCrawl()
 	stopAllTracks()
 	if state.humanoid then
 		state.humanoid.WalkSpeed = state.origWalkSpeed or state.humanoid.WalkSpeed
-		state.humanoid.CameraOffset = state.origCameraOffset or Vector3.new()
+		-- Smooth camera offset back out of crawl
+		do
+			local start = state.humanoid.CameraOffset
+			local target = state.origCameraOffset or Vector3.new()
+			local dur = math.max(0, Config.CrawlCameraLerpSeconds or 0.12)
+			task.spawn(function()
+				local t0 = os.clock()
+				while os.clock() - t0 < dur do
+					local alpha = (os.clock() - t0) / math.max(dur, 0.001)
+					alpha = math.clamp(alpha, 0, 1)
+					local y = start.Y + (target.Y - start.Y) * alpha
+					state.humanoid.CameraOffset = Vector3.new(0, y, 0)
+					RunService.Heartbeat:Wait()
+				end
+				state.humanoid.CameraOffset = target
+			end)
+		end
 	end
 	-- Clear references for next character
 	state.collisionPart = nil
@@ -176,7 +192,23 @@ local function enterCrawl()
 	state.origWalkSpeed = state.humanoid.WalkSpeed
 	state.origCameraOffset = state.humanoid.CameraOffset
 	state.humanoid.WalkSpeed = Config.CrawlSpeed or 8
-	state.humanoid.CameraOffset = Vector3.new(0, Config.ProneCameraOffsetY or -2.5, 0)
+	-- Smooth camera offset into crawl
+	do
+		local start = state.humanoid.CameraOffset
+		local target = Vector3.new(0, Config.ProneCameraOffsetY or -2.5, 0)
+		local dur = math.max(0, Config.CrawlCameraLerpSeconds or 0.12)
+		task.spawn(function()
+			local t0 = os.clock()
+			while os.clock() - t0 < dur do
+				local alpha = (os.clock() - t0) / math.max(dur, 0.001)
+				alpha = math.clamp(alpha, 0, 1)
+				local y = start.Y + (target.Y - start.Y) * alpha
+				state.humanoid.CameraOffset = Vector3.new(0, y, 0)
+				RunService.Heartbeat:Wait()
+			end
+			state.humanoid.CameraOffset = target
+		end)
+	end
 	state.collisionPart = findCollisionPart()
 	if state.collisionPart and not state.origCollisionSize then
 		state.origCollisionSize = state.collisionPart.Size

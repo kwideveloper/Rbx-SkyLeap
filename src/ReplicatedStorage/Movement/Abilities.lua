@@ -2,6 +2,7 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
+local RunService = game:GetService("RunService")
 
 local Abilities = {}
 
@@ -348,19 +349,61 @@ function Abilities.slide(character)
 	if not rootPart or not humanoid then
 		return function() end
 	end
-	-- Require minimum speed to start slide (50% of sprint speed)
+	-- Require sprinting and minimum speed to start slide
+	if Config.SlideRequireSprint ~= false then
+		local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local isSprinting = cs and cs:FindFirstChild("IsSprinting")
+		if not (isSprinting and isSprinting.Value == true) then
+			return function() end
+		end
+	end
 	local curVelForGate = rootPart.AssemblyLinearVelocity
 	local horizForGate = Vector3.new(curVelForGate.X, 0, curVelForGate.Z)
 	local speedForGate = horizForGate.Magnitude
-	local minReq = 0.5 * (Config.SprintWalkSpeed or 50)
+	local minReq = (Config.SlideMinSpeedFractionOfSprint or 0.5) * (Config.SprintWalkSpeed or 50)
 	if speedForGate < minReq then
 		return function() end
 	end
 
 	local originalWalkSpeed = humanoid.WalkSpeed
+	local originalCameraOffset = humanoid.CameraOffset
+	local cameraTweenToken = {}
 	-- humanoid.HipHeight untouched; movement will be applied as velocity, not WalkSpeed
 	-- Limit collisions to torso only during slide to prevent limbs snagging
 	setSlideCollisionMask(character)
+	-- Temporarily adjust the character CollisionPart similar to crawl but milder
+	local collisionPart = character:FindFirstChild("CollisionPart")
+	local origSize = collisionPart and collisionPart.Size
+	local chosenJoint
+	local origC0, origC1
+	if collisionPart and origSize then
+		-- Reduce height
+		local newH = math.max(Config.SlideColliderHeight or (origSize.Y * 0.7), 0.5)
+		collisionPart.Size = Vector3.new(origSize.X, newH, origSize.Z)
+		-- Nudge up via joint to avoid scraping floor
+		for _, d in ipairs(character:GetDescendants()) do
+			if d:IsA("Weld") or d:IsA("Motor6D") then
+				if d.Part0 == collisionPart or d.Part1 == collisionPart then
+					chosenJoint = d
+					local other = (d.Part0 == collisionPart) and d.Part1 or d.Part0
+					if other == rootPart then
+						break
+					end
+				end
+			end
+		end
+		if chosenJoint then
+			origC0 = chosenJoint.C0
+			origC1 = chosenJoint.C1
+			local up = math.max(Config.SlideJointOffsetUp or 0.5, 0)
+			if chosenJoint.Part0 == collisionPart then
+				chosenJoint.C0 = chosenJoint.C0 * CFrame.new(0, up, 0)
+			else
+				chosenJoint.C1 = chosenJoint.C1 * CFrame.new(0, up, 0)
+			end
+		end
+	end
+
 	-- We previously created a collider; now we avoid any extra collider to prevent floor conflicts
 	local endCollider = nil
 
@@ -474,6 +517,44 @@ function Abilities.slide(character)
 		stillSliding = false
 		if humanoid and humanoid.Parent then
 			humanoid.WalkSpeed = originalWalkSpeed
+			-- Smooth camera offset back
+			local start = humanoid.CameraOffset
+			local target = originalCameraOffset or Vector3.new()
+			local dur = math.max(0, Config.SlideCameraLerpSeconds or 0.1)
+			local token = {}
+			cameraTweenToken = token
+			task.spawn(function()
+				local t0 = os.clock()
+				while os.clock() - t0 < dur do
+					if cameraTweenToken ~= token then
+						return
+					end
+					local alpha = (os.clock() - t0) / math.max(dur, 0.001)
+					alpha = math.clamp(alpha, 0, 1)
+					local y = start.Y + (target.Y - start.Y) * alpha
+					humanoid.CameraOffset = Vector3.new(0, y, 0)
+					RunService.Heartbeat:Wait()
+				end
+				if cameraTweenToken == token then
+					humanoid.CameraOffset = target
+				end
+			end)
+		end
+		-- Restore CollisionPart geometry/joint
+		if collisionPart and origSize then
+			pcall(function()
+				collisionPart.Size = origSize
+			end)
+		end
+		if chosenJoint then
+			pcall(function()
+				if origC0 then
+					chosenJoint.C0 = origC0
+				end
+				if origC1 then
+					chosenJoint.C1 = origC1
+				end
+			end)
 		end
 		if endCollider then
 			endCollider()
@@ -506,6 +587,30 @@ function Abilities.slide(character)
 	end
 
 	lastSlideTick = now
+	-- Smooth camera offset tween into slide
+	do
+		local target = Vector3.new(0, Config.SlideCameraOffsetY or 0, 0)
+		local start = humanoid.CameraOffset
+		local dur = math.max(0, Config.SlideCameraLerpSeconds or 0.1)
+		local token = {}
+		cameraTweenToken = token
+		task.spawn(function()
+			local t0 = os.clock()
+			while os.clock() - t0 < dur do
+				if cameraTweenToken ~= token then
+					return
+				end
+				local alpha = (os.clock() - t0) / math.max(dur, 0.001)
+				alpha = math.clamp(alpha, 0, 1)
+				local y = start.Y + (target.Y - start.Y) * alpha
+				humanoid.CameraOffset = Vector3.new(0, y, 0)
+				RunService.Heartbeat:Wait()
+			end
+			if cameraTweenToken == token then
+				humanoid.CameraOffset = target
+			end
+		end)
+	end
 
 	-- Maintain horizontal velocity for the duration while preserving vertical component
 	task.delay(slideDuration, function()

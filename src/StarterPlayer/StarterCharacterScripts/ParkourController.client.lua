@@ -740,6 +740,39 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = true
+	elseif input.KeyCode == Enum.KeyCode.C then
+		-- Ground slide: only while sprinting and not in conflicting states
+		local character = getCharacter()
+		if character then
+			if not (Zipline.isActive(character) or Climb.isActive(character) or WallRun.isActive(character)) then
+				if not (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
+					local Abilities = require(ReplicatedStorage.Movement.Abilities)
+					local humanoid = getHumanoid(character)
+					local isMoving = humanoid and humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0
+					local sprinting = state.stamina.isSprinting and state.sprintHeld and isMoving
+					if
+						(Config.SlideRequireSprint ~= false and sprinting)
+						or (Config.SlideRequireSprint == false and isMoving)
+					then
+						local endFn = Abilities.slide(character)
+						if type(endFn) == "function" then
+							state.sliding = true
+							state.slideEnd = function()
+								state.sliding = false
+								pcall(endFn)
+							end
+							-- Auto-clear after the configured duration in case of missed end
+							task.delay((Config.SlideDurationSeconds or 0.5) + 0.05, function()
+								if state.sliding and state.slideEnd then
+									state.slideEnd()
+									state.slideEnd = nil
+								end
+							end)
+						end
+					end
+				end
+			end
+		end
 	elseif input.KeyCode == Enum.KeyCode.E then
 		-- Zipline takes priority when near a rope
 		if Zipline.isActive(character) then
