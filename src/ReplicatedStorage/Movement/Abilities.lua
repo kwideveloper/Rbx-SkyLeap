@@ -78,7 +78,8 @@ end
 
 function Abilities.isSlideReady()
 	local now = os.clock()
-	return (now - lastSlideTick) >= (Config.SlideCooldownSeconds or 0)
+	local slideCooldown = math.max(0.001, Config.SlideCooldownSeconds or 0.5)
+	return (now - lastSlideTick) >= slideCooldown
 end
 
 -- Vault helpers
@@ -342,11 +343,24 @@ end
 
 function Abilities.slide(character)
 	local now = os.clock()
-	if (now - lastSlideTick) < (Config.SlideCooldownSeconds or 0) then
+	-- Enforce cooldown based on SlideCooldownSeconds to prevent spam
+	local slideCooldown = math.max(0.001, Config.SlideCooldownSeconds or 0.5)
+	if (now - lastSlideTick) < slideCooldown then
 		return function() end
 	end
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid then
+		return function() end
+	end
+	-- Require grounded
+	if humanoid.FloorMaterial == Enum.Material.Air then
+		return function() end
+	end
+
+	-- Prevent slide while already sliding
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local isSliding = cs and cs:FindFirstChild("IsSliding")
+	if isSliding and isSliding.Value == true then
 		return function() end
 	end
 	-- Require sprinting and minimum speed to start slide
@@ -362,6 +376,15 @@ function Abilities.slide(character)
 	local speedForGate = horizForGate.Magnitude
 	local minReq = (Config.SlideMinSpeedFractionOfSprint or 0.5) * (Config.SprintWalkSpeed or 50)
 	if speedForGate < minReq then
+		return function() end
+	end
+
+	-- Check stamina cost - we'll let the ParkourController handle the actual consumption
+	-- to avoid conflicts with the local stamina system
+	local staminaCost = Config.SlideStaminaCost or 12
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local staminaValue = cs and cs:FindFirstChild("Stamina")
+	if staminaValue and staminaValue.Value < staminaCost then
 		return function() end
 	end
 
@@ -437,6 +460,10 @@ function Abilities.slide(character)
 		pcall(function()
 			track = animator:LoadAnimation(anim)
 		end)
+		-- Always reset TimePosition so it restarts cleanly when spam-triggered
+		if track then
+			track.TimePosition = 0
+		end
 		if not track then
 			return nil
 		end
@@ -515,6 +542,13 @@ function Abilities.slide(character)
 	local endSlide = function()
 		-- Stop movement loop immediately
 		stillSliding = false
+
+		-- Clear sliding state
+		local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local isSliding = cs and cs:FindFirstChild("IsSliding")
+		if isSliding then
+			isSliding.Value = false
+		end
 		if humanoid and humanoid.Parent then
 			humanoid.WalkSpeed = originalWalkSpeed
 			-- Smooth camera offset back
@@ -587,6 +621,18 @@ function Abilities.slide(character)
 	end
 
 	lastSlideTick = now
+
+	-- Set sliding state
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local isSliding = cs and cs:FindFirstChild("IsSliding")
+	if isSliding then
+		isSliding.Value = true
+	end
+
+	-- Add to Style/Combo system
+	-- Note: Style system integration will be handled by the ParkourController
+	-- to avoid complex cross-script communication
+
 	-- Smooth camera offset tween into slide
 	do
 		local target = Vector3.new(0, Config.SlideCameraOffsetY or 0, 0)

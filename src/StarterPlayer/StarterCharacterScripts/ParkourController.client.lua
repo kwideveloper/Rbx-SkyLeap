@@ -749,20 +749,33 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					local Abilities = require(ReplicatedStorage.Movement.Abilities)
 					local humanoid = getHumanoid(character)
 					local isMoving = humanoid and humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0
+					local grounded = humanoid and (humanoid.FloorMaterial ~= Enum.Material.Air)
 					local sprinting = state.stamina.isSprinting and state.sprintHeld and isMoving
 					if
-						(Config.SlideRequireSprint ~= false and sprinting)
-						or (Config.SlideRequireSprint == false and isMoving)
+						grounded
+						and not state.sliding
+						and ((Config.SlideRequireSprint ~= false and sprinting) or (Config.SlideRequireSprint == false and isMoving))
+						and Abilities.isSlideReady()
 					then
+						-- Consume stamina for slide
+						local staminaCost = Config.SlideStaminaCost or 12
+						state.stamina.current = math.max(0, state.stamina.current - staminaCost)
+
 						local endFn = Abilities.slide(character)
 						if type(endFn) == "function" then
+							-- Add to Style/Combo system
+							if state.style then
+								local Style = require(ReplicatedStorage.Movement.Style)
+								Style.addEvent(state.style, "GroundSlide", 1)
+							end
+
 							state.sliding = true
 							state.slideEnd = function()
 								state.sliding = false
 								pcall(endFn)
 							end
-							-- Auto-clear after the configured duration in case of missed end
-							task.delay((Config.SlideDurationSeconds or 0.5) + 0.05, function()
+							-- Auto-clear after the slide duration (cooldown is separate and handled by Abilities.isSlideReady)
+							task.delay((Config.SlideDurationSeconds or 0.5), function()
 								if state.sliding and state.slideEnd then
 									state.slideEnd()
 									state.slideEnd = nil

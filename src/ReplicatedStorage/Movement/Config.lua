@@ -65,7 +65,7 @@ Config.SlideFrictionMultiplier = 0.5
 Config.SlideHipHeightDelta = 0 -- Keep character at normal height during slide
 Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
-Config.SlideCooldownSeconds = 0.75 -- 1.0
+Config.SlideCooldownSeconds = 1 -- 1.0
 
 -- Prone / Crawl
 Config.ProneCameraOffsetY = -2.5
