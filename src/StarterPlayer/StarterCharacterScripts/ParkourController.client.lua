@@ -154,6 +154,178 @@ local state = {
 	doubleJumpCharges = 0,
 }
 
+-- Collision proxy adjustments for crawl/slide
+local function findCollisionProxy(character)
+	if not character then
+		return nil
+	end
+	for _, inst in ipairs(character:GetDescendants()) do
+		if inst.Name == "CollisionPart" then
+			return inst
+		end
+	end
+	return nil
+end
+
+local function saveCollisionOriginal(character)
+	local proxy = findCollisionProxy(character)
+	if not proxy then
+		return nil
+	end
+	local orig = { kind = proxy.ClassName }
+	if proxy:IsA("Attachment") then
+		orig.attachmentPos = proxy.Position
+	elseif proxy:IsA("BasePart") then
+		orig.partSize = proxy.Size
+		orig.worldPosY = proxy.Position.Y
+		orig.canCollide = proxy.CanCollide
+		orig.canTouch = proxy.CanTouch
+		orig.canQuery = proxy.CanQuery
+		orig.massless = proxy.Massless
+		-- Track weld constraints to disable during crawl/slide
+		orig.disabledWelds = {}
+	end
+	return orig
+end
+
+local function setProxyWorldY(proxy, targetY)
+	if not proxy then
+		return
+	end
+	if proxy:IsA("Attachment") then
+		local p = proxy.Position
+		-- only raise, never push down
+		if p.Y < targetY then
+			proxy.Position = Vector3.new(p.X, targetY, p.Z)
+		end
+		return
+	end
+	if proxy:IsA("BasePart") then
+		-- Keep the bottom of the part at Y=targetY regardless of its size
+		local halfY = proxy.Size.Y * 0.5
+		local desiredCenterY = targetY + halfY
+		local currentCenterY = proxy.Position.Y
+		local deltaY = desiredCenterY - currentCenterY
+		if math.abs(deltaY) > 1e-3 then
+			proxy.CFrame = proxy.CFrame + Vector3.new(0, deltaY, 0)
+		end
+	end
+end
+
+local function setProxyFollowRootAtY(character, proxy, targetBottomY)
+	if not (character and proxy and proxy:IsA("BasePart")) then
+		return
+	end
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	local rx, ry, rz = root.CFrame:ToOrientation()
+	local halfY = proxy.Size.Y * 0.5
+	local desiredCenterY = targetBottomY + halfY
+	local pos = Vector3.new(root.Position.X, desiredCenterY, root.Position.Z)
+	proxy.CFrame = CFrame.new(pos) * CFrame.fromOrientation(rx, ry, rz)
+end
+
+local function disableProxyWelds(proxy)
+	if not (proxy and proxy:IsA("BasePart")) then
+		return {}
+	end
+	local disabled = {}
+	for _, ch in ipairs(proxy:GetChildren()) do
+		if ch:IsA("WeldConstraint") then
+			if ch.Enabled then
+				ch.Enabled = false
+				table.insert(disabled, ch)
+			end
+		end
+	end
+	return disabled
+end
+
+local function restoreProxyWelds(list)
+	if not list then
+		return
+	end
+	for _, w in ipairs(list) do
+		if w and w.Parent and w:IsA("WeldConstraint") then
+			w.Enabled = true
+		end
+	end
+end
+
+local function applyCollisionForCrawl(character)
+	state._collisionOrig = state._collisionOrig or saveCollisionOriginal(character)
+	local proxy = findCollisionProxy(character)
+	if not proxy then
+		return
+	end
+	-- Set lower height and offset for crawl
+	if proxy:IsA("BasePart") then
+		proxy.Size = Vector3.new(proxy.Size.X, 0.5, proxy.Size.Z)
+		proxy.CanCollide = true
+		proxy.CanTouch = true
+		proxy.CanQuery = true
+		proxy.Massless = true
+	end
+	-- Detach weld so we can position freely
+	local disabled = disableProxyWelds(proxy)
+	state._collisionWelds = disabled
+	setProxyFollowRootAtY(character, proxy, 2)
+end
+
+local function applyCollisionForSlide(character)
+	state._collisionOrig = state._collisionOrig or saveCollisionOriginal(character)
+	local proxy = findCollisionProxy(character)
+	if not proxy then
+		return
+	end
+	-- Taller than crawl but still lowered
+	if proxy:IsA("BasePart") then
+		proxy.Size = Vector3.new(proxy.Size.X, 1.5, proxy.Size.Z)
+		proxy.CanCollide = true
+		proxy.CanTouch = true
+		proxy.CanQuery = true
+		proxy.Massless = true
+	end
+	local disabled = disableProxyWelds(proxy)
+	state._collisionWelds = disabled
+	setProxyFollowRootAtY(character, proxy, 2)
+end
+
+local function restoreCollisionProxy(character)
+	local proxy = findCollisionProxy(character)
+	local orig = state._collisionOrig
+	if not (proxy and orig) then
+		return
+	end
+	if proxy:IsA("Attachment") and orig.attachmentPos then
+		proxy.Position = orig.attachmentPos
+	elseif proxy:IsA("BasePart") then
+		if orig.partSize then
+			proxy.Size = Vector3.new(proxy.Size.X, orig.partSize.Y, proxy.Size.Z)
+		end
+		if orig.worldPosY ~= nil then
+			setProxyWorldY(proxy, orig.worldPosY)
+		end
+		if orig.canCollide ~= nil then
+			proxy.CanCollide = orig.canCollide
+		end
+		if orig.canTouch ~= nil then
+			proxy.CanTouch = orig.canTouch
+		end
+		if orig.canQuery ~= nil then
+			proxy.CanQuery = orig.canQuery
+		end
+		if orig.massless ~= nil then
+			proxy.Massless = orig.massless
+		end
+	end
+	-- Restore welds
+	restoreProxyWelds(state._collisionWelds)
+	state._collisionWelds = nil
+end
+
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
 local wallChain = { currentWall = nil, count = 0 }
 local function resetWallChain()
@@ -890,6 +1062,7 @@ local function stopCrawl(character)
 	state._crawlUseJumpPower = nil
 	state._crawlOrigJumpPower = nil
 	state._crawlOrigJumpHeight = nil
+	-- No collision proxy modifications to restore
 end
 
 local function enterProne(character)
@@ -1026,6 +1199,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if not state.sliding then
 				state.sliding = true
 				state.slideEnd = Abilities.slide(character)
+				applyCollisionForSlide(character)
 				-- Count slide into combo points
 				Style.addEvent(state.style, "GroundSlide", 1)
 				state.stamina.current = math.max(0, state.stamina.current - Config.SlideStaminaCost)
@@ -1036,6 +1210,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 						state.slideEnd()
 					end
 					state.slideEnd = nil
+					-- No collision proxy modifications to restore
 					-- If we are under a low obstacle after sliding, auto-crawl until there is space
 					local c = player.Character
 					if c and (not hasClearanceToStand(c)) then
@@ -1095,6 +1270,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 		state.proneHeld = true
 		startCrawl(character)
+		-- No collision modifications during crawl
 	elseif input.KeyCode == Enum.KeyCode.R then
 		-- Grapple/Hook toggle
 		local cam = workspace.CurrentCamera
@@ -1316,6 +1492,18 @@ RunService.RenderStepped:Connect(function(dt)
 		sliding = state.sliding,
 		climbing = Climb.isActive(character),
 	}
+
+	-- Maintain CollisionPart world Y during crawl/slide
+	if state.crawling or state.sliding or state.proneActive then
+		local proxy = findCollisionProxy(character)
+		if proxy then
+			if proxy:IsA("BasePart") then
+				setProxyFollowRootAtY(character, proxy, 2)
+			else
+				setProxyWorldY(proxy, 1.5)
+			end
+		end
+	end
 	-- Gate style by sprint requirement
 	local sprintGate = true
 	if Config.StyleRequireSprint then

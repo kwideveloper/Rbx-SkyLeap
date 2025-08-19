@@ -53,14 +53,14 @@ Config.SlideSpeedBoost = 0
 Config.SlideJumpVerticalPercent = 0.30 -- 0..1 fraction of horizontal speed added to vertical
 Config.SlideJumpHorizontalPercent = 0.15 -- 0..1 fraction added to horizontal magnitude
 Config.SlideFrictionMultiplier = 0.5
-Config.SlideHipHeightDelta = -1.2
+Config.SlideHipHeightDelta = 0 -- Keep character at normal height during slide
 Config.SlideStaminaCost = 12
 Config.SlideVfxDuration = 0.25
 Config.SlideCooldownSeconds = 0.75 -- 1.0
 
 -- Prone / Crawl
 Config.ProneWalkSpeed = 8
-Config.ProneHipHeightDelta = -2.2
+Config.ProneHipHeightDelta = 0 -- Keep character at normal height during crawl
 Config.ProneCameraOffsetY = -2.5
 Config.DebugProne = false
 -- Crouch clearance probe (reduces false positives against front walls)
@@ -70,9 +70,9 @@ Config.CrawlStandProbeForwardDepth = 0.25 -- studs, forward depth of clearance b
 Config.VaultDisableObstacleLocal = false
 Config.MantleDisableObstacleLocal = false
 -- Crawl geometry/speed
-Config.CrawlRootHeight = 0 -- studs height for HumanoidRootPart while crawling
+Config.CrawlRootHeight = 2 -- studs height for HumanoidRootPart while crawling
 Config.CrawlSpeed = 8
-Config.CrawlStandUpHeight = 2.2
+Config.CrawlStandUpHeight = 2
 Config.CrawlAutoEnabled = true
 Config.CrawlAutoSampleSeconds = 0.12
 Config.CrawlAutoGroundOnly = true

@@ -117,73 +117,24 @@ local function popCollisionLayer(character)
 	return layer
 end
 
+-- Disabled: Do not globally toggle character collisions anymore
 local function disableCharacterCollision(character)
-	_collisionDisableCount[character] = (_collisionDisableCount[character] or 0) + 1
-	local store = pushCollisionLayer(character)
-	for _, part in ipairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then
-			if store[part] == nil then
-				store[part] = part.CanCollide
-			end
-			part.CanCollide = false
-		end
-	end
+	return
 end
 
+-- Disabled: Nothing to restore since we no longer change them
 local function restoreCharacterCollision(character)
-	if _collisionDisableCount[character] and _collisionDisableCount[character] > 0 then
-		_collisionDisableCount[character] = _collisionDisableCount[character] - 1
-		if _collisionDisableCount[character] > 0 then
-			return
-		end
-	end
-	local store = popCollisionLayer(character)
-	if not store then
-		return
-	end
-	for part, prev in pairs(store) do
-		if part and part:IsA("BasePart") then
-			part.CanCollide = prev
-		end
-	end
-	if _collisionDisableCount[character] and _collisionDisableCount[character] <= 0 then
-		_collisionDisableCount[character] = nil
-	end
+	return
 end
 
--- Public safeguard: ensure collisions are restored for a character
+-- Public safeguard: ensure collisions are restored for a character (no-op now)
 function Abilities.ensureCollisions(character)
-	-- If we have any stored layers, pop all and restore
-	while true do
-		local stack = originalCollisionByPart[character]
-		if not stack or #stack == 0 then
-			break
-		end
-		local store = popCollisionLayer(character)
-		if store then
-			for part, prev in pairs(store) do
-				if part and part:IsA("BasePart") then
-					part.CanCollide = prev
-				end
-			end
-		end
-	end
 	_collisionDisableCount[character] = nil
 end
 
--- For slide: only torso collides; disable hands/feet/limbs collisions to prevent snagging the floor
+-- Disabled: No per-part mask changes for slide
 local function setSlideCollisionMask(character)
-	local store = pushCollisionLayer(character)
-	local torsoWhitelist = { UpperTorso = true, LowerTorso = true, Torso = true }
-	for _, d in ipairs(character:GetDescendants()) do
-		if d:IsA("BasePart") then
-			local shouldCollide = torsoWhitelist[d.Name] == true
-			if store[d] == nil then
-				store[d] = d.CanCollide
-			end
-			d.CanCollide = shouldCollide
-		end
-	end
+	return
 end
 
 -- Create a temporary reduced-height collider aligned so its bottom matches the original HRP bottom.
@@ -236,6 +187,7 @@ function Abilities.beginCrouchCollider(character)
 	if not rootPart then
 		return function() end
 	end
+
 	local hrpSize = rootPart.Size or Vector3.new(2, 2, 1)
 	local targetY = (Config.CrouchColliderHeight or (hrpSize.Y * 0.6))
 	targetY = math.max(0.8, math.min(targetY, hrpSize.Y))
@@ -538,8 +490,7 @@ function Abilities.slide(character)
 		if endCollider then
 			endCollider()
 		end
-		-- Restore body collisions after slide
-		restoreCharacterCollision(character)
+		-- Character collisions remain enabled throughout slide
 		-- Restore friction/autorotate
 		humanoid.AutoRotate = originalAutoRotate
 		restoreCharacterFriction(character)
@@ -1171,8 +1122,7 @@ function Abilities.tryMantle(character)
 		end
 	end
 
-	-- Temporarily disable collisions for a clean pass-over and also on the obstacle to avoid lip snag
-	disableCharacterCollision(character)
+	-- Character collisions remain enabled - only disable obstacle collisions for clean mantle
 	local obstaclePrevByPart = {}
 	do
 		local obstaclePart = hitRes.Instance
@@ -1298,9 +1248,8 @@ function Abilities.tryMantle(character)
 			end
 			task.wait()
 		end
-		-- Done: restore collisions and hand control back to physics
+		-- Done: hand control back to physics (character collisions remain enabled)
 		active = false
-		restoreCharacterCollision(character)
 		-- Restore obstacle collision/touch locally
 		for part, prev in pairs(obstaclePrevByPart) do
 			if part and part.Parent then
@@ -1344,10 +1293,7 @@ function Abilities.tryMantle(character)
 
 	-- Hard failsafe: ensure cleanup runs even if animations/events are interrupted
 	task.delay((Config.MantleDurationSeconds or 0.22) + 0.6, function()
-		-- If any collision layers remain or mantle flag is still set, force-restore
-		pcall(function()
-			restoreCharacterCollision(character)
-		end)
+		-- Character collisions remain enabled (only restore obstacle collisions if needed)
 		for part, prev in pairs(obstaclePrevByPart) do
 			if part and part.Parent then
 				if prev.collide ~= nil then
@@ -1628,8 +1574,7 @@ function Abilities.tryVault(character)
 	local up = Vector3.new(0, upV, 0)
 	root.AssemblyLinearVelocity = Vector3.new(forward.X, up.Y, forward.Z)
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-	-- Disable collisions during vault to ensure smooth pass-through
-	disableCharacterCollision(character)
+	-- Character collisions remain enabled - only disable obstacle collisions for smooth vault
 
 	-- Also disable collision/touch on the obstacle locally so this client never collides during vault
 	local obstaclePart = res.Instance
@@ -1836,7 +1781,7 @@ function Abilities.tryVault(character)
 				ended = true
 				stillVaulting = false
 				cleanupIK()
-				restoreCharacterCollision(character)
+				-- Character collisions remain enabled
 				-- Restore obstacle collision/touch locally
 				for part, prev in pairs(obstaclePrevByPart) do
 					if part and part.Parent then
@@ -1926,7 +1871,7 @@ function Abilities.tryVault(character)
 			end
 			ended = true
 			stillVaulting = false
-			restoreCharacterCollision(character)
+			-- Character collisions remain enabled
 			-- Restore obstacle collision/touch locally
 			for part, prev in pairs(obstaclePrevByPart) do
 				if part and part.Parent then
@@ -1949,11 +1894,8 @@ function Abilities.tryVault(character)
 		end)
 	end
 
-	-- Hard failsafe for vault: ensure collisions/flags restored even if interrupted
+	-- Hard failsafe for vault: ensure flags restored even if interrupted (character collisions remain enabled)
 	task.delay((Config.VaultDurationSeconds or 0.35) + 0.6, function()
-		pcall(function()
-			restoreCharacterCollision(character)
-		end)
 		for part, prev in pairs(obstaclePrevByPart) do
 			if part and part.Parent then
 				if prev.collide ~= nil then
@@ -1983,8 +1925,7 @@ local function beginProxyCollider(character, heightY, name)
 	if not rootPart or not humanoid or not heightY or heightY <= 0 then
 		return function() end
 	end
-	-- Disable character part collisions
-	disableCharacterCollision(character)
+	-- Character collisions remain enabled for proxy collider system
 	local hrp = rootPart
 	local cf = hrp.CFrame
 	local up = cf.UpVector
@@ -2017,7 +1958,7 @@ local function beginProxyCollider(character, heightY, name)
 		pcall(function()
 			collider:Destroy()
 		end)
-		restoreCharacterCollision(character)
+		-- Character collisions remain enabled (never disabled)
 	end
 end
 
@@ -2027,29 +1968,7 @@ function Abilities.crawlIsActive(character)
 	return crawlActive[character] ~= nil
 end
 
--- For crawl: collide only with LowerTorso (or Torso for R6); disable other parts
-local function setCrawlCollisionMask(character)
-	local store = pushCollisionLayer(character)
-	local countOn, countOff = 0, 0
-	for _, d in ipairs(character:GetDescendants()) do
-		if d:IsA("BasePart") then
-			local name = d.Name
-			local shouldCollide = (name == "LowerTorso") or (name == "Torso")
-			if store[d] == nil then
-				store[d] = d.CanCollide
-			end
-			d.CanCollide = shouldCollide
-			if shouldCollide then
-				countOn = countOn + 1
-			else
-				countOff = countOff + 1
-			end
-		end
-	end
-	if Config and Config.DebugProne then
-		print("[Crawl] setCrawlCollisionMask on=", countOn, "off=", countOff)
-	end
-end
+-- Removed setCrawlCollisionMask function - no longer modifying character body collisions
 
 function Abilities.crawlBegin(character)
 	local root, humanoid = getCharacterParts(character)
@@ -2059,10 +1978,10 @@ function Abilities.crawlBegin(character)
 	if crawlActive[character] then
 		return true
 	end
-	setCrawlCollisionMask(character)
+	-- Do not alter character part collisions for crawl; controller manages a proxy CollisionPart now
 	crawlActive[character] = {}
 	if Config and Config.DebugProne then
-		print("[Crawl] begin")
+		print("[Crawl] begin (no collision mask)")
 	end
 	return true
 end
@@ -2077,9 +1996,9 @@ function Abilities.crawlEnd(character)
 		return
 	end
 	crawlActive[character] = nil
-	restoreCharacterCollision(character)
+	-- No collision restore needed for crawl
 	if Config and Config.DebugProne then
-		print("[Crawl] end -> collisions restored")
+		print("[Crawl] end (no collision restore)")
 	end
 end
 
