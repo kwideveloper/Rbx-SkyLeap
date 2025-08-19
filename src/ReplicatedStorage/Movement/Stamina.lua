@@ -38,8 +38,8 @@ end
 
 -- Tick with explicit control over whether regeneration is allowed.
 -- Draining still occurs when sprinting, but regen only happens when allowRegen is true.
-function Stamina.tickWithGate(stamina, dt, allowRegen)
-	if stamina.isSprinting then
+function Stamina.tickWithGate(stamina, dt, allowRegen, isMoving)
+	if stamina.isSprinting and (isMoving ~= false) then
 		stamina.current = stamina.current - (Config.SprintDrainPerSecond * dt)
 		if stamina.current <= 0 then
 			stamina.current = 0

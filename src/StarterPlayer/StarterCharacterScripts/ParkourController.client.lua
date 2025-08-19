@@ -19,6 +19,8 @@ local Zipline = require(ReplicatedStorage.Movement.Zipline)
 local BunnyHop = require(ReplicatedStorage.Movement.BunnyHop)
 local AirControl = require(ReplicatedStorage.Movement.AirControl)
 local Style = require(ReplicatedStorage.Movement.Style)
+local Grapple = require(ReplicatedStorage.Movement.Grapple)
+local RopeSwing = require(ReplicatedStorage.Movement.RopeSwing)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
@@ -1093,6 +1095,12 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 		state.proneHeld = true
 		startCrawl(character)
+	elseif input.KeyCode == Enum.KeyCode.R then
+		-- Grapple/Hook
+		local cam = workspace.CurrentCamera
+		if cam then
+			Grapple.tryFire(character, cam.CFrame)
+		end
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
 		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
@@ -1103,6 +1111,10 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				Abilities.cancelDash(character)
 			end
 		end)
+		-- Release rope swing if active
+		if Config.RopeReleaseOnJump and RopeSwing.isActive(character) then
+			RopeSwing.stop(character)
+		end
 		if state.sliding and state.slideEnd then
 			state.sliding = false
 			state.slideEnd()
@@ -1235,6 +1247,12 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 	end
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = false
+	end
+	if input.KeyCode == Enum.KeyCode.R then
+		local c = player.Character
+		if c then
+			Grapple.stop(c)
+		end
 	end
 	if input.KeyCode == Enum.KeyCode.Z then
 		state.proneHeld = false
@@ -1388,7 +1406,8 @@ RunService.RenderStepped:Connect(function(dt)
 
 	-- Sprinting and stamina updates (do not override WalkSpeed while sliding; Abilities.slide manages it)
 	if not state.sliding then
-		if state.sprintHeld then
+		local isMoving = (humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0) or false
+		if state.sprintHeld and isMoving then
 			if not state.stamina.isSprinting then
 				if Stamina.setSprinting(state.stamina, true) then
 					-- start ramp towards sprint speed
@@ -1514,7 +1533,12 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	local stillSprinting
 	do
-		local _cur, s = Stamina.tickWithGate(state.stamina, dt, allowRegen)
+		local _cur, s = Stamina.tickWithGate(
+			state.stamina,
+			dt,
+			allowRegen,
+			(humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0)
+		)
 		stillSprinting = s
 	end
 	if not state.sliding then
@@ -1847,6 +1871,22 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 end)
+
+-- Per-frame updates for added systems
+-- Initialize rope swing listeners once
+task.defer(function()
+	pcall(function()
+		RopeSwing.init()
+	end)
+end)
+
+RunService.RenderStepped:Connect(function(dt)
+	local character = player.Character
+	if character then
+		Grapple.update(character, dt)
+		-- Rope swing handles attach/release internally via End.Touched
+	end
+end)
 -- Chain-sensitive action events to Style
 local function onWallRunStart()
 	Style.addEvent(state.style, "WallRun", 1)
@@ -1958,27 +1998,7 @@ do
 				maybeConsumePadThenBump("WallSlide")
 				nudgeT0 = os.clock()
 			end
-			-- Camera nudge while sliding: blend view towards away-from-wall
-			if active then
-				local cam = workspace.CurrentCamera
-				local root = character:FindFirstChild("HumanoidRootPart")
-				if cam and root then
-					local delayS = Config.CameraNudgeWallSlideDelaySeconds or 1.5
-					if (os.clock() - nudgeT0) >= delayS then
-						local frac = Config.CameraNudgeWallSlideFraction or 0.35
-						local dur = Config.CameraNudgeWallSlideSeconds or 0.25
-						local away = -root.CFrame.LookVector
-						local start = cam.CFrame
-						local target = CFrame.lookAt(
-							start.Position,
-							start.Position + (start.LookVector:Lerp(away, frac)),
-							Vector3.yAxis
-						)
-						local alpha = math.clamp(((os.clock() - nudgeT0) - delayS) / dur, 0, 1)
-						cam.CFrame = start:Lerp(target, alpha)
-					end
-				end
-			end
+			-- (camera nudge during wall slide removed)
 			prev = active
 		end)
 	end

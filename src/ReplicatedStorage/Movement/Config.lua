@@ -107,9 +107,7 @@ Config.AirControlUnlockAfterWallJumpSeconds = 0
 -- Camera nudge assists
 Config.CameraNudgeWallJumpSeconds = 0.2
 Config.CameraNudgeWallJumpFraction = 0.45 -- 0..1 blend towards away direction
-Config.CameraNudgeWallSlideSeconds = 0.25
-Config.CameraNudgeWallSlideFraction = 0.35
-Config.CameraNudgeWallSlideDelaySeconds = 1.2
+-- [Removed] Camera nudge during wall slide
 -- Camera nudge after wall jump (subtle assist to show away direction)
 Config.CameraNudgeWallJumpSeconds = 0.2
 Config.CameraNudgeWallJumpFraction = 0.45 -- 0..1 blend towards away direction
@@ -301,6 +299,22 @@ Config.TrailWidth = 0.3 -- 0.3
 Config.TrailSpeedMin = 10 -- 10
 Config.TrailSpeedMax = 80 -- 80
 
+-- Grapple / Hook
+Config.GrappleEnabled = true
+Config.GrappleMaxDistance = 120
+Config.GrapplePullForce = 6000
+Config.GrappleReelSpeed = 28
+Config.GrappleRopeVisible = true
+Config.GrappleRopeThickness = 0.06
+
+-- Rope swing (lianas)
+Config.RopeSwingEnabled = true
+Config.RopeAttachRadius = 200 -- studs
+Config.RopePumpForce = 4500 -- force applied along tangent from MoveDirection
+Config.RopeReleaseOnJump = true -- pressing Space while attached releases
+Config.RopeGrabBoost = 500 -- initial rope velocity boost (studs/s) scaled by approach dir
+Config.RopeLetGoBoost = 250 -- boost applied to player on release along rope vel
+
 -- Hand trails
 Config.TrailHandsEnabled = true
 Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail
@@ -308,7 +322,8 @@ Config.TrailHandsLifetimeFactor = 0.5 -- lifetime relative to main trail
 Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 
 -- Debug flags
-Config.DebugLaunchPad = true
+Config.DebugLaunchPad = false
 Config.DebugLandingRoll = false
+Config.DebugRopeSwing = true
 
 return Config
