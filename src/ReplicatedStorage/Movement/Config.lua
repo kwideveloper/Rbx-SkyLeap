@@ -86,6 +86,12 @@ Config.CrawlAutoEnabled = true
 Config.CrawlAutoSampleSeconds = 0.12
 Config.CrawlAutoGroundOnly = true
 
+-- First-person helper (show body when fully zoomed in)
+-- Forward offset applied only at max zoom to bring view in front of the head
+Config.FirstPersonForwardOffsetZ = -1.5 -- -1
+-- If true, show whole body in FP; if false, show only distal limbs (hands/feet) to avoid clipping
+Config.FirstPersonShowWholeBody = false
+
 -- Wall run
 -- Wall running configuration:
 -- WallRunMaxDurationSeconds: Maximum time (in seconds) a player can wall run before being forced off.
