@@ -182,18 +182,6 @@ local function beginActionCollider(character, heightY, name)
 	end
 end
 
-function Abilities.beginCrouchCollider(character)
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then
-		return function() end
-	end
-
-	local hrpSize = rootPart.Size or Vector3.new(2, 2, 1)
-	local targetY = (Config.CrouchColliderHeight or (hrpSize.Y * 0.6))
-	targetY = math.max(0.8, math.min(targetY, hrpSize.Y))
-	return beginActionCollider(character, targetY, "Crouch")
-end
-
 function Abilities.tryDash(character)
 	local now = os.clock()
 	if now - lastDashTick < Config.DashCooldownSeconds then
@@ -1915,91 +1903,6 @@ function Abilities.tryVault(character)
 		end)
 	end)
 	return true
-end
-
--- Create a colliding proxy collider for low-profile locomotion (e.g., crawl)
--- Disables character collisions and welds a smaller collider that actually collides with the world.
--- Returns a cleanup that destroys the proxy and restores character collisions.
-local function beginProxyCollider(character, heightY, name)
-	local rootPart, humanoid = getCharacterParts(character)
-	if not rootPart or not humanoid or not heightY or heightY <= 0 then
-		return function() end
-	end
-	-- Character collisions remain enabled for proxy collider system
-	local hrp = rootPart
-	local cf = hrp.CFrame
-	local up = cf.UpVector
-	local right = cf.RightVector
-	local look = cf.LookVector
-	local hrpSize = hrp.Size or Vector3.new(2, 2, 1)
-	local bottomWorld = cf.Position + up * -(hrpSize.Y * 0.5)
-	local center = bottomWorld + up * (heightY * 0.5)
-	local collider = Instance.new("Part")
-	collider.Name = (name or "Proxy") .. "Collider"
-	collider.Size = Vector3.new(hrpSize.X, heightY, hrpSize.Z)
-	collider.CFrame = CFrame.fromMatrix(center, right, up, look)
-	collider.Transparency = 1
-	collider.CanCollide = true
-	collider.CanQuery = true
-	collider.CanTouch = true
-	collider.Massless = true
-	collider.CastShadow = false
-	collider.Parent = hrp.Parent
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = collider
-	weld.Part1 = hrp
-	weld.Parent = collider
-	local cleaned = false
-	return function()
-		if cleaned then
-			return
-		end
-		cleaned = true
-		pcall(function()
-			collider:Destroy()
-		end)
-		-- Character collisions remain enabled (never disabled)
-	end
-end
-
-local crawlActive = {}
-
-function Abilities.crawlIsActive(character)
-	return crawlActive[character] ~= nil
-end
-
--- Removed setCrawlCollisionMask function - no longer modifying character body collisions
-
-function Abilities.crawlBegin(character)
-	local root, humanoid = getCharacterParts(character)
-	if not root or not humanoid then
-		return false
-	end
-	if crawlActive[character] then
-		return true
-	end
-	-- Do not alter character part collisions for crawl; controller manages a proxy CollisionPart now
-	crawlActive[character] = {}
-	if Config and Config.DebugProne then
-		print("[Crawl] begin (no collision mask)")
-	end
-	return true
-end
-
-function Abilities.crawlMaintain(character, dt)
-	-- No-op: locomotion handled by Humanoid; proxy collider handles world collisions
-end
-
-function Abilities.crawlEnd(character)
-	local data = crawlActive[character]
-	if not data then
-		return
-	end
-	crawlActive[character] = nil
-	-- No collision restore needed for crawl
-	if Config and Config.DebugProne then
-		print("[Crawl] end (no collision restore)")
-	end
 end
 
 function Abilities.resetAirDashCharges(character)

@@ -45,11 +45,11 @@ local Animations = {
 	ClimbLoop = "",
 	ClimbEnd = "",
 
-	-- Crouch / Prone (hold Z)
-	Crouch = "rbxassetid://75303378392203",
-	-- Optional split variants; if left empty, code will fallback to `Crouch`
-	CrouchIdle = "rbxassetid://122469032691633",
-	CrouchMove = "rbxassetid://75303378392203",
+	-- Crawl / Prone (hold Z)
+	Crawl = "rbxassetid://75303378392203",
+	-- Optional split variants; if left empty, code will fallback to `Crawl`
+	CrawlIdle = "rbxassetid://122469032691633",
+	CrawlMove = "rbxassetid://75303378392203",
 }
 
 -- Internal cache of Animation instances by name

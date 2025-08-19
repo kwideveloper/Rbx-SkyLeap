@@ -26,94 +26,7 @@ local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
 local PadTriggered = Remotes:WaitForChild("PadTriggered")
 
--- Helper to check vertical clearance to stand from crawl
-local function buildPlayerCharacterExcludeList(selfCharacter)
-	local list = { selfCharacter }
-	for _, plr in ipairs(Players:GetPlayers()) do
-		local ch = plr.Character
-		if ch and ch ~= selfCharacter then
-			table.insert(list, ch)
-		end
-	end
-	return list
-end
-
-local function hasClearanceToStand(character)
-	local torso = character
-		and (
-			character:FindFirstChild("LowerTorso")
-			or character:FindFirstChild("Torso")
-			or character:FindFirstChild("UpperTorso")
-		)
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local sensor = torso or root
-	if not sensor then
-		return true
-	end
-	local up = Vector3.yAxis
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = buildPlayerCharacterExcludeList(character)
-	params.IgnoreWater = true
-	local clearance = Config.CrawlStandUpHeight or 2
-	-- Raycast: start a hair below the torso top to avoid starting inside a roof
-	local origin = sensor.Position + (up * (math.max(0.1, (sensor.Size.Y * 0.5) - 0.05)))
-	local hit = workspace:Raycast(origin, up * (clearance + 0.1), params)
-	-- Fallback: Overlap a box above the torso if ray missed (handles thin/inside cases)
-	local boxBlocked = false
-	local boxCount = 0
-	local boxSizeY = clearance
-	local boxCenterY = origin.Y + (clearance * 0.5)
-	if not hit then
-		local overlap = OverlapParams.new()
-		overlap.FilterType = Enum.RaycastFilterType.Exclude
-		overlap.FilterDescendantsInstances = buildPlayerCharacterExcludeList(character)
-		overlap.RespectCanCollide = true
-		local baseSize = (root and root.Size) or sensor.Size or Vector3.new(2, 2, 1)
-		-- Use narrow sideways width and very shallow forward depth so front walls don't count as overhead
-		local side = Config.CrawlStandProbeSideWidth or math.max(0.6, baseSize.X * 0.4)
-		local depth = Config.CrawlStandProbeForwardDepth or 0.25
-		local size = Vector3.new(math.max(0.4, side), boxSizeY, math.max(0.2, depth))
-		-- Slightly pull the probe back towards the character's center to avoid entering the front wall
-		local back = -sensor.CFrame.LookVector
-		local center = Vector3.new(sensor.Position.X, boxCenterY, sensor.Position.Z) + (back * (depth * 0.5))
-		local parts = workspace:GetPartBoundsInBox(CFrame.new(center), size, overlap)
-		boxCount = parts and #parts or 0
-		boxBlocked = (boxCount > 0)
-	end
-	if Config.DebugProne then
-		local hitName = hit and hit.Instance and hit.Instance:GetFullName() or "nil"
-		local partName = sensor and sensor.Name or "nil"
-		print(
-			"[Crawl] hasClearanceToStand part=",
-			partName,
-			"originY=",
-			origin.Y,
-			"clearance=",
-			clearance,
-			"rayHit=",
-			hitName,
-			"boxCount=",
-			boxCount,
-			"boxBlocked=",
-			boxBlocked,
-			"boxCenterY=",
-			boxCenterY,
-			"boxSizeY=",
-			boxSizeY
-		)
-	end
-	return (hit == nil) and (boxBlocked == false)
-end
-
-local function dbgProne(...)
-	if Config.DebugProne then
-		print("[Crawl]", ...)
-	end
-end
-
 local player = Players.LocalPlayer
-local proneDebugTicker = 0
 
 local state = {
 	momentum = Momentum.create(),
@@ -121,12 +34,6 @@ local state = {
 	sliding = false,
 	slideEnd = nil,
 	sprintHeld = false,
-	proneHeld = false,
-	proneActive = false,
-	proneOriginalWalkSpeed = nil,
-	proneOriginalHipHeight = nil,
-	proneOriginalCameraOffset = nil,
-	proneTrack = nil,
 	keys = { W = false, A = false, S = false, D = false },
 	clientStateFolder = nil,
 	staminaValue = nil,
@@ -143,50 +50,9 @@ local state = {
 	styleCommitAmountValue = nil,
 	pendingPadTick = nil,
 	wallAttachLockedUntil = nil,
-	crawling = false,
-	_crawlOrigWalkSpeed = nil,
-	_crawlUseJumpPower = nil,
-	_crawlOrigJumpPower = nil,
-	_crawlOrigJumpHeight = nil,
-	_crawlOrigRootSize = nil,
-	_proneClearFrames = 0,
 	_airDashResetDone = false,
 	doubleJumpCharges = 0,
 }
-
--- Collision proxy adjustments for crawl/slide
-local function findCollisionProxy(character)
-	if not character then
-		return nil
-	end
-	for _, inst in ipairs(character:GetDescendants()) do
-		if inst.Name == "CollisionPart" then
-			return inst
-		end
-	end
-	return nil
-end
-
-local function saveCollisionOriginal(character)
-	local proxy = findCollisionProxy(character)
-	if not proxy then
-		return nil
-	end
-	local orig = { kind = proxy.ClassName }
-	if proxy:IsA("Attachment") then
-		orig.attachmentPos = proxy.Position
-	elseif proxy:IsA("BasePart") then
-		orig.partSize = proxy.Size
-		orig.worldPosY = proxy.Position.Y
-		orig.canCollide = proxy.CanCollide
-		orig.canTouch = proxy.CanTouch
-		orig.canQuery = proxy.CanQuery
-		orig.massless = proxy.Massless
-		-- Track weld constraints to disable during crawl/slide
-		orig.disabledWelds = {}
-	end
-	return orig
-end
 
 local function setProxyWorldY(proxy, targetY)
 	if not proxy then
@@ -252,78 +118,6 @@ local function restoreProxyWelds(list)
 			w.Enabled = true
 		end
 	end
-end
-
-local function applyCollisionForCrawl(character)
-	state._collisionOrig = state._collisionOrig or saveCollisionOriginal(character)
-	local proxy = findCollisionProxy(character)
-	if not proxy then
-		return
-	end
-	-- Set lower height and offset for crawl
-	if proxy:IsA("BasePart") then
-		proxy.Size = Vector3.new(proxy.Size.X, 0.5, proxy.Size.Z)
-		proxy.CanCollide = true
-		proxy.CanTouch = true
-		proxy.CanQuery = true
-		proxy.Massless = true
-	end
-	-- Detach weld so we can position freely
-	local disabled = disableProxyWelds(proxy)
-	state._collisionWelds = disabled
-	setProxyFollowRootAtY(character, proxy, 2)
-end
-
-local function applyCollisionForSlide(character)
-	state._collisionOrig = state._collisionOrig or saveCollisionOriginal(character)
-	local proxy = findCollisionProxy(character)
-	if not proxy then
-		return
-	end
-	-- Taller than crawl but still lowered
-	if proxy:IsA("BasePart") then
-		proxy.Size = Vector3.new(proxy.Size.X, 1.5, proxy.Size.Z)
-		proxy.CanCollide = true
-		proxy.CanTouch = true
-		proxy.CanQuery = true
-		proxy.Massless = true
-	end
-	local disabled = disableProxyWelds(proxy)
-	state._collisionWelds = disabled
-	setProxyFollowRootAtY(character, proxy, 2)
-end
-
-local function restoreCollisionProxy(character)
-	local proxy = findCollisionProxy(character)
-	local orig = state._collisionOrig
-	if not (proxy and orig) then
-		return
-	end
-	if proxy:IsA("Attachment") and orig.attachmentPos then
-		proxy.Position = orig.attachmentPos
-	elseif proxy:IsA("BasePart") then
-		if orig.partSize then
-			proxy.Size = Vector3.new(proxy.Size.X, orig.partSize.Y, proxy.Size.Z)
-		end
-		if orig.worldPosY ~= nil then
-			setProxyWorldY(proxy, orig.worldPosY)
-		end
-		if orig.canCollide ~= nil then
-			proxy.CanCollide = orig.canCollide
-		end
-		if orig.canTouch ~= nil then
-			proxy.CanTouch = orig.canTouch
-		end
-		if orig.canQuery ~= nil then
-			proxy.CanQuery = orig.canQuery
-		end
-		if orig.massless ~= nil then
-			proxy.Massless = orig.massless
-		end
-	end
-	-- Restore welds
-	restoreProxyWelds(state._collisionWelds)
-	state._collisionWelds = nil
 end
 
 -- Per-wall chain anti-abuse: track consecutive chain actions on the same wall
@@ -667,12 +461,6 @@ local function setupCharacter(character)
 
 	-- Reset transient state on spawn and publish clean HUD states
 	state.sprintHeld = false
-	state.sliding = false
-	state.slideEnd = nil
-	state.proneHeld = false
-	state.proneActive = false
-	state.proneOriginalWalkSpeed = nil
-	state.proneOriginalHipHeight = nil
 	if state.stamina then
 		state.stamina.current = Config.StaminaMax
 		state.stamina.isSprinting = false
@@ -917,234 +705,6 @@ end)
 -- Ensure camera align caches base motors on spawn
 -- (Removed CameraAlign setup; head tracking handled by HeadTracking.client.lua)
 
-local function tryPlayProneAnimation(humanoid, key)
-	-- Prefer configured Crouch animation from Animations registry
-	local anim = nil
-	if key and Animations and Animations.get then
-		anim = Animations.get(key)
-	end
-	if not anim then
-		anim = Animations and Animations.get and Animations.get("Crouch") or nil
-	end
-	if not anim then
-		-- Fallback: legacy folder-based animations if present
-		local rs = game:GetService("ReplicatedStorage")
-		local animationsFolder = rs:FindFirstChild("Animations")
-		if animationsFolder then
-			anim = animationsFolder:FindFirstChild("Prone") or animationsFolder:FindFirstChild("Crawl")
-		end
-		if not anim then
-			return nil
-		end
-	end
-	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
-	animator.Parent = humanoid
-	local track
-	pcall(function()
-		track = animator:LoadAnimation(anim)
-	end)
-	if not track then
-		return nil
-	end
-	track.Priority = Enum.AnimationPriority.Movement
-	track.Looped = true
-	track:Play(0.1, 1, 1.0)
-	return track
-end
-
-local function startCrawl(character)
-	if state.crawling then
-		return
-	end
-	local humanoid = getHumanoid(character)
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not humanoid or not root then
-		return
-	end
-	-- Block if not grounded or conflicting states
-	if humanoid.FloorMaterial == Enum.Material.Air then
-		if Config.DebugProne then
-			dbgProne("startCrawl rejected: airborne")
-		end
-		return
-	end
-	if
-		state.sliding
-		or WallRun.isActive(character)
-		or Climb.isActive(character)
-		or (state.isMantlingValue and state.isMantlingValue.Value)
-		or Zipline.isActive(character)
-	then
-		return
-	end
-	-- Begin crawl via Abilities (sets mask)
-	if not Abilities.crawlBegin(character) then
-		return
-	end
-	state.crawling = true
-	-- Save originals
-	state._crawlOrigWalkSpeed = humanoid.WalkSpeed
-	state._crawlUseJumpPower = humanoid.UseJumpPower
-	state._crawlOrigJumpPower = humanoid.JumpPower
-	state._crawlOrigJumpHeight = humanoid.JumpHeight
-	-- Speed and jump
-	local crawlSpeed = Config.CrawlSpeed
-		or math.max(2, math.floor((state._crawlOrigWalkSpeed or Config.BaseWalkSpeed) * 0.5))
-	humanoid.WalkSpeed = crawlSpeed
-	if humanoid.UseJumpPower then
-		humanoid.JumpPower = 0
-	else
-		humanoid.JumpHeight = 0
-	end
-	-- Play crouch/crawl loop animation
-	if state.proneTrack then
-		pcall(function()
-			state.proneTrack:Stop(0.1)
-		end)
-		state.proneTrack = nil
-	end
-	local desiredKey = nil
-	do
-		local root = character:FindFirstChild("HumanoidRootPart")
-		local moving = false
-		if root then
-			local v = root.AssemblyLinearVelocity
-			local horiz = Vector3.new(v.X, 0, v.Z)
-			local threshold = Config.CrawlAnimMoveThreshold or 0.1
-			moving = (horiz.Magnitude > threshold)
-		end
-		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
-			desiredKey = "CrouchMove"
-		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
-			desiredKey = "CrouchIdle"
-		else
-			desiredKey = "Crouch"
-		end
-	end
-	state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
-	state.proneTrackKey = desiredKey
-	if state.proneTrack then
-		state.proneTrack.Looped = true
-	end
-end
-
-local function stopCrawl(character)
-	if not state.crawling then
-		return
-	end
-	state.crawling = false
-	local humanoid = getHumanoid(character)
-	-- End crawl via Abilities (removes proxy and restores collisions)
-	Abilities.crawlEnd(character)
-	if humanoid then
-		if state._crawlOrigWalkSpeed ~= nil then
-			humanoid.WalkSpeed = state._crawlOrigWalkSpeed
-		end
-		if state._crawlUseJumpPower then
-			if state._crawlOrigJumpPower ~= nil then
-				humanoid.JumpPower = state._crawlOrigJumpPower
-			end
-		else
-			if state._crawlOrigJumpHeight ~= nil then
-				humanoid.JumpHeight = state._crawlOrigJumpHeight
-			end
-		end
-	end
-	-- Stop crawl animation
-	if state.proneTrack then
-		pcall(function()
-			state.proneTrack:Stop(0.15)
-		end)
-		state.proneTrack = nil
-	end
-	-- Clear saved originals
-	state._crawlOrigWalkSpeed = nil
-	state._crawlUseJumpPower = nil
-	state._crawlOrigJumpPower = nil
-	state._crawlOrigJumpHeight = nil
-	-- No collision proxy modifications to restore
-end
-
-local function enterProne(character)
-	if state.proneActive then
-		return
-	end
-	local humanoid = getHumanoid(character)
-	-- Disallow prone during slide/wallrun/climb/mantle/zipline
-	if
-		state.sliding
-		or WallRun.isActive(character)
-		or Climb.isActive(character)
-		or (state.isMantlingValue and state.isMantlingValue.Value)
-		or Zipline.isActive(character)
-	then
-		return
-	end
-	state.proneOriginalWalkSpeed = humanoid.WalkSpeed
-	state.proneOriginalHipHeight = humanoid.HipHeight
-	state.proneOriginalCameraOffset = humanoid.CameraOffset
-	humanoid.WalkSpeed = Config.ProneWalkSpeed
-	humanoid.HipHeight = math.max(0, state.proneOriginalHipHeight + (Config.ProneHipHeightDelta or 0))
-	humanoid.CameraOffset = Vector3.new(0, (Config.ProneCameraOffsetY or -2.5), 0)
-	-- Optional animation if present (loop while held Z)
-	if state.proneTrack then
-		pcall(function()
-			state.proneTrack:Stop(0.1)
-		end)
-		state.proneTrack = nil
-	end
-	local desiredKey = nil
-	do
-		local root = character:FindFirstChild("HumanoidRootPart")
-		local moving = false
-		if root then
-			local v = root.AssemblyLinearVelocity
-			local horiz = Vector3.new(v.X, 0, v.Z)
-			local threshold = Config.CrawlAnimMoveThreshold or 0.1
-			moving = (horiz.Magnitude > threshold)
-		end
-		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
-			desiredKey = "CrouchMove"
-		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
-			desiredKey = "CrouchIdle"
-		else
-			desiredKey = "Crouch"
-		end
-	end
-	state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
-	state.proneTrackKey = desiredKey
-	state.proneActive = true
-end
-
-local function exitProne(character)
-	if not state.proneActive then
-		return
-	end
-	local humanoid = getHumanoid(character)
-	if state.proneOriginalWalkSpeed ~= nil then
-		humanoid.WalkSpeed = state.proneOriginalWalkSpeed
-	end
-	if state.proneOriginalHipHeight ~= nil then
-		humanoid.HipHeight = state.proneOriginalHipHeight
-	end
-	if state.proneOriginalCameraOffset ~= nil then
-		humanoid.CameraOffset = state.proneOriginalCameraOffset
-	else
-		humanoid.CameraOffset = Vector3.new()
-	end
-	if state.proneTrack then
-		pcall(function()
-			state.proneTrack:Stop(0.2)
-		end)
-		state.proneTrack = nil
-	end
-	state.proneTrackKey = nil
-	state.proneActive = false
-	state.proneOriginalWalkSpeed = nil
-	state.proneOriginalHipHeight = nil
-	state.proneOriginalCameraOffset = nil
-end
-
 -- Inputs
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then
@@ -1180,47 +740,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = true
-	elseif input.KeyCode == Enum.KeyCode.C then
-		-- Slide only while sprinting
-		local humanoid = getHumanoid(character)
-		-- Disable slide while airborne and during wall run
-		if WallRun.isActive(character) or Climb.isActive(character) or state.proneActive then
-			return
-		end
-		if humanoid.FloorMaterial == Enum.Material.Air then
-			return
-		end
-		if
-			state.stamina.isSprinting
-			and humanoid.MoveDirection.Magnitude > 0
-			and state.stamina.current >= Config.SlideStaminaCost
-			and Abilities.isSlideReady()
-		then
-			if not state.sliding then
-				state.sliding = true
-				state.slideEnd = Abilities.slide(character)
-				applyCollisionForSlide(character)
-				-- Count slide into combo points
-				Style.addEvent(state.style, "GroundSlide", 1)
-				state.stamina.current = math.max(0, state.stamina.current - Config.SlideStaminaCost)
-				DashVfx.playSlideFor(character, Config.SlideVfxDuration)
-				task.delay(Config.SlideDurationSeconds, function()
-					state.sliding = false
-					if state.slideEnd then
-						state.slideEnd()
-					end
-					state.slideEnd = nil
-					-- No collision proxy modifications to restore
-					-- If we are under a low obstacle after sliding, auto-crawl until there is space
-					local c = player.Character
-					if c and (not hasClearanceToStand(c)) then
-						dbgProne("Slide ended under obstacle -> entering crawl")
-						state.proneHeld = true
-						startCrawl(c)
-					end
-				end)
-			end
-		end
 	elseif input.KeyCode == Enum.KeyCode.E then
 		-- Zipline takes priority when near a rope
 		if Zipline.isActive(character) then
@@ -1259,18 +778,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		end
-	elseif input.KeyCode == Enum.KeyCode.Z then
-		local character = getCharacter()
-		local humanoid = character and getHumanoid(character)
-		if not humanoid or humanoid.FloorMaterial == Enum.Material.Air then
-			if Config.DebugProne then
-				dbgProne("Ignored Z: airborne or no humanoid")
-			end
-			return
-		end
-		state.proneHeld = true
-		startCrawl(character)
-		-- No collision modifications during crawl
 	elseif input.KeyCode == Enum.KeyCode.R then
 		-- Grapple/Hook toggle
 		local cam = workspace.CurrentCamera
@@ -1424,20 +931,6 @@ UserInputService.InputEnded:Connect(function(input, gpe)
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = false
 	end
-	if input.KeyCode == Enum.KeyCode.Z then
-		state.proneHeld = false
-		local character = player.Character
-		if character then
-			-- If no clearance above, keep crawling
-			local canStand = hasClearanceToStand(character)
-			dbgProne("Z released; canStand=", canStand, "state.crawling=", state.crawling)
-			if canStand then
-				stopCrawl(character)
-			else
-				state.proneHeld = true -- keep holding logically until clearance
-			end
-		end
-	end
 	if input.KeyCode == Enum.KeyCode.W then
 		state.keys.W = false
 	end
@@ -1464,10 +957,6 @@ RunService.RenderStepped:Connect(function(dt)
 		return
 	end
 
-	-- Initialize debounce counter
-	state._proneClearFrames = state._proneClearFrames or 0
-	local neededClearFrames = 3
-
 	local speed = root.AssemblyLinearVelocity.Magnitude
 	if humanoid.MoveDirection.Magnitude > 0 then
 		Momentum.addFromSpeed(state.momentum, speed)
@@ -1493,17 +982,6 @@ RunService.RenderStepped:Connect(function(dt)
 		climbing = Climb.isActive(character),
 	}
 
-	-- Maintain CollisionPart world Y during crawl/slide
-	if state.crawling or state.sliding or state.proneActive then
-		local proxy = findCollisionProxy(character)
-		if proxy then
-			if proxy:IsA("BasePart") then
-				setProxyFollowRootAtY(character, proxy, 2)
-			else
-				setProxyWorldY(proxy, 1.5)
-			end
-		end
-	end
 	-- Gate style by sprint requirement
 	local sprintGate = true
 	if Config.StyleRequireSprint then
@@ -1629,68 +1107,6 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Crawl (hold-to-stay)
-	if state.proneHeld then
-		-- If player started uncompatible state, end crawl
-		if
-			state.sliding
-			or WallRun.isActive(character)
-			or Climb.isActive(character)
-			or (state.isMantlingValue and state.isMantlingValue.Value)
-			or Zipline.isActive(character)
-		then
-			state.proneHeld = false
-			state._proneClearFrames = 0
-			stopCrawl(character)
-		else
-			-- If left the ground, end manual crouch (Z rule)
-			if humanoid.FloorMaterial == Enum.Material.Air then
-				if state.crawling then
-					if Config.DebugProne then
-						dbgProne("End crawl: became airborne")
-					end
-					state.proneHeld = false
-					state._proneClearFrames = 0
-					stopCrawl(character)
-				end
-			else
-				if not state.crawling then
-					startCrawl(character)
-				end
-				-- Auto-stand when space available for several consecutive frames
-				if state.crawling and not UserInputService:IsKeyDown(Enum.KeyCode.Z) then
-					if hasClearanceToStand(character) then
-						state._proneClearFrames = (state._proneClearFrames or 0) + 1
-						if state._proneClearFrames >= neededClearFrames then
-							if Config.DebugProne then
-								dbgProne("Auto-stand after", state._proneClearFrames, "clear frames")
-							end
-							state.proneHeld = false
-							state._proneClearFrames = 0
-							stopCrawl(character)
-						end
-					else
-						state._proneClearFrames = 0
-					end
-				end
-			end
-		end
-	else
-		if state.crawling then
-			-- Try to stand up only if space exists (and keep requiring consecutive frames)
-			if hasClearanceToStand(character) then
-				state._proneClearFrames = (state._proneClearFrames or 0) + 1
-				if state._proneClearFrames >= neededClearFrames then
-					state._proneClearFrames = 0
-					stopCrawl(character)
-				end
-			else
-				state._proneClearFrames = 0
-				state.proneHeld = true -- remain crawling until free
-			end
-		end
-	end
-
 	-- Stamina gate: regen when on ground OR touching any part with attribute Stamina=true (collidable or not)
 	local allowRegen = (humanoid.FloorMaterial ~= Enum.Material.Air)
 	if state.staminaTouchCount and state.staminaTouchCount > 0 then
@@ -1726,36 +1142,6 @@ RunService.RenderStepped:Connect(function(dt)
 	if not state.sliding then
 		if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
-		end
-	end
-
-	-- Swap crouch animations based on movement (idle vs move variants)
-	if state.proneTrack and (state.crawling or state.proneActive) then
-		local root = character:FindFirstChild("HumanoidRootPart")
-		local moving = false
-		if root then
-			local v = root.AssemblyLinearVelocity
-			local horiz = Vector3.new(v.X, 0, v.Z)
-			local threshold = Config.CrawlAnimMoveThreshold or 0.1
-			moving = (horiz.Magnitude > threshold)
-		end
-		local desiredKey
-		if moving and Animations and Animations.get and Animations.get("CrouchMove") then
-			desiredKey = "CrouchMove"
-		elseif (not moving) and Animations and Animations.get and Animations.get("CrouchIdle") then
-			desiredKey = "CrouchIdle"
-		else
-			desiredKey = "Crouch"
-		end
-		if desiredKey ~= state.proneTrackKey then
-			pcall(function()
-				state.proneTrack:Stop(0.1)
-			end)
-			state.proneTrack = tryPlayProneAnimation(humanoid, desiredKey)
-			if state.proneTrack then
-				state.proneTrack.Looped = true
-			end
-			state.proneTrackKey = desiredKey
 		end
 	end
 
@@ -1874,10 +1260,6 @@ RunService.RenderStepped:Connect(function(dt)
 		and not Climb.isActive(character)
 	)
 	if wantWallRun then
-		-- Exit prone if attempting wall behavior
-		if state.proneActive then
-			exitProne(character)
-		end
 		if WallRun.isActive(character) then
 			WallRun.maintain(character)
 		else
@@ -2236,47 +1618,4 @@ RunService.Stepped:Connect(function(_time, dt)
 	move.h = (state.keys.D and 1 or 0) - (state.keys.A and 1 or 0)
 	move.v = (state.keys.W and 1 or 0) - (state.keys.S and 1 or 0)
 	Climb.maintain(character, move)
-end)
-
--- Low-frequency auto clearance sampler (passive)
-local _autoCrawlT0 = 0
-RunService.RenderStepped:Connect(function(dt)
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not character or not humanoid then
-		return
-	end
-	if Config.CrawlAutoEnabled == false then
-		return
-	end
-	local now = os.clock()
-	local interval = Config.CrawlAutoSampleSeconds or 0.12
-	if (now - _autoCrawlT0) < interval then
-		return
-	end
-	_autoCrawlT0 = now
-	-- Skip if incompatible actions
-	if
-		state.sliding
-		or WallRun.isActive(character)
-		or Climb.isActive(character)
-		or (state.isMantlingValue and state.isMantlingValue.Value)
-		or Zipline.isActive(character)
-	then
-		return
-	end
-	-- Optional: ground-only to avoid catching ceilings mid-air
-	if (Config.CrawlAutoGroundOnly ~= false) and humanoid.FloorMaterial == Enum.Material.Air then
-		return
-	end
-	-- If there is NO clearance and we are not crawling, auto-enter crawl and hold until free
-	if not state.crawling and not state.proneHeld then
-		if not hasClearanceToStand(character) then
-			if Config.DebugProne then
-				dbgProne("Auto-crawl: detected low clearance nearby")
-			end
-			state.proneHeld = true
-			startCrawl(character)
-		end
-	end
 end)
