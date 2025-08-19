@@ -307,6 +307,15 @@ Config.GrappleReelSpeed = 28
 Config.GrappleRopeVisible = true
 Config.GrappleRopeThickness = 0.06
 
+-- Vertical wall climb (sprint into wall to climb up briefly)
+Config.VerticalClimbEnabled = true
+Config.VerticalClimbDetectionDistance = 4
+Config.VerticalClimbMinSpeed = 18
+Config.VerticalClimbUpSpeed = 26
+Config.VerticalClimbStickVelocity = 6
+Config.VerticalClimbDurationSeconds = 0.45
+Config.VerticalClimbCooldownSeconds = 0.6 -- 0.6
+
 -- Hand trails
 Config.TrailHandsEnabled = true
 Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail

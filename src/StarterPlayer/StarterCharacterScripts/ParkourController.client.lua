@@ -20,6 +20,7 @@ local BunnyHop = require(ReplicatedStorage.Movement.BunnyHop)
 local AirControl = require(ReplicatedStorage.Movement.AirControl)
 local Style = require(ReplicatedStorage.Movement.Style)
 local Grapple = require(ReplicatedStorage.Movement.Grapple)
+local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
@@ -1664,6 +1665,15 @@ RunService.RenderStepped:Connect(function(dt)
 		if state.stamina.isSprinting then
 			Stamina.setSprinting(state.stamina, false)
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
+		end
+	end
+
+	-- Vertical climb: sprinting straight into a wall grants a brief upward run
+	if humanoid.FloorMaterial == Enum.Material.Air and state.sprintHeld and state.stamina.isSprinting then
+		if VerticalClimb.isActive(character) then
+			VerticalClimb.maintain(character, dt)
+		else
+			VerticalClimb.tryStart(character)
 		end
 	end
 
