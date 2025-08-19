@@ -31,6 +31,7 @@ local state = {
 	collisionJoint = nil,
 	origJointC0 = nil,
 	origJointC1 = nil,
+	wantExit = false,
 	tracks = {
 		idle = nil,
 		move = nil,
@@ -91,6 +92,75 @@ end
 
 -- Note: Do not reposition `CollisionPart` during crawl to avoid pulling the character assembly downward
 
+local function hasStandClearance()
+	local root = state.root
+	local cp = state.collisionPart
+	if not root then
+		return true
+	end
+	local currentHeight = (cp and cp.Size and cp.Size.Y) or (Config.CrawlRootHeight or 2)
+	local standHeight = (state.origCollisionSize and state.origCollisionSize.Y)
+	if type(standHeight) ~= "number" or standHeight <= 0 then
+		standHeight = Config.CrawlStandUpHeight or 2
+	end
+	local extra = math.max(0, standHeight - currentHeight)
+	if extra <= 0.05 then
+		return true
+	end
+	local side = Config.CrawlStandProbeSideWidth or (root.Size and root.Size.X) or 1
+	local forward = Config.CrawlStandProbeForwardDepth or 0.25
+	local up = root.CFrame.UpVector
+	local right = root.CFrame.RightVector
+	local look = root.CFrame.LookVector
+	local center = root.Position + up * (currentHeight * 0.5 + extra * 0.5) + look * (forward * 0.5)
+	local boxCFrame = CFrame.fromMatrix(center, right, up, look)
+	local size = Vector3.new(side, extra, forward)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { state.character }
+	params.RespectCanCollide = true
+	local parts = workspace:GetPartBoundsInBox(boxCFrame, size, params)
+	return #parts == 0
+end
+
+local function exitCrawl()
+	if not state.isCrawling then
+		return
+	end
+	state.isCrawling = false
+	state.wantExit = false
+	if state.conn then
+		state.conn:Disconnect()
+		state.conn = nil
+	end
+	if state.collisionPart and state.origCollisionSize then
+		state.collisionPart.Size = state.origCollisionSize
+	end
+	-- Restore joint offset if we adjusted it
+	if state.collisionJoint then
+		local j = state.collisionJoint
+		pcall(function()
+			if state.origJointC0 then
+				j.C0 = state.origJointC0
+			end
+			if state.origJointC1 then
+				j.C1 = state.origJointC1
+			end
+		end)
+	end
+	stopAllTracks()
+	if state.humanoid then
+		state.humanoid.WalkSpeed = state.origWalkSpeed or state.humanoid.WalkSpeed
+		state.humanoid.CameraOffset = state.origCameraOffset or Vector3.new()
+	end
+	-- Clear references for next character
+	state.collisionPart = nil
+	state.origCollisionSize = nil
+	state.collisionJoint = nil
+	state.origJointC0 = nil
+	state.origJointC1 = nil
+end
+
 local function enterCrawl()
 	if state.isCrawling then
 		return
@@ -102,6 +172,7 @@ local function enterCrawl()
 		return
 	end
 	state.isCrawling = true
+	state.wantExit = false
 	state.origWalkSpeed = state.humanoid.WalkSpeed
 	state.origCameraOffset = state.humanoid.CameraOffset
 	state.humanoid.WalkSpeed = Config.CrawlSpeed or 8
@@ -158,6 +229,10 @@ local function enterCrawl()
 		else
 			playIdle()
 		end
+		-- If user requested exit, attempt auto-stand when there is clearance
+		if state.wantExit and hasStandClearance() then
+			exitCrawl()
+		end
 	end)
 	-- Separate check to exit safely when airborne
 	RunService.Heartbeat:Wait()
@@ -167,50 +242,18 @@ local function enterCrawl()
 	end
 end
 
-local function exitCrawl()
-	if not state.isCrawling then
-		return
-	end
-	state.isCrawling = false
-	if state.conn then
-		state.conn:Disconnect()
-		state.conn = nil
-	end
-	if state.collisionPart and state.origCollisionSize then
-		state.collisionPart.Size = state.origCollisionSize
-	end
-	-- Restore joint offset if we adjusted it
-	if state.collisionJoint then
-		local j = state.collisionJoint
-		pcall(function()
-			if state.origJointC0 then
-				j.C0 = state.origJointC0
-			end
-			if state.origJointC1 then
-				j.C1 = state.origJointC1
-			end
-		end)
-	end
-	stopAllTracks()
-	if state.humanoid then
-		state.humanoid.WalkSpeed = state.origWalkSpeed or state.humanoid.WalkSpeed
-		state.humanoid.CameraOffset = state.origCameraOffset or Vector3.new()
-	end
-	-- Clear references for next character
-	state.collisionPart = nil
-	state.origCollisionSize = nil
-	state.collisionJoint = nil
-	state.origJointC0 = nil
-	state.origJointC1 = nil
-end
-
 local function onInputBegan(input, processed)
 	if processed then
 		return
 	end
 	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.Z then
 		if state.isCrawling then
-			exitCrawl()
+			-- Request exit: only stand when clearance is available
+			state.wantExit = true
+			-- Try immediate exit if clear now
+			if hasStandClearance() then
+				exitCrawl()
+			end
 		else
 			enterCrawl()
 		end
