@@ -309,13 +309,16 @@ Config.GrappleRopeThickness = 0.06
 -- Hook targeting
 Config.HookTag = "Hookable"
 Config.HookAutoRange = 90
-Config.HookCooldownSeconds = 1.5
+Config.HookCooldownSeconds = 5.5
 -- Hook approach controls
 Config.HookMaxApproachSpeed = 120 -- studs/s clamp for approach speed
 Config.HookAutoDetachDistance = 30 -- studs from target to auto-detach
 -- Hook line-of-sight controls
 Config.HookRequireLineOfSight = true -- require clear LOS to the hookable target
 Config.HookIgnoreTag = "HookIgnoreLOS" -- parts/models with this tag will be ignored for Line Of Sight (LOS) blocking
+-- Hook labels / logging
+Config.HookCooldownLabels = true -- show user-facing per-hookable cooldown labels (client-side)
+Config.DebugHookCooldownLogs = false -- print cooldown debug logs to the output
 
 -- Vertical wall climb (sprint into wall to climb up briefly)
 Config.VerticalClimbEnabled = true

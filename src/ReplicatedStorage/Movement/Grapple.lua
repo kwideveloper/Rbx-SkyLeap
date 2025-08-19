@@ -10,7 +10,14 @@ local Config = require(ReplicatedStorage.Movement.Config)
 local Grapple = {}
 
 local characterState = {}
-local hookCooldownUntil = setmetatable({}, { __mode = "k" })
+local partCooldownUntil = {} -- strong refs to avoid GC clearing cooldowns
+local findAutoTarget -- forward declaration
+
+local function logDebug(...)
+	if Config.DebugHookCooldownLogs then
+		print("[HookCD]", ...)
+	end
+end
 
 local function isPlayerDescendant(instance)
 	while instance do
@@ -71,7 +78,24 @@ local function cleanup(char)
 	characterState[char] = nil
 end
 
+local function setPartCooldown(part, duration)
+	if not (part and duration and duration > 0) then
+		return
+	end
+	local untilTime = time() + duration
+	partCooldownUntil[part] = untilTime
+	logDebug("Set cooldown", part:GetFullName(), string.format("%.2fs", duration), "until", untilTime)
+	-- Cleanup when part is removed
+	task.spawn(function()
+		part.AncestryChanged:Wait()
+		if not part:IsDescendantOf(workspace) then
+			partCooldownUntil[part] = nil
+		end
+	end)
+end
+
 function Grapple.stop(character)
+	local st = characterState[character]
 	cleanup(character)
 	local player = Players.LocalPlayer
 	if player then
@@ -80,20 +104,55 @@ function Grapple.stop(character)
 			ui.Enabled = false
 		end
 	end
-	hookCooldownUntil[character] = os.clock() + (Config.HookCooldownSeconds or 1.0)
+	-- Part-level cooldown (per hookable), not per character
+	if st and st.targetPart and st.targetPart:IsDescendantOf(workspace) then
+		local duration = Config.HookCooldownSeconds or 0
+		local attr = st.targetPart:GetAttribute("HookCooldownSeconds")
+		if typeof(attr) == "number" then
+			duration = attr
+		end
+		setPartCooldown(st.targetPart, duration)
+	end
 end
 
 function Grapple.isActive(character)
 	return characterState[character] ~= nil
 end
 
--- Returns remaining cooldown seconds (> 0 when on cooldown), or 0 if ready
+-- Returns remaining cooldown seconds for the currently targeted (visible) hookable part (> 0 when on cooldown), or 0 if ready
 function Grapple.getCooldownRemaining(character)
-	local untilTime = hookCooldownUntil[character]
+	if not character then
+		return 0
+	end
+	local st = characterState[character]
+	local targetPart
+	if st and st.targetPart then
+		targetPart = st.targetPart
+	else
+		local _, candidatePart = findAutoTarget(character)
+		targetPart = candidatePart
+	end
+	if not targetPart then
+		return 0
+	end
+	local untilTime = partCooldownUntil[targetPart]
 	if not untilTime then
 		return 0
 	end
-	local remaining = untilTime - os.clock()
+	local remaining = untilTime - time()
+	return remaining > 0 and remaining or 0
+end
+
+-- Returns remaining cooldown seconds for a specific Hookable part, or 0 if ready/not tracked
+function Grapple.getPartCooldownRemaining(part)
+	if not part then
+		return 0
+	end
+	local untilTime = partCooldownUntil[part]
+	if not untilTime then
+		return 0
+	end
+	local remaining = untilTime - time()
 	return remaining > 0 and remaining or 0
 end
 
@@ -170,23 +229,40 @@ local function hasClearLineOfSight(character, fromPos, targetPart)
 	return false
 end
 
-local function findAutoTarget(character)
+function findAutoTarget(character)
 	local player = Players.LocalPlayer
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
-		return nil
+		return nil, nil, nil
 	end
 	local tag = Config.HookTag or "Hookable"
 	local range = Config.HookAutoRange or 90
-	local best, bestDist
+	local candidate, candDist -- nearest visible ignoring cooldown (for UI)
+	local ready, readyDist -- nearest visible that is not on cooldown (usable)
 	for _, inst in ipairs(CollectionService:GetTagged(tag)) do
 		if inst and inst:IsA("BasePart") and inst:IsDescendantOf(workspace) then
 			local d = (inst.Position - root.Position).Magnitude
 			if d <= range then
 				local requireLOS = (Config.HookRequireLineOfSight ~= false)
-				if (not requireLOS) or hasClearLineOfSight(character, root.Position, inst) then
-					if not bestDist or d < bestDist then
-						best, bestDist = inst, d
+				local losOk = (not requireLOS) or hasClearLineOfSight(character, root.Position, inst)
+				if losOk then
+					if not candDist or d < candDist then
+						candidate, candDist = inst, d
+					end
+					local untilTime = partCooldownUntil[inst]
+					local now = time()
+					local cdOk = (not untilTime) or (now >= untilTime)
+					if untilTime and now < untilTime then
+						logDebug(
+							"Target cooldown active",
+							inst:GetFullName(),
+							string.format("remaining=%.2fs", untilTime - now)
+						)
+					end
+					if cdOk then
+						if not readyDist or d < readyDist then
+							ready, readyDist = inst, d
+						end
 					end
 				end
 			end
@@ -195,13 +271,13 @@ local function findAutoTarget(character)
 	if player and player.PlayerGui then
 		local ui = player.PlayerGui:FindFirstChild("HookUI")
 		if ui then
-			ui.Enabled = best ~= nil
+			ui.Enabled = candidate ~= nil
 		end
 	end
-	if best then
-		return CFrame.lookAt(root.Position, best.Position), best
+	if candidate then
+		return CFrame.lookAt(root.Position, candidate.Position), candidate, ready
 	end
-	return nil, nil
+	return nil, nil, nil
 end
 
 function Grapple.tryFire(character, cameraCFrame)
@@ -211,18 +287,18 @@ function Grapple.tryFire(character, cameraCFrame)
 	if Grapple.isActive(character) then
 		return false
 	end
-	if hookCooldownUntil[character] and os.clock() < hookCooldownUntil[character] then
-		return false
-	end
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
 		return false
 	end
 	local params = buildRaycastParamsForLOS(character)
 	local maxDist = Config.GrappleMaxDistance or 120
-	-- Require a valid auto target in range; if none, do not fire
-	local autoCam, targetPart = findAutoTarget(character)
-	if not autoCam then
+	-- Use the currently visible candidate; block if it has cooldown
+	local autoCam, candidatePart = findAutoTarget(character)
+	if not (autoCam and candidatePart) then
+		return false
+	end
+	if Grapple.getPartCooldownRemaining(candidatePart) > 0 then
 		return false
 	end
 	local origin = autoCam.Position
@@ -233,8 +309,8 @@ function Grapple.tryFire(character, cameraCFrame)
 	end
 	local hookTag = Config.HookTag or "Hookable"
 	local hookablePart = findTaggedAncestor(ray.Instance, hookTag)
-	-- If LOS was blocked and we didn't hit a Hookable, do not fire
-	if not hookablePart or (targetPart and hookablePart ~= targetPart) then
+	-- Must hit the same candidate
+	if not hookablePart or hookablePart ~= candidatePart then
 		return false
 	end
 	local attachA = ensureRootAttachment(character)
