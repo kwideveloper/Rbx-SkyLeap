@@ -70,7 +70,7 @@ Config.CrawlStandProbeForwardDepth = 0.25 -- studs, forward depth of clearance b
 Config.VaultDisableObstacleLocal = false
 Config.MantleDisableObstacleLocal = false
 -- Crawl geometry/speed
-Config.CrawlRootHeight = 2 -- studs height for HumanoidRootPart while crawling
+Config.CrawlRootHeight = 1 -- studs height for HumanoidRootPart while crawling
 Config.CrawlSpeed = 8
 Config.CrawlStandUpHeight = 2
 Config.CrawlAutoEnabled = true
