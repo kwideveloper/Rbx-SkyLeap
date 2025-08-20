@@ -8,6 +8,7 @@ local PlayerProfile = require(ServerScriptService:WaitForChild("PlayerProfile"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local comboReport = remotes:WaitForChild("MaxComboReport")
+local styleCommit = remotes:WaitForChild("StyleCommit")
 
 local sessionState = {}
 
@@ -48,6 +49,8 @@ local function onPlayerAdded(player)
 	sessionState[player] = {
 		lastCheckpoint = os.time(),
 		alive = true,
+		pendingMaxCombo = tonumber((p.stats and p.stats.maxCombo) or 0),
+		lastSavedMaxCombo = tonumber((p.stats and p.stats.maxCombo) or 0),
 	}
 
 	-- Heartbeat: every 10 minutes, add to TimePlayed and persist
@@ -86,10 +89,11 @@ Players.PlayerRemoving:Connect(function(player)
 			PlayerProfile.addTimePlayed(player.UserId, minutes)
 		end
 	end
-	-- Persist MaxCombo on leave as well (best effort)
+	-- Persist MaxCombo on leave as well (best effort), using buffered session max if available
 	local mc = stats:FindFirstChild("MaxCombo")
-	if mc then
-		PlayerProfile.setMaxComboIfHigher(player.UserId, mc.Value)
+	local pending = sessionState[player] and sessionState[player].pendingMaxCombo or (mc and mc.Value) or 0
+	if pending and pending > 0 then
+		PlayerProfile.setMaxComboIfHigher(player.UserId, pending)
 	end
 	-- Cleanup
 	sessionState[player] = nil
@@ -97,7 +101,8 @@ Players.PlayerRemoving:Connect(function(player)
 	PlayerProfile.release(player.UserId)
 end)
 
--- Accept client reports of new max combo values
+-- Accept client reports of current combo value, but DO NOT persist immediately.
+-- We will persist on style commit to avoid DataStore throttling.
 comboReport.OnServerEvent:Connect(function(player, reported)
 	local value = tonumber(reported) or 0
 	if value <= 0 then
@@ -114,8 +119,26 @@ comboReport.OnServerEvent:Connect(function(player, reported)
 		mc.Value = 0
 		mc.Parent = stats
 	end
-	local newMax = PlayerProfile.setMaxComboIfHigher(player.UserId, value)
-	if newMax > mc.Value then
-		mc.Value = newMax
+	-- Update visible leaderstat without DataStore write
+	if value > mc.Value then
+		mc.Value = value
+	end
+	-- Buffer the highest combo seen until commit
+	local ss = sessionState[player]
+	if ss then
+		ss.pendingMaxCombo = math.max(ss.pendingMaxCombo or 0, value)
+	end
+end)
+
+-- Persist buffered MaxCombo when the style chain is committed
+styleCommit.OnServerEvent:Connect(function(player)
+	local ss = sessionState[player]
+	if not ss then
+		return
+	end
+	local toSave = tonumber(ss.pendingMaxCombo) or 0
+	if toSave > 0 and toSave > (ss.lastSavedMaxCombo or 0) then
+		ss.lastSavedMaxCombo = toSave
+		PlayerProfile.setMaxComboIfHigher(player.UserId, toSave)
 	end
 end)
