@@ -686,7 +686,7 @@ function Abilities.slide(character)
 			local targetAlong = math.max(minSlideSpeed, baselineMag)
 			local newAlong = targetAlong + (math.max(0, along - targetAlong) * decay)
 			local newH = perp + steerDir * newAlong
-			rootPart.AssemblyLinearVelocity = Vector3.new(newH.X, 0, newH.Z)
+			rootPart.AssemblyLinearVelocity = Vector3.new(newH.X, vcur.Y, newH.Z)
 			task.wait()
 		end
 	end)
