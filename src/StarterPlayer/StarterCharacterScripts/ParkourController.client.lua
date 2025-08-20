@@ -871,6 +871,14 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = getHumanoid(character)
+		-- Block jump while crawling
+		do
+			local cs = ReplicatedStorage:FindFirstChild("ClientState")
+			local isCrawlingVal = cs and cs:FindFirstChild("IsCrawling")
+			if isCrawlingVal and isCrawlingVal.Value == true then
+				return
+			end
+		end
 		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
 		-- If dashing or sliding, cancel those states to avoid animation overlap
 		pcall(function()
@@ -1145,8 +1153,19 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	state.styleLastMult = curMult
 
-	-- Sprinting and stamina updates (do not override WalkSpeed while sliding; Abilities.slide manages it)
-	if not state.sliding then
+	-- Sprinting and stamina updates (do not override WalkSpeed while sliding or crawling; Slide/Crawl manage it)
+	local isCrawlingNow = (state.isCrawlingValue and state.isCrawlingValue.Value) or false
+	if isCrawlingNow then
+		-- Ensure sprint state is fully disabled while crawling to prevent speed ramp from fighting crawl speeds
+		if state.stamina.isSprinting then
+			Stamina.setSprinting(state.stamina, false)
+			state._sprintRampT0 = nil
+			state._sprintDecelT0 = nil
+			state._sprintBaseSpeed = nil
+		end
+		-- Skip any WalkSpeed overrides while crawling
+	end
+	if not state.sliding and not isCrawlingNow then
 		local isMoving = (humanoid.MoveDirection and humanoid.MoveDirection.Magnitude > 0) or false
 		if state.sprintHeld and isMoving then
 			if not state.stamina.isSprinting then
@@ -1220,7 +1239,7 @@ RunService.RenderStepped:Connect(function(dt)
 		)
 		stillSprinting = s
 	end
-	if not state.sliding then
+	if not state.sliding and not isCrawlingNow then
 		if not stillSprinting and humanoid.WalkSpeed ~= Config.BaseWalkSpeed then
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
 		end
@@ -1251,9 +1270,7 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isSlidingValue then
 		state.isSlidingValue.Value = state.sliding
 	end
-	if state.isCrawlingValue then
-		state.isCrawlingValue.Value = state.crawling or false
-	end
+	-- Do not overwrite IsCrawling here; Crawl system manages this BoolValue
 
 	-- Check if crawl should be activated automatically (e.g., after slide with no clearance)
 	if state.shouldActivateCrawlValue and state.shouldActivateCrawlValue.Value then

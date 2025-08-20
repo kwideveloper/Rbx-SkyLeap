@@ -129,6 +129,12 @@ local function exitCrawl()
 	end
 	state.isCrawling = false
 	state.wantExit = false
+	-- Update ClientState to sync with other systems
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local isCrawlingValue = cs and cs:FindFirstChild("IsCrawling")
+	if isCrawlingValue then
+		isCrawlingValue.Value = false
+	end
 	if state.conn then
 		state.conn:Disconnect()
 		state.conn = nil
@@ -157,6 +163,8 @@ local function exitCrawl()
 	stopAllTracks()
 	if state.humanoid then
 		state.humanoid.WalkSpeed = state.origWalkSpeed or state.humanoid.WalkSpeed
+		-- Restore jump height
+		state.humanoid.JumpHeight = 7.2 -- Default Roblox jump height
 		-- Smooth camera offset back out of crawl
 		do
 			local start = state.humanoid.CameraOffset
@@ -197,7 +205,18 @@ local function enterCrawl(autoActivated)
 	state.wantExit = autoActivated or false -- If auto-activated, set wantExit to true for auto-exit
 	state.origWalkSpeed = state.humanoid.WalkSpeed
 	state.origCameraOffset = state.humanoid.CameraOffset
-	state.humanoid.WalkSpeed = Config.CrawlSpeed or 8
+	state.humanoid.WalkSpeed = Config.CrawlSpeed or 10
+	-- Update ClientState to sync with other systems
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local isCrawlingValue = cs and cs:FindFirstChild("IsCrawling")
+	if isCrawlingValue then
+		isCrawlingValue.Value = true
+	end
+	-- Disable sprint state when entering crawl to prevent speed ramping
+	local isSprintingValue = cs and cs:FindFirstChild("IsSprinting")
+	if isSprintingValue then
+		isSprintingValue.Value = false
+	end
 	-- Smooth camera offset into crawl
 	do
 		local start = state.humanoid.CameraOffset
@@ -265,11 +284,27 @@ local function enterCrawl(autoActivated)
 	if state.conn then
 		state.conn:Disconnect()
 	end
-	state.conn = RunService.RenderStepped:Connect(function()
+	state.conn = RunService.Heartbeat:Connect(function()
 		-- Auto-exit when leaving ground
 		if state.humanoid.FloorMaterial == Enum.Material.Air then
 			return -- wait until airborne settles; exit in Heartbeat below for reliability
 		end
+		-- Handle crawl speed based on sprint input
+		local isSprintPressed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+		local targetSpeed = isSprintPressed and (Config.CrawlRunSpeed or 20) or (Config.CrawlSpeed or 10)
+		-- Force crawl speed every frame to prevent other systems from overriding it
+		-- Also disable sprint state to prevent ParkourController from ramping speed
+		local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+		local isSprintingValue = cs and cs:FindFirstChild("IsSprinting")
+		if isSprintingValue and isSprintingValue.Value then
+			isSprintingValue.Value = false
+		end
+		if state.humanoid.WalkSpeed ~= targetSpeed then
+			print("[Crawl] Forcing walkspeed from " .. state.humanoid.WalkSpeed .. " to " .. targetSpeed)
+		end
+		state.humanoid.WalkSpeed = targetSpeed
+		-- Disable jumping while crawling
+		state.humanoid.JumpHeight = 0
 		local moving = state.humanoid.MoveDirection and state.humanoid.MoveDirection.Magnitude > 0.05
 		if moving then
 			playMove()
