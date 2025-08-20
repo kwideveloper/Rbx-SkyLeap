@@ -10,7 +10,7 @@ Config.SprintAccelSeconds = 0.60 -- 0.45 time to reach full sprint speed
 Config.SprintDecelSeconds = 0.25 -- 0.20 time to return to base speed (when releasing sprint)
 
 -- Stamina
-Config.StaminaMax = 400 -- 200
+Config.StaminaMax = 4000 -- 200
 Config.SprintDrainPerSecond = 20 -- 20
 Config.StaminaRegenPerSecond = 80 -- 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting

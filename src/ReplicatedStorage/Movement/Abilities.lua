@@ -93,43 +93,6 @@ local function raycastForward(root, distance)
 	return workspace:Raycast(origin, root.CFrame.LookVector * distance, params)
 end
 
--- (isVaultCandidate and pickVaultAnimation defined later with expanded detection)
-
--- Collision toggling for vault
-local originalCollisionByPart = {}
-local _collisionDisableCount = {}
-
-local function pushCollisionLayer(character)
-	originalCollisionByPart[character] = originalCollisionByPart[character] or {}
-	local stack = originalCollisionByPart[character]
-	local layer = {}
-	table.insert(stack, layer)
-	return layer
-end
-
-local function popCollisionLayer(character)
-	local stack = originalCollisionByPart[character]
-	if not stack or #stack == 0 then
-		return nil
-	end
-	local layer = stack[#stack]
-	stack[#stack] = nil
-	if #stack == 0 then
-		originalCollisionByPart[character] = nil
-	end
-	return layer
-end
-
--- Disabled: Do not globally toggle character collisions anymore
-local function disableCharacterCollision(character)
-	return
-end
-
--- Disabled: Nothing to restore since we no longer change them
-local function restoreCharacterCollision(character)
-	return
-end
-
 -- Public safeguard: ensure collisions are restored for a character (no-op now)
 function Abilities.ensureCollisions(character)
 	_collisionDisableCount[character] = nil
@@ -138,51 +101,6 @@ end
 -- Disabled: No per-part mask changes for slide
 local function setSlideCollisionMask(character)
 	return
-end
-
--- Create a temporary reduced-height collider aligned so its bottom matches the original HRP bottom.
--- Disables collisions on all character parts while active so only this collider interacts with the world.
--- Returns a cleanup function to remove the collider and restore collisions.
-local function beginActionCollider(character, heightY, name)
-	local rootPart, humanoid = getCharacterParts(character)
-	if not rootPart or not humanoid or not heightY or heightY <= 0 then
-		return nil
-	end
-	-- Do not modify character collisions; this is a non-colliding helper aligned to HRP bottom
-	local hrp = rootPart
-	local cf = hrp.CFrame
-	local up = cf.UpVector
-	local right = cf.RightVector
-	local look = cf.LookVector
-	local hrpSize = hrp.Size or Vector3.new(2, 2, 1)
-	local bottomWorld = cf.Position + up * -(hrpSize.Y * 0.5)
-	local center = bottomWorld + up * (heightY * 0.5)
-	local collider = Instance.new("Part")
-	collider.Name = (name or "Action") .. "Collider"
-	collider.Size = Vector3.new(hrpSize.X, heightY, hrpSize.Z)
-	collider.CFrame = CFrame.fromMatrix(center, right, up, look)
-	collider.Transparency = 1
-	collider.CanCollide = false
-	collider.CanQuery = true
-	collider.CanTouch = false
-	collider.Massless = true
-	collider.CastShadow = false
-	collider.Parent = hrp.Parent
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = collider
-	weld.Part1 = hrp
-	weld.Parent = collider
-	local cleaned = false
-	return function()
-		if cleaned then
-			return
-		end
-		cleaned = true
-		pcall(function()
-			collider:Destroy()
-		end)
-		-- No restore needed; we didn't alter character collisions
-	end
 end
 
 function Abilities.tryDash(character)
@@ -709,10 +627,6 @@ function Abilities.slide(character)
 		isSliding.Value = true
 	end
 
-	-- Add to Style/Combo system
-	-- Note: Style system integration will be handled by the ParkourController
-	-- to avoid complex cross-script communication
-
 	-- Smooth camera offset tween into slide
 	do
 		local target = Vector3.new(0, Config.SlideCameraOffsetY or 0, 0)
@@ -966,7 +880,7 @@ function Abilities.isMantleCandidate(character)
 	local yawList = { 0, math.rad(20), -math.rad(20), math.rad(40), -math.rad(40) }
 	for _, yaw in ipairs(yawList) do
 		local dir = (
-			CFrame.fromMatrix(Vector3.new(), root.CFrame.XVector, root.CFrame.YVector, baseDir)
+			CFrame.fromMatrix(Vector3.new(), root.CFrame.XVector, root.CFrame.YVector, root.CFrame.ZVector)
 			* CFrame.Angles(0, yaw, 0)
 		).LookVector
 		local back = -dir

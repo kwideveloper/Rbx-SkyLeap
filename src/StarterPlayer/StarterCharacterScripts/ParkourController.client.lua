@@ -496,6 +496,8 @@ local function setupCharacter(character)
 	end
 	-- Initialize bunny hop listener for this character
 	BunnyHop.setup(character)
+
+	-- Audio managed by AudioManager.client.lua
 end
 local function ensureClientState()
 	local folder = ReplicatedStorage:FindFirstChild("ClientState")
@@ -537,6 +539,14 @@ local function ensureClientState()
 		isSliding.Parent = folder
 	end
 	state.isSlidingValue = isSliding
+
+	-- Ensure IsDashing exists for audio/events
+	local isDashing = folder:FindFirstChild("IsDashing")
+	if not isDashing then
+		isDashing = Instance.new("BoolValue")
+		isDashing.Name = "IsDashing"
+		isDashing.Parent = folder
+	end
 
 	local isCrawling = folder:FindFirstChild("IsCrawling")
 	if not isCrawling then
@@ -699,7 +709,7 @@ local function ensureClientState()
 	if not comboRemain then
 		comboRemain = Instance.new("NumberValue")
 		comboRemain.Name = "StyleComboTimeRemaining"
-		comboRemain.Value = 0
+		comboRemain.Value = Config.StyleBreakTimeoutSeconds or 3
 		comboRemain.Parent = folder
 	end
 	state.styleComboTimeRemaining = comboRemain
@@ -712,6 +722,16 @@ local function ensureClientState()
 		comboMax.Parent = folder
 	end
 	state.styleComboTimeMax = comboMax
+
+	-- New: IsDoubleJumping for audio
+	local isDoubleJumping = folder:FindFirstChild("IsDoubleJumping")
+	if not isDoubleJumping then
+		isDoubleJumping = Instance.new("BoolValue")
+		isDoubleJumping.Name = "IsDoubleJumping"
+		isDoubleJumping.Value = false
+		isDoubleJumping.Parent = folder
+	end
+	state.isDoubleJumpingValue = isDoubleJumping
 end
 
 ensureClientState()
@@ -978,6 +998,28 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 								math.max(0, state.stamina.current - (Config.DoubleJumpStaminaCost or 0))
 							-- Update style (treat as Jump event)
 							Style.addEvent(state.style, "DoubleJump", 1)
+							-- Signal double jump for audio
+							pcall(function()
+								local cs = ReplicatedStorage:FindFirstChild("ClientState")
+								if not cs then
+									cs = Instance.new("Folder")
+									cs.Name = "ClientState"
+									cs.Parent = ReplicatedStorage
+								end
+								local dj = cs:FindFirstChild("IsDoubleJumping")
+								if not dj then
+									dj = Instance.new("BoolValue")
+									dj.Name = "IsDoubleJumping"
+									dj.Value = false
+									dj.Parent = cs
+								end
+								dj.Value = true
+								task.delay(0.05, function()
+									if dj then
+										dj.Value = false
+									end
+								end)
+							end)
 							return
 						end
 					end
@@ -1244,6 +1286,8 @@ RunService.RenderStepped:Connect(function(dt)
 			humanoid.WalkSpeed = Config.BaseWalkSpeed
 		end
 	end
+
+	-- Audio managed by AudioManager.client.lua
 
 	-- Wall slide stamina drain (half sprint rate) while active
 	if WallJump.isWallSliding and WallJump.isWallSliding(character) then
