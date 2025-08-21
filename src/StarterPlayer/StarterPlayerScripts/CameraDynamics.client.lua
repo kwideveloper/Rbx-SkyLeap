@@ -21,6 +21,10 @@ local state = {
 	baseFov = Config.CameraBaseFov or 70,
 	maxFov = Config.CameraMaxFov or 84,
 	fovLerpRate = math.max(0.01, Config.CameraFovLerpPerSecond or 6),
+	fovLerpUp = math.max(0.01, Config.CameraFovLerpUpPerSecond or (Config.CameraFovLerpPerSecond or 6)),
+	fovLerpDown = math.max(0.01, Config.CameraFovLerpDownPerSecond or (Config.CameraFovLerpPerSecond or 6)),
+	fovUpDegPerSec = math.max(0, Config.CameraFovUpDegPerSecond or 0),
+	fovDownDegPerSec = math.max(0, Config.CameraFovDownDegPerSecond or 0),
 	fovSprintBonus = Config.CameraFovSprintBonus or 0,
 	shakeAmpMin = Config.CameraShakeAmplitudeMinDeg or 0,
 	shakeAmpMax = Config.CameraShakeAmplitudeMaxDeg or 1.0,
@@ -154,6 +158,12 @@ local function getClientMomentum()
 	return (v and v.Value) or 0
 end
 
+local function getClientSpeed()
+	local cs = ensureClientStateFolder()
+	local v = cs:FindFirstChild("Speed")
+	return (v and v.Value) or nil
+end
+
 local function setup()
 	state.character, state.humanoid, state.root = getCharacter()
 	-- Ensure baseline FOV
@@ -174,23 +184,58 @@ local function setup()
 		end
 		local v = state.root.AssemblyLinearVelocity
 		local horizSpeed = Vector3.new(v.X, 0, v.Z).Magnitude
+		local fullSpeed = getClientSpeed() or v.Magnitude
 		local vy = v.Y
 		local cs = ensureClientStateFolder()
 		local isSprinting = (cs:FindFirstChild("IsSprinting") and cs.IsSprinting.Value) or false
 		local airborne = state.humanoid.FloorMaterial == Enum.Material.Air
 		local momentum = getClientMomentum()
 
-		-- FOV target based on combined metric: horizontal speed and momentum
+		-- FOV cap: allow high speeds (hooks/pads) to exceed base max by extraFromSpeed
+		local extraFromSpeed = Config.CameraFovExtraFromSpeed
+		if extraFromSpeed == nil then
+			extraFromSpeed = state.fovSprintBonus or 0
+		end
+		local fovCap = state.maxFov + math.max(0, extraFromSpeed)
+
+		-- FOV target based on combined metric: full speed (same as HUD SpeedText) and momentum
 		local sMin = Config.CameraFovSpeedMin or 10
 		local sMax = math.max(Config.CameraFovSpeedMax or 80, Config.AirControlTotalSpeedCap or 85)
-		local speedFrac = math.clamp((horizSpeed - sMin) / math.max(1, (sMax - sMin)), 0, 1)
+		local speedFrac = math.clamp((fullSpeed - sMin) / math.max(1, (sMax - sMin)), 0, 1)
 		local momFrac = math.clamp((momentum or 0) / math.max(1, (Config.MomentumMax or 100)), 0, 1)
-		local mixFrac = math.clamp((speedFrac * 0.6) + (momFrac * 0.4), 0, 1)
-		local baseTarget = lerp(state.baseFov, state.maxFov, mixFrac)
-		local targetFov = baseTarget + (isSprinting and state.fovSprintBonus or 0)
-		-- Clamp to safe range
-		targetFov = math.clamp(targetFov, state.baseFov, state.maxFov + math.max(0, state.fovSprintBonus))
-		camera.FieldOfView = smoothTowards(camera.FieldOfView, targetFov, state.fovLerpRate, dt)
+		local baseWM = math.clamp(Config.CameraFovMomentumWeight or 0.7, 0, 1)
+		-- Gate momentum influence by current speed so FOV drops quickly when speed is low
+		local gatedWM = baseWM * speedFrac
+		local mixFrac = math.clamp((speedFrac * (1 - gatedWM)) + (momFrac * gatedWM), 0, 1)
+		local baseTarget
+		if fullSpeed <= sMin * 0.9 then
+			-- Hard reset to base when below threshold to avoid long tails
+			baseTarget = state.baseFov
+		else
+			baseTarget = lerp(state.baseFov, fovCap, mixFrac)
+		end
+		-- Smooth sprint bonus by speed to avoid discrete step at base+bonus
+		local sprintWeight = (isSprinting and speedFrac) or 0
+		local targetFov = math.min(fovCap, baseTarget + (state.fovSprintBonus * sprintWeight))
+
+		-- Asymmetric smoothing: ramp up slower, decay faster
+		local cur = camera.FieldOfView
+		local rate = (targetFov < cur) and state.fovLerpDown or state.fovLerpUp
+		local smoothed = smoothTowards(cur, targetFov, rate, dt)
+		-- Linear clamp (deg/s) to guarantee prompt decay
+		local maxDelta = (targetFov < cur) and (state.fovDownDegPerSec * dt) or (state.fovUpDegPerSec * dt)
+		if state.fovDownDegPerSec > 0 or state.fovUpDegPerSec > 0 then
+			local delta = smoothed - cur
+			local clamped
+			if delta > 0 then
+				clamped = math.min(delta, maxDelta)
+			else
+				clamped = math.max(delta, -maxDelta)
+			end
+			camera.FieldOfView = cur + clamped
+		else
+			camera.FieldOfView = smoothed
+		end
 
 		-- Subtle procedural shake only while falling downward
 		if Config.CameraShakeEnabled ~= false then
@@ -208,7 +253,7 @@ local function setup()
 			end
 		end
 
-		-- Wind feedback when fast
+		-- Wind feedback when fast (use horizontal speed for direction/feel)
 		if state.windEnabled then
 			emitWind(horizSpeed, dt)
 		end

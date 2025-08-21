@@ -96,11 +96,16 @@ Config.FirstPersonShowWholeBody = false
 Config.CameraDynamicsEnabled = true
 -- FOV
 Config.CameraBaseFov = 70
-Config.CameraMaxFov = 84
+Config.CameraMaxFov = 130
 Config.CameraFovSpeedMin = 10 -- speed at which FOV starts ramping
 Config.CameraFovSpeedMax = 180 -- speed at which FOV hits max
-Config.CameraFovLerpPerSecond = 3 --6 -- smoothing speed towards target FOV
+Config.CameraFovLerpPerSecond = 16 --6 -- smoothing speed towards target FOV
+Config.CameraFovLerpUpPerSecond = 4 -- ramp up speed
+Config.CameraFovLerpDownPerSecond = 12 -- faster decay back to base
+Config.CameraFovUpDegPerSecond = 80 -- linear cap when increasing FOV (deg/s)
+Config.CameraFovDownDegPerSecond = 220 -- linear cap when decreasing FOV (deg/s)
 Config.CameraFovSprintBonus = 30 --6 -- extra degrees added while sprinting
+Config.CameraFovMomentumWeight = 0.7 -- 0..1; higher gives more weight to momentum over raw speed
 -- Shake
 Config.CameraShakeEnabled = true
 Config.CameraShakeAmplitudeMinDeg = 0.0
