@@ -1738,28 +1738,25 @@ RunService.RenderStepped:Connect(function(dt)
 				local didMantle = false
 				local didHang = false
 
-				-- Avoid conflicting with recent successful mantles or ledge hangs
+				-- Avoid conflicting with recent successful mantles (ledge hang has its own per-wall cooldown)
 				local mantleCooldown = Config.MantleLedgeHangCooldown or 0.5
-				local hangCooldown = Config.LedgeHangCooldown or 1.0
 				local timeSinceMantle = os.clock() - state._lastMantleTime
 
-				-- Check for shared hang time from ClientState
-				local lastHangTime = 0
+				-- Check for minimum global cooldown after directional jumps (prevents immediate re-hang)
+				local hasMinimumGlobalCooldown = false
 				pcall(function()
 					local rs = game:GetService("ReplicatedStorage")
 					local cs = rs:FindFirstChild("ClientState")
 					if cs then
 						local lastHangTimeValue = cs:FindFirstChild("LastLedgeHangTime")
-						if lastHangTimeValue then
-							lastHangTime = lastHangTimeValue.Value
+						if lastHangTimeValue and lastHangTimeValue.Value > os.clock() then
+							hasMinimumGlobalCooldown = true
 						end
 					end
 				end)
-				local timeSinceHang = os.clock() - math.max(state._lastLedgeHangTime, lastHangTime)
 
-				-- Only attempt mantle/hang if enough time has passed since last actions
-				if timeSinceMantle >= mantleCooldown and timeSinceHang >= hangCooldown then
-					-- Check if there's a ledge to interact with first
+				-- Only check mantle cooldown and minimum global cooldown (per-wall cooldown handled in LedgeHang.lua)
+				if timeSinceMantle >= mantleCooldown and not hasMinimumGlobalCooldown then
 					local root = character:FindFirstChild("HumanoidRootPart")
 					if root and Abilities.detectLedgeForMantle then
 						local ledgeOk, hitRes, topY = Abilities.detectLedgeForMantle(root)

@@ -320,11 +320,11 @@ Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
 
 -- Ledge Hang Jump impulses
-Config.LedgeHangJumpUpForce = 100 -- vertical impulse when pressing W + Space
-Config.LedgeHangJumpSideForce = 100 -- horizontal impulse when pressing A/D + Space (increased for side momentum)
+Config.LedgeHangJumpUpForce = 80 -- vertical impulse when pressing W + Space
+Config.LedgeHangJumpSideForce = 80 -- horizontal impulse when pressing A/D + Space (increased for side momentum)
 Config.LedgeHangJumpBackForce = 100 -- backward impulse when pressing S + Space
 Config.LedgeHangJumpStaminaCost = 10 -- stamina cost for directional jumps
-Config.LedgeHangWallSeparationForce = 100 -- force to push away from wall during jumps
+Config.LedgeHangWallSeparationForce = 0 -- force to push away from wall during jumps
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06

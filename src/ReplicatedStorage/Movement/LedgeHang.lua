@@ -104,6 +104,12 @@ function LedgeHang.tryStartFromMantleData(character, hitRes, ledgeY)
 		return false
 	end
 
+	-- Check wall-specific cooldown
+	local wallInstance = hitRes and hitRes.Instance
+	if wallInstance and hasWallCooldown(character, wallInstance) then
+		return false
+	end
+
 	local root, humanoid = getCharacterParts(character)
 	if not root or not humanoid then
 		return false
@@ -128,6 +134,12 @@ function LedgeHang.tryStart(character)
 
 	local ok, hitRes, ledgeY, forwardDir = LedgeHang.detectLedgeForHang(character)
 	if not ok then
+		return false
+	end
+
+	-- Check wall-specific cooldown
+	local wallInstance = hitRes and hitRes.Instance
+	if wallInstance and hasWallCooldown(character, wallInstance) then
 		return false
 	end
 
@@ -408,24 +420,56 @@ end
 
 -- Try to mantle up from hanging position
 function LedgeHang.tryMantleUp(character)
+	if Config.DebugLedgeHang then
+		print("[LedgeHang] Attempting mantle up from hang")
+	end
+
 	local hangData = activeHangs[character]
 	if not hangData then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] No hang data for mantle up")
+		end
 		return false
 	end
 
 	local root = getCharacterParts(character)
 	if not root then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] No root part for mantle up")
+		end
 		return false
 	end
 
 	-- Check if there's now enough clearance above
-	if hasEnoughClearanceAbove(root, hangData.ledgeY, hangData.forwardDirection) then
+	local hasClearance = hasEnoughClearanceAbove(root, hangData.ledgeY, hangData.forwardDirection)
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Clearance check for mantle up: %s", tostring(hasClearance)))
+	end
+
+	if hasClearance then
 		-- Mark the hang time for cooldown purposes
 		LedgeHang.markHangTime(character)
 		LedgeHang.stop(character)
-		-- Trigger normal mantle
+
+		-- Ensure Abilities module is properly loaded
 		local Abilities = require(game:GetService("ReplicatedStorage").Movement.Abilities)
-		return Abilities.tryMantle(character)
+		if not Abilities or not Abilities.tryMantle then
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Warning: Abilities.tryMantle not available")
+			end
+			return false
+		end
+
+		-- Trigger normal mantle
+		local mantleResult = Abilities.tryMantle(character)
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Mantle up result: %s", tostring(mantleResult)))
+		end
+		return mantleResult
+	else
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] Insufficient clearance for mantle up")
+		end
 	end
 
 	return false
@@ -435,7 +479,14 @@ end
 function LedgeHang.tryDirectionalJump(character, direction)
 	local hangData = activeHangs[character]
 	if not hangData then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] No hang data found for directional jump")
+		end
 		return false
+	end
+
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Starting directional jump: %s", direction))
 	end
 
 	local root, humanoid = getCharacterParts(character)
@@ -445,6 +496,32 @@ function LedgeHang.tryDirectionalJump(character, direction)
 
 	-- Check stamina cost - simplified for now, we'll integrate with ParkourController stamina later
 	local jumpCost = Config.LedgeHangJumpStaminaCost or 10
+
+	-- Ensure ClientState is properly initialized on first use
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState")
+		if not cs then
+			cs = Instance.new("Folder")
+			cs.Name = "ClientState"
+			cs.Parent = rs
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Created ClientState folder on first use")
+			end
+		end
+
+		-- Ensure LastLedgeHangTime exists and is properly initialized
+		local lastHangTime = cs:FindFirstChild("LastLedgeHangTime")
+		if not lastHangTime then
+			lastHangTime = Instance.new("NumberValue")
+			lastHangTime.Name = "LastLedgeHangTime"
+			lastHangTime.Value = 0
+			lastHangTime.Parent = cs
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Initialized LastLedgeHangTime on first use")
+			end
+		end
+	end)
 
 	if Config.DebugLedgeHang then
 		print(string.format("[LedgeHang] Attempting directional jump: %s, cost: %d", direction, jumpCost))
@@ -588,12 +665,44 @@ function LedgeHang.tryDirectionalJump(character, direction)
 
 	-- Mark hang time and stop hanging
 	LedgeHang.markHangTime(character)
+
+	-- ALWAYS set a minimum global cooldown after directional jumps to prevent immediate re-hang
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState") or Instance.new("Folder")
+		if not cs.Parent then
+			cs.Name = "ClientState"
+			cs.Parent = rs
+		end
+		local lastHangTime = cs:FindFirstChild("LastLedgeHangTime")
+		if not lastHangTime then
+			lastHangTime = Instance.new("NumberValue")
+			lastHangTime.Name = "LastLedgeHangTime"
+			lastHangTime.Value = 0
+			lastHangTime.Parent = cs
+		end
+		-- Set minimum 0.5s global cooldown regardless of wall identification
+		lastHangTime.Value = os.clock() + 0.5
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Set 0.5s global cooldown after %s jump", direction))
+		end
+	end)
+
 	LedgeHang.stop(character)
 
 	-- Simple physics setup (same as S+Space)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Setting humanoid to Freefall state for %s jump", direction))
+		end
 		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+		-- Ensure the state change took effect
+		task.wait(0.01)
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Humanoid state after change: %s", tostring(humanoid:GetState())))
+		end
 	end
 
 	-- Calculate wall separation force (push away from wall)
@@ -603,6 +712,8 @@ function LedgeHang.tryDirectionalJump(character, direction)
 		local separationMagnitude = Config.LedgeHangWallSeparationForce or 30
 		if direction == "left" or direction == "right" then
 			separationMagnitude = 0 -- No wall separation for side jumps (backward component handles separation)
+		elseif direction == "up" then
+			separationMagnitude = separationMagnitude * 1.5 -- Increased separation for up jumps to prevent immediate re-hang
 		end
 		wallSeparationForce = hangData.forwardDirection * separationMagnitude
 
@@ -755,8 +866,138 @@ function LedgeHang.tryDirectionalJump(character, direction)
 	return true
 end
 
+-- Wall-specific cooldown system
+local wallCooldowns = {} -- [character][wallInstance] = cooldownTime
+
+-- Get wall instance from current hang position
+local function getWallInstanceFromHang(character)
+	local hangData = activeHangs[character]
+	if not hangData or not hangData.ledgePosition or not hangData.forwardDirection then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] No hang data available for wall identification")
+		end
+		return nil
+	end
+
+	-- Try multiple approaches to find the wall
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.IgnoreWater = true
+
+	-- Method 1: Cast from player position toward ledge
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root then
+		local toWall = (hangData.ledgePosition - root.Position).Unit
+		local hit = workspace:Raycast(root.Position, toWall * 5.0, params)
+		if hit and hit.Instance and hit.Instance.CanCollide then
+			if Config.DebugLedgeHang then
+				print(string.format("[LedgeHang] Found wall instance (method 1): '%s'", hit.Instance.Name or "Unknown"))
+			end
+			return hit.Instance
+		end
+	end
+
+	-- Method 2: Cast from ledge into wall using forwardDirection
+	local rayDirection = -hangData.forwardDirection * 2.0
+	local hit = workspace:Raycast(hangData.ledgePosition, rayDirection, params)
+	if hit and hit.Instance and hit.Instance.CanCollide then
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Found wall instance (method 2): '%s'", hit.Instance.Name or "Unknown"))
+		end
+		return hit.Instance
+	end
+
+	-- Method 3: Cast downward from ledge to find surface
+	local downHit = workspace:Raycast(hangData.ledgePosition, Vector3.new(0, -2, 0), params)
+	if downHit and downHit.Instance and downHit.Instance.CanCollide then
+		if Config.DebugLedgeHang then
+			print(string.format("[LedgeHang] Found wall instance (method 3): '%s'", downHit.Instance.Name or "Unknown"))
+		end
+		return downHit.Instance
+	end
+
+	if Config.DebugLedgeHang then
+		print(
+			string.format(
+				"[LedgeHang] All wall identification methods failed. Forward: (%.2f,%.2f,%.2f)",
+				hangData.forwardDirection.X,
+				hangData.forwardDirection.Y,
+				hangData.forwardDirection.Z
+			)
+		)
+	end
+
+	return nil
+end
+
+-- Check if a specific wall has cooldown
+function hasWallCooldown(character, wallInstance)
+	if not wallInstance then
+		return false
+	end
+
+	local charCooldowns = wallCooldowns[character]
+	if not charCooldowns then
+		return false
+	end
+
+	local wallCooldownTime = charCooldowns[wallInstance]
+	if not wallCooldownTime then
+		return false
+	end
+
+	local cooldownDuration = Config.LedgeHangCooldown or 3.0
+	local timeRemaining = cooldownDuration - (os.clock() - wallCooldownTime)
+
+	if timeRemaining <= 0 then
+		-- Cooldown expired, clean it up
+		charCooldowns[wallInstance] = nil
+		return false
+	end
+
+	if Config.DebugLedgeHang then
+		print(
+			string.format(
+				"[LedgeHang] Wall '%s' cooldown: %.1fs remaining",
+				wallInstance.Name or "Unknown",
+				timeRemaining
+			)
+		)
+	end
+
+	return true
+end
+
+-- Set cooldown for current wall
+local function setWallCooldown(character)
+	local wallInstance = getWallInstanceFromHang(character)
+	if not wallInstance then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] Could not identify wall for cooldown")
+		end
+		return
+	end
+
+	-- Initialize character cooldowns if needed
+	if not wallCooldowns[character] then
+		wallCooldowns[character] = {}
+	end
+
+	-- Set cooldown for this wall
+	wallCooldowns[character][wallInstance] = os.clock()
+
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Set cooldown for wall '%s'", wallInstance.Name or "Unknown"))
+	end
+end
+
 -- Mark hang time in ParkourController state for cooldown
 function LedgeHang.markHangTime(character)
+	-- Set wall-specific cooldown
+	setWallCooldown(character)
+
+	-- Also set global cooldown in ClientState (for existing logic)
 	pcall(function()
 		local rs = game:GetService("ReplicatedStorage")
 		local cs = rs:FindFirstChild("ClientState")
@@ -772,5 +1013,20 @@ function LedgeHang.markHangTime(character)
 		end
 	end)
 end
+
+-- Clean up cooldowns when player leaves
+game.Players.PlayerRemoving:Connect(function(player)
+	if player.Character then
+		wallCooldowns[player.Character] = nil
+	end
+end)
+
+-- Clean up when character is removed
+game.Players.PlayerAdded:Connect(function(player)
+	player.CharacterRemoving:Connect(function(character)
+		wallCooldowns[character] = nil
+		activeHangs[character] = nil
+	end)
+end)
 
 return LedgeHang
