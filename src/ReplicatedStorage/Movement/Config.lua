@@ -302,6 +302,22 @@ Config.VaultSampleHeights = { 0.2, 0.4, 0.6, 0.85 }
 Config.VaultForwardGainPerHeight = 2.5 -- extra forward speed per stud of obstacle height
 Config.VaultUpMin = 8
 Config.VaultUpMax = 26
+
+-- Ledge Hanging (when mantle fails due to insufficient clearance)
+Config.LedgeHangEnabled = true
+Config.DebugLedgeHang = true
+Config.MantleLedgeHangCooldown = 0.5 -- seconds to wait after successful mantle before allowing ledge hang
+Config.LedgeHangCooldown = 3.0 -- seconds to wait after ledge hang before allowing another hang
+Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge
+Config.LedgeHangMinHeight = 1.5 -- min height above waist for hang
+Config.LedgeHangMaxHeight = 4.0 -- max height above waist for hang
+Config.LedgeHangMinClearance = 5.0 -- min clearance above ledge required to mantle instead of hang (character height + headroom)
+Config.LedgeHangDistance = 1.2 -- horizontal distance from wall while hanging
+Config.LedgeHangDropDistance = 0.8 -- how far below ledge to hang
+Config.LedgeHangMoveSpeed = 8 -- horizontal movement speed while hanging
+Config.LedgeHangMaxDurationSeconds = 10 -- max time before auto-release
+Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
+Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06

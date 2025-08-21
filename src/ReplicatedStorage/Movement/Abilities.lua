@@ -15,6 +15,61 @@ local originalPhysByPart = {}
 local dashActive = {}
 local airDashCharges = {} -- [character]=currentCharges
 
+-- Check if there's enough clearance above for a full mantle
+-- Uses same logic as ParkourController to ensure consistency
+local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { root.Parent }
+	params.IgnoreWater = true
+
+	local requiredHeight = Config.LedgeHangMinClearance or 5.0
+	local inwardDistance = 1.5 -- How far inward from edge to check
+
+	-- Calculate positions on the ledge edge, then move inward
+	local ledgeEdge = Vector3.new(hitPoint.X, ledgeY, hitPoint.Z)
+	local inwardOffset = forwardDirection * inwardDistance
+
+	-- Check multiple points along the ledge, moving inward from the edge
+	local checkPoints = {
+		ledgeEdge + inwardOffset, -- center inward
+		ledgeEdge + inwardOffset + Vector3.new(0.8, 0, 0), -- left inward
+		ledgeEdge + inwardOffset + Vector3.new(-0.8, 0, 0), -- right inward
+		ledgeEdge + inwardOffset * 0.5, -- halfway inward
+	}
+
+	for i, checkPos in ipairs(checkPoints) do
+		-- Raycast upward from just above the ledge
+		local rayStart = Vector3.new(checkPos.X, ledgeY + 0.1, checkPos.Z)
+		local rayEnd = Vector3.new(0, requiredHeight, 0)
+
+		local hit = workspace:Raycast(rayStart, rayEnd, params)
+		if hit then
+			local obstacleHeight = hit.Position.Y - ledgeY
+			if Config.DebugLedgeHang then
+				print(
+					string.format(
+						"[Abilities Clearance] Point %d: obstacle at %.2f studs above ledge (required: %.2f)",
+						i,
+						obstacleHeight,
+						requiredHeight
+					)
+				)
+			end
+			if obstacleHeight < requiredHeight then
+				return false -- Insufficient clearance
+			end
+		elseif Config.DebugLedgeHang then
+			print(string.format("[Abilities Clearance] Point %d: no obstacle found, clearance OK", i))
+		end
+	end
+
+	if Config.DebugLedgeHang then
+		print("[Abilities Clearance] All points clear, sufficient space for mantle")
+	end
+	return true
+end
+
 local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -92,7 +147,7 @@ end
 
 -- Public safeguard: ensure collisions are restored for a character (no-op now)
 function Abilities.ensureCollisions(character)
-	_collisionDisableCount[character] = nil
+	-- _collisionDisableCount[character] = nil -- deprecated
 end
 
 -- Disabled: No per-part mask changes for slide
@@ -935,6 +990,29 @@ function Abilities.tryMantle(character)
 	end
 	if (faceDot < minFace) or (approachDot < minApproach) or (speed < minSpeed) then
 		return false
+	end
+
+	-- Final clearance check before starting mantle animation
+	-- Only check if we're going to proceed with mantle
+	if Config.LedgeHangEnabled then
+		local forwardDir = Vector3.new(towards.X, 0, towards.Z).Unit
+		local hasClearance = hasEnoughClearanceAbove(root, topY, forwardDir, hitRes.Position)
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[Mantle] Final clearance check: %s (ledgeY=%.2f, required=%.2f)",
+					tostring(hasClearance),
+					topY,
+					Config.LedgeHangMinClearance or 5.0
+				)
+			)
+		end
+		if not hasClearance then
+			if Config.DebugLedgeHang then
+				print("[Mantle] Insufficient clearance, aborting mantle")
+			end
+			return false -- insufficient clearance, should try ledge hang instead
+		end
 	end
 
 	lastMantleTick = now
@@ -2032,6 +2110,11 @@ function Abilities.addAirDashCharge(character, amount)
 	local cur = airDashCharges[character] or 0
 	local maxC = Config.DashAirChargesMax or (Config.DashAirChargesDefault or 1)
 	airDashCharges[character] = math.min(maxC, cur + (amount or 1))
+end
+
+-- Export mantle detection for ledge hang system
+function Abilities.detectLedgeForMantle(root)
+	return detectLedgeForMantle(root)
 end
 
 return Abilities

@@ -21,6 +21,61 @@ local AirControl = require(ReplicatedStorage.Movement.AirControl)
 local Style = require(ReplicatedStorage.Movement.Style)
 local Grapple = require(ReplicatedStorage.Movement.Grapple)
 local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
+local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
+
+-- Helper function to check clearance above ledge - improved version
+local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { root.Parent }
+	params.IgnoreWater = true
+
+	local requiredHeight = Config.LedgeHangMinClearance or 3.5 -- Use same clearance as Abilities module
+	local inwardDistance = 1.5 -- How far inward from edge to check
+
+	-- Calculate positions on the ledge edge, then move inward
+	local ledgeEdge = Vector3.new(hitPoint.X, ledgeY, hitPoint.Z)
+	local inwardOffset = forwardDirection * inwardDistance
+
+	-- Check multiple points along the ledge, moving inward from the edge
+	local checkPoints = {
+		ledgeEdge + inwardOffset, -- center inward
+		ledgeEdge + inwardOffset + Vector3.new(0.8, 0, 0), -- left inward
+		ledgeEdge + inwardOffset + Vector3.new(-0.8, 0, 0), -- right inward
+		ledgeEdge + inwardOffset * 0.5, -- halfway inward
+	}
+
+	for i, checkPos in ipairs(checkPoints) do
+		-- Raycast upward from just above the ledge
+		local rayStart = Vector3.new(checkPos.X, ledgeY + 0.1, checkPos.Z)
+		local rayEnd = Vector3.new(0, requiredHeight, 0)
+
+		local hit = workspace:Raycast(rayStart, rayEnd, params)
+		if hit then
+			local obstacleHeight = hit.Position.Y - ledgeY
+			if Config.DebugLedgeHang then
+				print(
+					string.format(
+						"[Clearance] Point %d: obstacle at %.2f studs above ledge (required: %.2f)",
+						i,
+						obstacleHeight,
+						requiredHeight
+					)
+				)
+			end
+			if obstacleHeight < requiredHeight then
+				return false -- Insufficient clearance
+			end
+		elseif Config.DebugLedgeHang then
+			print(string.format("[Clearance] Point %d: no obstacle found, clearance OK", i))
+		end
+	end
+
+	if Config.DebugLedgeHang then
+		print("[Clearance] All points clear, sufficient space for mantle")
+	end
+	return true
+end
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
@@ -57,6 +112,8 @@ local state = {
 	doubleJumpCharges = 0,
 	_groundedSince = nil,
 	_groundResetDone = false,
+	_lastMantleTime = 0,
+	_lastLedgeHangTime = 0,
 }
 
 local function setProxyWorldY(proxy, targetY)
@@ -623,6 +680,15 @@ local function ensureClientState()
 	end
 	state.isZipliningValue = isZiplining
 
+	local isLedgeHanging = folder:FindFirstChild("IsLedgeHanging")
+	if not isLedgeHanging then
+		isLedgeHanging = Instance.new("BoolValue")
+		isLedgeHanging.Name = "IsLedgeHanging"
+		isLedgeHanging.Value = false
+		isLedgeHanging.Parent = folder
+	end
+	state.isLedgeHangingValue = isLedgeHanging
+
 	local isVaulting = folder:FindFirstChild("IsVaulting")
 	if not isVaulting then
 		isVaulting = Instance.new("BoolValue")
@@ -943,6 +1009,17 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		else
+			-- Handle ledge hanging input first
+			if LedgeHang.isActive(character) then
+				-- Try to mantle up from hanging position
+				local didMantle = LedgeHang.tryMantleUp(character)
+				if didMantle then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
+					Style.addEvent(state.style, "Mantle", 1)
+				end
+				return
+			end
+
 			-- Attempt vault if a low obstacle is in front
 			local didVault = Abilities.tryVault(character)
 			if didVault then
@@ -1042,6 +1119,12 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			end
 		end
 	end
+	-- Handle ledge hang release
+	if input.KeyCode == Enum.KeyCode.S and LedgeHang.isActive(character) then
+		LedgeHang.stop(character)
+		return
+	end
+
 	-- Track movement keys for climb independent of camera
 	if input.KeyCode == Enum.KeyCode.W then
 		state.keys.W = true
@@ -1352,6 +1435,9 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isZipliningValue then
 		state.isZipliningValue.Value = Zipline.isActive(character)
 	end
+	if state.isLedgeHangingValue then
+		state.isLedgeHangingValue.Value = LedgeHang.isActive(character)
+	end
 
 	-- Publish combo timeout progress for HUD
 	if state.styleComboValue and state.styleComboTimeRemaining and state.styleComboTimeMax then
@@ -1445,11 +1531,27 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
+	-- Maintain Ledge Hanging
+	if LedgeHang.isActive(character) then
+		-- Handle stamina drain
+		local drainRate = Config.LedgeHangStaminaDrainPerSecond or 5
+		state.stamina.current = math.max(0, state.stamina.current - drainRate * dt)
+
+		-- Auto-release if no stamina
+		if state.stamina.current <= 0 then
+			LedgeHang.stop(character)
+		else
+			-- Maintain hanging position with horizontal movement
+			LedgeHang.maintain(character, humanoid.MoveDirection)
+		end
+	end
+
 	-- Maintain Wall Slide when airborne near walls (independent of sprint)
 	if
 		humanoid.FloorMaterial == Enum.Material.Air
 		and not Zipline.isActive(character)
 		and not Climb.isActive(character)
+		and not LedgeHang.isActive(character)
 		and not (state.isMantlingValue and state.isMantlingValue.Value)
 	then
 		-- Do not start slide if sprinting (wallrun has priority) or if out of stamina
@@ -1582,15 +1684,109 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 		local movingAny = movingForward or movingByVelocity
 		-- Do not mantle during incompatible states
-		if airborne and movingAny and (not Zipline.isActive(character)) and (not Climb.isActive(character)) then
+		if
+			airborne
+			and movingAny
+			and (not Zipline.isActive(character))
+			and (not Climb.isActive(character))
+			and (not LedgeHang.isActive(character))
+		then
 			if state.stamina.current >= (Config.MantleStaminaCost or 0) then
 				local didMantle = false
-				if Abilities.tryMantle then
-					didMantle = Abilities.tryMantle(character)
-					if not didMantle then
+				local didHang = false
+
+				-- Avoid conflicting with recent successful mantles or ledge hangs
+				local mantleCooldown = Config.MantleLedgeHangCooldown or 0.5
+				local hangCooldown = Config.LedgeHangCooldown or 1.0
+				local timeSinceMantle = os.clock() - state._lastMantleTime
+
+				-- Check for shared hang time from ClientState
+				local lastHangTime = 0
+				pcall(function()
+					local rs = game:GetService("ReplicatedStorage")
+					local cs = rs:FindFirstChild("ClientState")
+					if cs then
+						local lastHangTimeValue = cs:FindFirstChild("LastLedgeHangTime")
+						if lastHangTimeValue then
+							lastHangTime = lastHangTimeValue.Value
+						end
 					end
+				end)
+				local timeSinceHang = os.clock() - math.max(state._lastLedgeHangTime, lastHangTime)
+
+				-- Only attempt mantle/hang if enough time has passed since last actions
+				if timeSinceMantle >= mantleCooldown and timeSinceHang >= hangCooldown then
+					-- Check if there's a ledge to interact with first
+					local root = character:FindFirstChild("HumanoidRootPart")
+					if root and Abilities.detectLedgeForMantle then
+						local ledgeOk, hitRes, topY = Abilities.detectLedgeForMantle(root)
+						if ledgeOk then
+							-- Determine if we should mantle or hang based on clearance
+							local toWall = (hitRes.Position - root.Position)
+							local forwardDir = Vector3.new(toWall.X, 0, toWall.Z)
+							if forwardDir.Magnitude > 0.01 then
+								forwardDir = forwardDir.Unit
+							else
+								forwardDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+							end
+
+							-- Check clearance to decide between mantle and hang
+							local hasClearance = hasEnoughClearanceAbove(root, topY, forwardDir, hitRes.Position)
+							if Config.DebugLedgeHang then
+								print(
+									string.format(
+										"[ParkourController] Ledge detected at Y=%.2f, clearance: %s",
+										topY,
+										tostring(hasClearance)
+									)
+								)
+							end
+
+							-- Always try mantle first regardless of clearance
+							-- This ensures proper velocity/facing/approach checks
+							if Config.DebugLedgeHang then
+								print("[ParkourController] Trying mantle first")
+							end
+							didMantle = Abilities.tryMantle(character)
+							if Config.DebugLedgeHang then
+								print("[ParkourController] tryMantle result:", didMantle)
+							end
+
+							-- If mantle failed AND there's insufficient clearance, try ledge hang
+							if not didMantle and Config.LedgeHangEnabled and not hasClearance then
+								if Config.DebugLedgeHang then
+									print(
+										"[ParkourController] Mantle failed + insufficient clearance, trying ledge hang"
+									)
+								end
+								didHang = LedgeHang.tryStartFromMantleData(character, hitRes, topY)
+								if didHang then
+									state._lastLedgeHangTime = os.clock()
+								end
+							end
+
+							-- If mantle failed for other reasons, mark time to prevent spam
+							if not didMantle and not didHang then
+								state._lastMantleTime = os.clock()
+							end
+						elseif Config.DebugLedgeHang then
+							print("[ParkourController] No ledge detected for mantle/hang")
+						end
+					end
+				elseif Config.DebugLedgeHang then
+					local mantleWait = math.max(0, mantleCooldown - timeSinceMantle)
+					local hangWait = math.max(0, hangCooldown - timeSinceHang)
+					print(
+						string.format(
+							"[ParkourController] Skipping mantle/hang, cooldowns remaining: mantle=%.2fs, hang=%.2fs",
+							mantleWait,
+							hangWait
+						)
+					)
 				end
+
 				if didMantle then
+					state._lastMantleTime = os.clock()
 					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
 					Style.addEvent(state.style, "Mantle", 1)
 					-- Suppress wall slide immediately and for an extra window; clear after grounded confirm
@@ -1606,6 +1802,17 @@ RunService.RenderStepped:Connect(function(dt)
 					-- HUD flag (optional)
 					if state.isMantlingValue then
 						state.isMantlingValue.Value = true
+					end
+				elseif didHang then
+					-- Minimal stamina cost for hanging
+					local hangCost = Config.LedgeHangStaminaCost or 5
+					state.stamina.current = math.max(0, state.stamina.current - hangCost)
+					-- Stop conflicting movements
+					if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+						WallJump.stopSlide(character)
+					end
+					if WallRun.isActive(character) then
+						WallRun.stop(character)
 					end
 				end
 			end
