@@ -996,7 +996,9 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
 			elseif sPressed then
+				print("[ParkourController] S+Space pressed during ledge hang - attempting back jump")
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "back")
+				print(string.format("[ParkourController] Back jump result: %s", tostring(didDirectionalJump)))
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
@@ -1154,7 +1156,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	end
 	-- Handle ledge hang release
 	if input.KeyCode == Enum.KeyCode.S and LedgeHang.isActive(character) then
-		LedgeHang.stop(character)
+		print("[ParkourController] S pressed alone during ledge hang - releasing")
+		LedgeHang.stop(character, true) -- true = manual release
 		return
 	end
 
@@ -1579,7 +1582,8 @@ RunService.RenderStepped:Connect(function(dt)
 	pcall(function()
 		local cs = ReplicatedStorage:FindFirstChild("ClientState")
 		local suppressFlag = cs and cs:FindFirstChild("SuppressWallSlide")
-		if suppressFlag and suppressFlag.Value then
+		local suppressUntil = cs and cs:FindFirstChild("SuppressWallSlideUntil")
+		if (suppressFlag and suppressFlag.Value) or (suppressUntil and suppressUntil.Value > os.clock()) then
 			wallslideSuppressed = true
 			-- Stop any active wallslide immediately
 			if WallJump.isWallSliding and WallJump.isWallSliding(character) then

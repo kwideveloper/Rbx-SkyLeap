@@ -104,6 +104,30 @@ function LedgeHang.tryStartFromMantleData(character, hitRes, ledgeY)
 		return false
 	end
 
+	-- Check global cooldown (especially for manual releases)
+	local globalCooldownActive = false
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState")
+		local lastHangTime = cs and cs:FindFirstChild("LastLedgeHangTime")
+		if lastHangTime and lastHangTime.Value > os.clock() then
+			globalCooldownActive = true
+			if Config.DebugLedgeHang then
+				local remaining = lastHangTime.Value - os.clock()
+				print(
+					string.format(
+						"[LedgeHang] Global cooldown active in tryStartFromMantleData: %.2fs remaining",
+						remaining
+					)
+				)
+			end
+		end
+	end)
+
+	if globalCooldownActive then
+		return false
+	end
+
 	-- Check wall-specific cooldown
 	local wallInstance = hitRes and hitRes.Instance
 	if wallInstance and hasWallCooldown(character, wallInstance) then
@@ -129,6 +153,25 @@ end
 
 function LedgeHang.tryStart(character)
 	if activeHangs[character] then
+		return false
+	end
+
+	-- Check global cooldown (especially for manual releases)
+	local globalCooldownActive = false
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState")
+		local lastHangTime = cs and cs:FindFirstChild("LastLedgeHangTime")
+		if lastHangTime and lastHangTime.Value > os.clock() then
+			globalCooldownActive = true
+			if Config.DebugLedgeHang then
+				local remaining = lastHangTime.Value - os.clock()
+				print(string.format("[LedgeHang] Global cooldown active: %.2fs remaining", remaining))
+			end
+		end
+	end)
+
+	if globalCooldownActive then
 		return false
 	end
 
@@ -178,11 +221,12 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		end
 	end
 
-	-- Create hang state
+	-- Create hang state (use normalized forward direction for consistency)
+	local normalizedForwardDir = Vector3.new(forwardDir.X, 0, forwardDir.Z).Unit
 	local hangData = {
 		ledgePosition = hitRes.Position,
 		ledgeY = ledgeY,
-		forwardDirection = forwardDir,
+		forwardDirection = normalizedForwardDir, -- Use normalized direction
 		surfaceNormal = hitRes.Normal,
 		originalAutoRotate = humanoid.AutoRotate,
 		originalWalkSpeed = humanoid.WalkSpeed,
@@ -192,10 +236,61 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 
 	activeHangs[character] = hangData
 
+	-- Stop any active wallslide that might interfere with positioning
+	pcall(function()
+		local WallJump = require(game:GetService("ReplicatedStorage").Movement.WallJump)
+		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+			WallJump.stopSlide(character)
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Stopping wallslide before hang positioning")
+			end
+		end
+	end)
+
 	-- Set character state
 	humanoid.AutoRotate = false
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- Use Physics state to prevent automatic movement
-	root.CFrame = CFrame.new(hangPos, hangPos + forwardDir)
+
+	-- Ensure proper alignment with wall - use normalized forward direction
+	local properCFrame = CFrame.lookAt(hangPos, hangPos + normalizedForwardDir)
+
+	if Config.DebugLedgeHang then
+		print("=== LEDGE HANG START DEBUG ===")
+		print(
+			string.format("[LedgeHang] Original forwardDir: (%.2f,%.2f,%.2f)", forwardDir.X, forwardDir.Y, forwardDir.Z)
+		)
+		print(
+			string.format(
+				"[LedgeHang] Normalized forwardDir: (%.2f,%.2f,%.2f)",
+				normalizedForwardDir.X,
+				normalizedForwardDir.Y,
+				normalizedForwardDir.Z
+			)
+		)
+		print(string.format("[LedgeHang] Hang position: (%.2f,%.2f,%.2f)", hangPos.X, hangPos.Y, hangPos.Z))
+		print(
+			string.format(
+				"[LedgeHang] Character CFrame LookVector: (%.2f,%.2f,%.2f)",
+				properCFrame.LookVector.X,
+				properCFrame.LookVector.Y,
+				properCFrame.LookVector.Z
+			)
+		)
+		print(
+			string.format(
+				"[LedgeHang] Hit position: (%.2f,%.2f,%.2f)",
+				hitRes.Position.X,
+				hitRes.Position.Y,
+				hitRes.Position.Z
+			)
+		)
+		print(
+			string.format("[LedgeHang] Hit normal: (%.2f,%.2f,%.2f)", hitRes.Normal.X, hitRes.Normal.Y, hitRes.Normal.Z)
+		)
+		print("=== END LEDGE HANG START DEBUG ===")
+	end
+
+	root.CFrame = properCFrame
 	root.AssemblyLinearVelocity = Vector3.new()
 
 	-- Anchor the root part to prevent physics interference
@@ -300,17 +395,101 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 	return true
 end
 
-function LedgeHang.stop(character)
+function LedgeHang.stop(character, isManualRelease)
 	local hangData = activeHangs[character]
 	if not hangData then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] STOP called but no hang data found")
+		end
 		return
 	end
 
+	if Config.DebugLedgeHang then
+		print("=== LEDGE HANG STOP DEBUG ===")
+		print(string.format("[LedgeHang] Stopping ledge hang (manual release: %s)", tostring(isManualRelease)))
+	end
+
+	-- Proactively clear active state so maintain() won't run next frame
+	activeHangs[character] = nil
+
+	-- If this is a manual release (S key), set a longer cooldown to prevent immediate reattachment
+	if isManualRelease then
+		pcall(function()
+			local rs = game:GetService("ReplicatedStorage")
+			local cs = rs:FindFirstChild("ClientState") or Instance.new("Folder")
+			if not cs.Parent then
+				cs.Name = "ClientState"
+				cs.Parent = rs
+			end
+			local lastHangTime = cs:FindFirstChild("LastLedgeHangTime")
+			if not lastHangTime then
+				lastHangTime = Instance.new("NumberValue")
+				lastHangTime.Name = "LastLedgeHangTime"
+				lastHangTime.Value = 0
+				lastHangTime.Parent = cs
+			end
+			-- Set a 1.5 second cooldown for manual releases
+			lastHangTime.Value = os.clock() + 1.5
+
+			-- Also suppress wall slide globally for a configurable window
+			local suppressFlag = cs:FindFirstChild("SuppressWallSlide")
+			if not suppressFlag then
+				suppressFlag = Instance.new("BoolValue")
+				suppressFlag.Name = "SuppressWallSlide"
+				suppressFlag.Value = false
+				suppressFlag.Parent = cs
+			end
+			suppressFlag.Value = true
+
+			local suppressUntil = cs:FindFirstChild("SuppressWallSlideUntil")
+			if not suppressUntil then
+				suppressUntil = Instance.new("NumberValue")
+				suppressUntil.Name = "SuppressWallSlideUntil"
+				suppressUntil.Value = 0
+				suppressUntil.Parent = cs
+			end
+			suppressUntil.Value = os.clock() + (Config.WallSlideSuppressAfterLedgeReleaseSeconds or 0.6)
+			if Config.DebugLedgeHang then
+				print(
+					string.format(
+						"[LedgeHang] Wallslide suppressed for %.2fs after release",
+						(Config.WallSlideSuppressAfterLedgeReleaseSeconds or 0.6)
+					)
+				)
+			end
+
+			-- Auto-clear the flag after the window
+			task.delay((Config.WallSlideSuppressAfterLedgeReleaseSeconds or 0.6), function()
+				if suppressFlag and suppressFlag.Parent then
+					suppressFlag.Value = false
+					if Config.DebugLedgeHang then
+						print("[LedgeHang] Wallslide suppression window ended")
+					end
+				end
+			end)
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Set 1.5s cooldown after manual release")
+			end
+		end)
+	end
+
 	local root, humanoid = getCharacterParts(character)
-	if humanoid then
-		humanoid.AutoRotate = hangData.originalAutoRotate
-		humanoid.WalkSpeed = hangData.originalWalkSpeed or Config.BaseWalkSpeed
-		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+	-- First: Unanchor and clear ALL physics to prevent any impulses
+	if root then
+		root.Anchored = false
+
+		-- Completely zero out all velocities FIRST
+		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+
+		-- For manual releases, apply slight downward velocity to ensure falling
+		if isManualRelease then
+			root.AssemblyLinearVelocity = Vector3.new(0, -2, 0) -- Small downward velocity
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Applied small downward velocity for manual release")
+			end
+		end
 	end
 
 	-- Restore collision settings
@@ -322,9 +501,28 @@ function LedgeHang.stop(character)
 		end
 	end
 
-	-- Unanchor the root part
-	if root then
-		root.Anchored = false
+	-- Restore humanoid settings without changing state immediately
+	if humanoid then
+		humanoid.AutoRotate = hangData.originalAutoRotate
+		humanoid.WalkSpeed = hangData.originalWalkSpeed or Config.BaseWalkSpeed
+		-- Ensure Jump is not firing on release
+		humanoid.Jump = false
+
+		-- Only change state after a brief delay to prevent interference (skip for manual release)
+		if not isManualRelease then
+			task.delay(0.1, function()
+				if humanoid and humanoid.Parent then
+					humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+					if Config.DebugLedgeHang then
+						print("[LedgeHang] Delayed humanoid state change to Freefall")
+					end
+				end
+			end)
+		end
+	end
+
+	if Config.DebugLedgeHang then
+		print("[LedgeHang] Completed clean release sequence")
 	end
 
 	-- Stop all hang animations
@@ -494,6 +692,7 @@ function LedgeHang.stop(character)
 		end
 	end)
 
+	-- activeHangs already cleared above; keep this as a safeguard
 	activeHangs[character] = nil
 
 	-- Clear hang flag
@@ -505,6 +704,27 @@ function LedgeHang.stop(character)
 			flag.Value = false
 		end
 	end)
+
+	-- Anti-bounce: clamp any accidental upward velocity for a short window after manual release
+	if isManualRelease and root and root.Parent then
+		local endTime = os.clock() + 0.25
+		local conn
+		conn = RunService.Stepped:Connect(function()
+			if not root or not root.Parent or os.clock() > endTime then
+				if conn then
+					conn:Disconnect()
+				end
+				return
+			end
+			local v = root.AssemblyLinearVelocity
+			if v.Y > 0 then
+				root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+			end
+		end)
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] Engaged anti-bounce clamp for 0.25s")
+		end
+	end
 end
 
 function LedgeHang.isActive(character)
@@ -683,8 +903,24 @@ function LedgeHang.maintain(character, moveDirection)
 	newPos = Vector3.new(newPos.X, hangY, newPos.Z)
 
 	-- Update position (character is anchored, so we use CFrame directly)
-	root.CFrame = CFrame.new(newPos, newPos + hangData.forwardDirection)
+	-- Maintain proper orientation during horizontal movement
+	local properCFrame = CFrame.lookAt(newPos, newPos + hangData.forwardDirection)
+	root.CFrame = properCFrame
 	root.AssemblyLinearVelocity = Vector3.new()
+
+	if Config.DebugLedgeHang and horizontalInput.Magnitude > 0.1 then
+		print(
+			string.format(
+				"[LedgeHang] Moving - pos: (%.2f,%.2f,%.2f), lookDir: (%.2f,%.2f,%.2f)",
+				newPos.X,
+				newPos.Y,
+				newPos.Z,
+				hangData.forwardDirection.X,
+				hangData.forwardDirection.Y,
+				hangData.forwardDirection.Z
+			)
+		)
+	end
 
 	return true
 end
@@ -890,6 +1126,7 @@ function LedgeHang.tryDirectionalJump(character, direction)
 		impulseDirection = Vector3.new(-hangForward.X * 0.8, 0.3, -hangForward.Z * 0.8)
 		force = Config.LedgeHangJumpBackForce or 120
 		if Config.DebugLedgeHang then
+			print("=== BACK JUMP DEBUG ===")
 			print(
 				string.format(
 					"[LedgeHang] BACK force: Config=%s, final=%d",
@@ -897,6 +1134,18 @@ function LedgeHang.tryDirectionalJump(character, direction)
 					force
 				)
 			)
+			print(
+				string.format("[LedgeHang] hangForward: (%.2f,%.2f,%.2f)", hangForward.X, hangForward.Y, hangForward.Z)
+			)
+			print(
+				string.format(
+					"[LedgeHang] Raw impulseDirection: (%.2f,%.2f,%.2f)",
+					impulseDirection.X,
+					impulseDirection.Y,
+					impulseDirection.Z
+				)
+			)
+			print("=== END BACK JUMP DEBUG ===")
 		end
 	else
 		return false -- invalid direction
@@ -1229,6 +1478,40 @@ function LedgeHang.tryDirectionalJump(character, direction)
 	-- Apply impulse with wall separation (simple method like S+Space)
 	local baseVelocity = impulseDirection * force
 	local finalVelocity = baseVelocity + wallSeparationForce
+
+	if Config.DebugLedgeHang then
+		print("=== VELOCITY APPLICATION DEBUG ===")
+		print(
+			string.format(
+				"[LedgeHang] Base velocity: (%.2f,%.2f,%.2f), magnitude: %.2f",
+				baseVelocity.X,
+				baseVelocity.Y,
+				baseVelocity.Z,
+				baseVelocity.Magnitude
+			)
+		)
+		print(
+			string.format(
+				"[LedgeHang] Wall separation: (%.2f,%.2f,%.2f), magnitude: %.2f",
+				wallSeparationForce.X,
+				wallSeparationForce.Y,
+				wallSeparationForce.Z,
+				wallSeparationForce.Magnitude
+			)
+		)
+		print(
+			string.format(
+				"[LedgeHang] Final velocity: (%.2f,%.2f,%.2f), magnitude: %.2f",
+				finalVelocity.X,
+				finalVelocity.Y,
+				finalVelocity.Z,
+				finalVelocity.Magnitude
+			)
+		)
+		print(string.format("[LedgeHang] Root anchored: %s", tostring(root.Anchored)))
+		print("=== END VELOCITY APPLICATION DEBUG ===")
+	end
+
 	root.AssemblyLinearVelocity = finalVelocity
 
 	-- Apply multiple times aggressively to counteract velocity reduction

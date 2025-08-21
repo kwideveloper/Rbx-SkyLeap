@@ -307,14 +307,14 @@ Config.VaultUpMax = 26
 Config.LedgeHangEnabled = true
 Config.DebugLedgeHang = true
 Config.MantleLedgeHangCooldown = 0.5 -- seconds to wait after successful mantle before allowing ledge hang
-Config.LedgeHangCooldown = 2.0 -- seconds to wait after ledge hang before allowing another hang
+Config.LedgeHangCooldown = 3.0 -- seconds to wait after ledge hang before allowing another hang
 Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge
 Config.LedgeHangMinHeight = 1.5 -- min height above waist for hang
 Config.LedgeHangMaxHeight = 4.0 -- max height above waist for hang
 Config.LedgeHangMinClearance = 5.0 -- min clearance above ledge required to mantle instead of hang (character height + headroom)
-Config.LedgeHangDistance = 2 -- 0.3-- horizontal distance from wall while hanging
+Config.LedgeHangDistance = 1.5 -- 0.3-- horizontal distance from wall while hanging
 Config.LedgeHangDropDistance = 1.8 -- how far below ledge to hang
-Config.LedgeHangMoveSpeed = 8 -- horizontal movement speed while hanging
+Config.LedgeHangMoveSpeed = 20 -- horizontal movement speed while hanging
 Config.LedgeHangMaxDurationSeconds = 10 -- max time before auto-release
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
@@ -325,6 +325,9 @@ Config.LedgeHangJumpSideForce = 80 -- horizontal impulse when pressing A/D + Spa
 Config.LedgeHangJumpBackForce = 100 -- backward impulse when pressing S + Space
 Config.LedgeHangJumpStaminaCost = 10 -- stamina cost for directional jumps
 Config.LedgeHangWallSeparationForce = 0 -- force to push away from wall during jumps
+
+-- Wall slide suppression after leaving ledge (manual release)
+Config.WallSlideSuppressAfterLedgeReleaseSeconds = 0.25 -- time to disable wallslide after pressing S to release
 
 -- Animation Duration Control
 Config.LedgeHangStartAnimationDuration = 0.5 -- seconds for LedgeHangStart animation to complete
