@@ -13,6 +13,7 @@ end
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
+local terrain = workspace:FindFirstChildOfClass("Terrain")
 
 local state = {
 	character = nil,
@@ -33,10 +34,199 @@ local state = {
 	shakeAirMul = Config.CameraShakeAirborneMultiplier or 0.8,
 	windEnabled = Config.SpeedWindEnabled ~= false,
 	noiseT = 0,
-	fxPart = nil,
-	fxAttachment = nil,
-	windEmitter = nil,
 }
+
+-- Wind Lines System (based on Dylian1235's approach with Trails)
+local windLines = {}
+local lastWindSpawn = 0
+
+local function createSpeedWindLine(speed)
+	if not camera or speed <= 0 then
+		return
+	end
+
+	-- Calculate spawn position around camera with configurable randomness
+	local cameraCFrame = camera.CFrame
+	local minDist = Config.SpeedWindLinesSpawnDistanceMin or 10
+	local maxDist = Config.SpeedWindLinesSpawnDistanceMax or 30
+	local spawnDistance = math.random(minDist, maxDist)
+
+	local maxAngleX = Config.SpeedWindLinesSpawnAngleX or 35
+	local maxAngleY = Config.SpeedWindLinesSpawnAngleY or 50
+	local angleX = math.rad(math.random(-maxAngleX, maxAngleX))
+	local angleY = math.rad(math.random(-maxAngleY, maxAngleY))
+
+	local spawnPos = (cameraCFrame * CFrame.Angles(angleX, angleY, 0) * CFrame.new(0, 0, -spawnDistance)).Position
+
+	-- Create attachments for the trail
+	local attachment0 = Instance.new("Attachment")
+	local attachment1 = Instance.new("Attachment")
+
+	-- Create trail with configurable appearance
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = attachment0
+	trail.Attachment1 = attachment1
+	trail.FaceCamera = true
+
+	-- Configurable color
+	local windColor = Config.SpeedWindLinesColor or Color3.new(0.7, 0.8, 1)
+	trail.Color = ColorSequence.new(windColor)
+
+	-- Configurable transparency
+	local opacityStart = Config.SpeedWindLinesOpacityStart or 0.4
+	local opacityEnd = Config.SpeedWindLinesOpacityEnd or 1.0
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, opacityStart),
+		NumberSequenceKeypoint.new(1, opacityEnd),
+	})
+
+	-- Configurable width scaling
+	local widthStart = Config.SpeedWindLinesWidthStart or 0.3
+	local widthMiddle = Config.SpeedWindLinesWidthMiddle or 1.2
+	trail.WidthScale = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, widthStart),
+		NumberSequenceKeypoint.new(0.3, widthMiddle),
+		NumberSequenceKeypoint.new(0.7, widthMiddle),
+		NumberSequenceKeypoint.new(1, widthStart),
+	})
+
+	-- Configurable length based on speed
+	local lengthBase = Config.SpeedWindLinesLengthBase or 18
+	local lengthSpeedFactor = Config.SpeedWindLinesLengthSpeedFactor or 0.25
+	local lengthMin = Config.SpeedWindLinesLengthMin or 12
+	local lengthMax = Config.SpeedWindLinesLengthMax or 35
+	local trailLength = math.clamp(lengthBase + speed * lengthSpeedFactor, lengthMin, lengthMax)
+
+	trail.MinLength = 0
+	trail.MaxLength = trailLength
+	trail.Lifetime = 0.6
+	trail.Parent = attachment0
+
+	-- Set initial positions
+	local offset = Vector3.new(0, 0.05, 0)
+	attachment0.WorldPosition = spawnPos
+	attachment1.WorldPosition = spawnPos + offset
+
+	-- Parent to terrain for performance
+	attachment0.Parent = terrain
+	attachment1.Parent = terrain
+
+	-- Calculate wind direction (backwards from camera movement)
+	local windDirection = -cameraCFrame.LookVector
+	if state.humanoid and state.humanoid.MoveDirection.Magnitude > 0.1 then
+		windDirection = -state.humanoid.MoveDirection.Unit
+	end
+
+	-- Configurable wind speed
+	local speedFactor = Config.SpeedWindLinesSpeedFactor or 0.3
+	local speedVariation = Config.SpeedWindLinesSpeedVariation or 0.2
+	local baseWindSpeed = speed * speedFactor
+	local windSpeed = baseWindSpeed + (math.random(-speedVariation, speedVariation) * baseWindSpeed)
+	windSpeed = math.max(windSpeed, 5) -- minimum speed
+
+	-- Configurable lifetime
+	local lifetimeMin = Config.SpeedWindLinesLifetimeMin or 0.8
+	local lifetimeMax = Config.SpeedWindLinesLifetimeMax or 1.3
+	local lifetime = math.random(lifetimeMin * 100, lifetimeMax * 100) * 0.01
+
+	-- Store wind line data
+	local windLine = {
+		attachment0 = attachment0,
+		attachment1 = attachment1,
+		trail = trail,
+		startTime = tick(),
+		lifetime = lifetime,
+		position = spawnPos,
+		direction = windDirection,
+		speed = windSpeed,
+		seed = math.random(1, 1000) * 0.1,
+		maxLength = trailLength,
+	}
+
+	table.insert(windLines, windLine)
+end
+
+local function updateSpeedWindLines()
+	local currentTime = tick()
+
+	-- Update existing wind lines
+	for i = #windLines, 1, -1 do
+		local windLine = windLines[i]
+		local aliveTime = currentTime - windLine.startTime
+
+		-- Remove expired wind lines
+		if aliveTime >= windLine.lifetime then
+			if windLine.attachment0 and windLine.attachment0.Parent then
+				windLine.attachment0:Destroy()
+			end
+			if windLine.attachment1 and windLine.attachment1.Parent then
+				windLine.attachment1:Destroy()
+			end
+			if windLine.trail and windLine.trail.Parent then
+				windLine.trail:Destroy()
+			end
+			table.remove(windLines, i)
+		else
+			-- Update position with configurable wave motion for natural feel
+			local waveSpeed = Config.SpeedWindLinesWaveSpeed or 0.15
+			local seededTime = (currentTime + windLine.seed) * (windLine.speed * waveSpeed)
+			local startPos = windLine.position
+			local moveDistance = windLine.speed * aliveTime
+
+			local basePos = startPos + (windLine.direction * moveDistance)
+
+			-- Configurable wave amplitudes
+			local waveAmpX = Config.SpeedWindLinesWaveAmplitudeX or 1.0
+			local waveAmpY = Config.SpeedWindLinesWaveAmplitudeY or 1.5
+			local waveAmpZ = Config.SpeedWindLinesWaveAmplitudeZ or 0.8
+
+			local waveMotion = Vector3.new(
+				math.sin(seededTime) * waveAmpX,
+				math.sin(seededTime * 0.7) * waveAmpY,
+				math.sin(seededTime * 1.3) * waveAmpZ
+			)
+
+			local newPos = basePos + waveMotion
+
+			windLine.attachment0.WorldPosition = newPos
+			windLine.attachment1.WorldPosition = newPos + Vector3.new(0, 0.05, 0)
+
+			-- Fade trail length over time for smooth disappearance
+			local fadeFactor = 1 - (aliveTime / windLine.lifetime)
+			windLine.trail.MaxLength = windLine.maxLength * fadeFactor
+		end
+	end
+end
+
+local function updateSpeedWind(speed)
+	-- Check if wind lines are enabled
+	if not (Config.SpeedWindLinesEnabled ~= false and state.windEnabled) then
+		return
+	end
+
+	local minSpeed = Config.SpeedWindLinesMinSpeed or 18
+	local maxSpeed = Config.SpeedWindLinesMaxSpeed or 80
+
+	if speed >= minSpeed then
+		local currentTime = tick()
+		local speedFrac = math.clamp((speed - minSpeed) / (maxSpeed - minSpeed), 0, 1)
+
+		-- Calculate spawn rate based on speed using new config
+		local minRate = Config.SpeedWindLinesRateMin or 12
+		local maxRate = Config.SpeedWindLinesRateMax or 35
+		local spawnRate = minRate + (maxRate - minRate) * speedFrac
+		local timeBetweenSpawns = 1 / spawnRate
+
+		-- Spawn new wind lines
+		if currentTime - lastWindSpawn >= timeBetweenSpawns then
+			createSpeedWindLine(speed)
+			lastWindSpawn = currentTime
+		end
+	end
+
+	-- Always update existing wind lines
+	updateSpeedWindLines()
+end
 
 local function ensureClientStateFolder()
 	local cs = ReplicatedStorage:FindFirstChild("ClientState")
@@ -69,89 +259,6 @@ local function noise1(t)
 	return math.sin(t * 1.7) * 0.6 + math.cos(t * 2.3) * 0.4
 end
 
-local function ensureWindRig()
-	if not state.windEnabled then
-		return nil, nil
-	end
-	if state.fxPart and state.fxPart.Parent and state.windEmitter and state.windEmitter.Parent then
-		return state.fxPart, state.windEmitter
-	end
-	local part = Instance.new("Part")
-	part.Name = "CameraFX"
-	part.Size = Vector3.new(0.2, 0.2, 0.2)
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Transparency = 1
-	part.Locked = true
-	part.Parent = workspace
-	local att = Instance.new("Attachment")
-	att.Name = "FX"
-	att.Parent = part
-	local emitter = Instance.new("ParticleEmitter")
-	emitter.Name = "Wind"
-	emitter.LightInfluence = 0
-	emitter.ZOffset = 0
-	emitter.EmissionDirection = Enum.NormalId.Front
-	emitter.LockedToPart = false
-	emitter.Enabled = true
-	emitter.Color = ColorSequence.new(Color3.new(1, 1, 1))
-	emitter.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1 - (Config.SpeedWindOpacity or 0.35)),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	emitter.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.16),
-		NumberSequenceKeypoint.new(1, 0.04),
-	})
-	emitter.Texture = "rbxassetid://2416355141" -- soft streak
-	emitter.Lifetime = NumberRange.new(Config.SpeedWindLifetime or 0.15)
-	emitter.Rate = 0 -- manual emit
-	emitter.Speed = NumberRange.new(0, 0)
-	emitter.Rotation = NumberRange.new(0, 0)
-	emitter.RotSpeed = NumberRange.new(0, 0)
-	emitter.SpreadAngle = Vector2.new(0, 0)
-	emitter.Parent = att
-	state.fxPart = part
-	state.fxAttachment = att
-	state.windEmitter = emitter
-	return part, emitter
-end
-
-local function emitWind(speed, dt)
-	local part, emitter = ensureWindRig()
-	if not (part and emitter and camera) then
-		return
-	end
-	-- Place rig in front of camera and orient with it
-	local c = camera.CFrame
-	local look = c.LookVector
-	local pos = c.Position + look * 2
-	part.CFrame = CFrame.new(pos, pos + look)
-	-- Adjust acceleration backwards
-	emitter.Acceleration = (Config.SpeedWindAccelFactor or 28) * -look
-	-- Compute emission count
-	local minSpeed = Config.SpeedWindMinSpeed or 24
-	local maxSpeed = Config.SpeedWindMaxSpeed or 85
-	local frac = math.clamp((speed - minSpeed) / math.max(1, (maxSpeed - minSpeed)), 0, 1)
-	if frac <= 0 then
-		return
-	end
-	local rateMin = Config.SpeedWindRateMin or 6
-	local rateMax = Config.SpeedWindRateMax or 50
-	local rate = lerp(rateMin, rateMax, frac) -- particles per second
-	local count = math.clamp(math.floor(rate * dt + 0.5), 0, 80)
-	if count <= 0 then
-		return
-	end
-	-- Emit with slight angle jitter by brief spread tweaks
-	local spreadX = (Config.SpeedWindSpreadX or 0.4) * 30 -- degrees approx
-	local spreadY = (Config.SpeedWindSpreadY or 0.6) * 30
-	emitter.SpreadAngle = Vector2.new(spreadX, spreadY)
-	emitter:Emit(count)
-end
-
 local function getClientMomentum()
 	local cs = ensureClientStateFolder()
 	local v = cs:FindFirstChild("Momentum")
@@ -164,6 +271,21 @@ local function getClientSpeed()
 	return (v and v.Value) or nil
 end
 
+local function cleanupWindLines()
+	for _, windLine in ipairs(windLines) do
+		if windLine.attachment0 and windLine.attachment0.Parent then
+			windLine.attachment0:Destroy()
+		end
+		if windLine.attachment1 and windLine.attachment1.Parent then
+			windLine.attachment1:Destroy()
+		end
+		if windLine.trail and windLine.trail.Parent then
+			windLine.trail:Destroy()
+		end
+	end
+	table.clear(windLines)
+end
+
 local function setup()
 	state.character, state.humanoid, state.root = getCharacter()
 	-- Ensure baseline FOV
@@ -173,6 +295,8 @@ local function setup()
 	-- Reset on respawn
 	Players.LocalPlayer.CharacterAdded:Connect(function()
 		state.character, state.humanoid, state.root = getCharacter()
+		-- Clean up old wind lines
+		cleanupWindLines()
 		if camera then
 			camera.FieldOfView = state.baseFov
 		end
@@ -253,9 +377,9 @@ local function setup()
 			end
 		end
 
-		-- Wind feedback when fast (use horizontal speed for direction/feel)
+		-- Wind feedback when fast
 		if state.windEnabled then
-			emitWind(horizSpeed, dt)
+			updateSpeedWind(fullSpeed)
 		end
 	end)
 end

@@ -387,4 +387,49 @@ Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 Config.DebugLaunchPad = false
 Config.DebugLandingRoll = false
 
+-- Speed Wind Lines Configuration (visual feedback when moving fast)
+-- Enable/disable the wind lines effect completely
+Config.SpeedWindLinesEnabled = true
+
+-- Speed thresholds for wind effect activation
+Config.SpeedWindLinesMinSpeed = 18 -- minimum speed to start showing wind lines
+Config.SpeedWindLinesMaxSpeed = 80 -- speed at which wind effect reaches maximum intensity
+
+-- Spawn rate controls (how many wind lines appear per second)
+Config.SpeedWindLinesRateMin = 12 -- wind lines per second at minimum speed
+Config.SpeedWindLinesRateMax = 35 -- wind lines per second at maximum speed
+
+-- Visual appearance of wind lines
+Config.SpeedWindLinesColor = Color3.new(0.7, 0.8, 1) -- light blue-white color
+Config.SpeedWindLinesOpacityStart = 0 -- transparency at spawn (0=visible, 1=invisible)
+Config.SpeedWindLinesOpacityEnd = 1.0 -- transparency when fading out
+
+-- Wind line size/width scaling
+Config.SpeedWindLinesWidthStart = 0.3 -- width at the ends of the trail
+Config.SpeedWindLinesWidthMiddle = 1.2 -- width at the middle of the trail (thickest part)
+
+-- Wind line length and lifetime
+Config.SpeedWindLinesLengthBase = 18 -- base trail length in studs
+Config.SpeedWindLinesLengthSpeedFactor = 0.25 -- extra length per speed unit
+Config.SpeedWindLinesLengthMin = 12 -- minimum trail length
+Config.SpeedWindLinesLengthMax = 35 -- maximum trail length
+Config.SpeedWindLinesLifetimeMin = 0.8 -- minimum time each wind line lives (seconds)
+Config.SpeedWindLinesLifetimeMax = 1.3 -- maximum time each wind line lives (seconds)
+
+-- Spawn positioning around camera
+Config.SpeedWindLinesSpawnDistanceMin = 10 -- closest spawn distance from camera
+Config.SpeedWindLinesSpawnDistanceMax = 30 -- farthest spawn distance from camera
+Config.SpeedWindLinesSpawnAngleX = 35 -- maximum angle up/down from camera center (degrees)
+Config.SpeedWindLinesSpawnAngleY = 50 -- maximum angle left/right from camera center (degrees)
+
+-- Movement physics of wind lines
+Config.SpeedWindLinesSpeedFactor = 0.3 -- how fast wind lines move relative to player speed
+Config.SpeedWindLinesSpeedVariation = 0.2 -- random speed variation (0.2 = ±20%)
+
+-- Wave motion for natural wind movement
+Config.SpeedWindLinesWaveAmplitudeX = 1.0 -- horizontal wave strength
+Config.SpeedWindLinesWaveAmplitudeY = 1.5 -- vertical wave strength
+Config.SpeedWindLinesWaveAmplitudeZ = 0.8 -- depth wave strength
+Config.SpeedWindLinesWaveSpeed = 0.15 -- how fast the wave motion changes
+
 return Config

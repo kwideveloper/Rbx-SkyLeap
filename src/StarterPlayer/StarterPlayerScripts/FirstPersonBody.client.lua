@@ -502,36 +502,14 @@ RunService.RenderStepped:Connect(function()
 				end
 				updateHeadVisibility(true)
 				updateHeadAccessoriesVisibility(true)
-				print(
-					string.format(
-						"[FP] Entered max zoom. distance=%.3f threshold=%.3f accessories=%d head=%s",
-						distance,
-						threshold,
-						#state.headAccessoryParts,
-						tostring(state.headPart)
-					)
-				)
-				if state.headPart then
-					print("[FP] Head LTM now:", state.headPart.LocalTransparencyModifier)
-				end
 				local shown = 0
 				for _, p in ipairs(state.headAccessoryParts) do
 					local acc = p:FindFirstAncestorOfClass("Accessory")
-					print(
-						string.format(
-							"[FP] Hiding accessory part: %s (acc=%s) LTM=%.2f",
-							p:GetFullName(),
-							acc and acc.Name or "?",
-							p.LocalTransparencyModifier
-						)
-					)
 					shown += 1
 					if shown >= 5 then
 						break
 					end
 				end
-			else
-				print(string.format("[FP] Exited max zoom. distance=%.3f threshold=%.3f", distance, threshold))
 			end
 			state.prevZoomedIn = zoomedIn
 		end
