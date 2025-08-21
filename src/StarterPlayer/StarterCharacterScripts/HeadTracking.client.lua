@@ -55,29 +55,13 @@ RunService.RenderStepped:Connect(function(dt)
 		return
 	end
 
-	-- Check if ledge hanging - disable head/torso tracking during ledge hang
+	-- Check if ledge hanging - during ledge hang, allow head tracking but disable torso rotation
 	local isLedgeHanging = false
 	pcall(function()
 		local cs = ReplicatedStorage:FindFirstChild("ClientState")
 		local hangFlag = cs and cs:FindFirstChild("IsLedgeHanging")
 		isLedgeHanging = hangFlag and hangFlag.Value == true
 	end)
-
-	-- If ledge hanging, gradually return head and waist to base positions
-	if isLedgeHanging then
-		-- Smoothly return neck to base position
-		local neckReturnSpeed = 8
-		local neckAlpha = 1 - math.exp(-(neckReturnSpeed * (dt or 0)))
-		neck.C0 = neck.C0:Lerp(baseC0, neckAlpha)
-
-		-- Return waist to base position if it exists
-		if waist and baseWaistC0 then
-			local waistReturnSpeed = 6
-			local waistAlpha = 1 - math.exp(-(waistReturnSpeed * (dt or 0)))
-			waist.C0 = waist.C0:Lerp(baseWaistC0, waistAlpha)
-		end
-		return -- Skip normal head tracking logic
-	end
 
 	local camCF = camera.CFrame
 	-- Camera direction in neck.Part0 local space
@@ -106,7 +90,8 @@ RunService.RenderStepped:Connect(function(dt)
 	neck.C0 = neck.C0:Lerp(target, headAlpha)
 
 	-- Torso/waist rotation when looking far to the sides/back
-	if waist and baseWaistC0 then
+	-- Skip torso rotation if ledge hanging, but allow head tracking
+	if waist and baseWaistC0 and not isLedgeHanging then
 		local yawDeg = math.deg(math.abs(yaw))
 		local threshold = 50 -- start rotating torso after this yaw
 		if yawDeg > threshold then
@@ -122,5 +107,10 @@ RunService.RenderStepped:Connect(function(dt)
 			local waistAlphaBack = 1 - math.exp(-(waistReturnSpeed * (dt or 0)))
 			waist.C0 = waist.C0:Lerp(baseWaistC0, waistAlphaBack)
 		end
+	elseif waist and baseWaistC0 and isLedgeHanging then
+		-- During ledge hang, keep torso in neutral position
+		local waistReturnSpeed = 8
+		local waistAlpha = 1 - math.exp(-(waistReturnSpeed * (dt or 0)))
+		waist.C0 = waist.C0:Lerp(baseWaistC0, waistAlpha)
 	end
 end)
