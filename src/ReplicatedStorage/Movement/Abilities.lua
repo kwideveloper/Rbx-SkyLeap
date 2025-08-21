@@ -70,11 +70,8 @@ function Abilities.isDashAvailable(character)
 	if humanoid.FloorMaterial ~= Enum.Material.Air then
 		return false
 	end
-	local charges = airDashCharges[character]
-	if charges == nil then
-		charges = Config.DashAirChargesDefault or 1
-	end
-	return (charges or 0) > 0
+	local charges = airDashCharges[character] or 0
+	return charges > 0
 end
 
 function Abilities.isSlideReady()
@@ -121,11 +118,10 @@ function Abilities.tryDash(character)
 		return false
 	end
 
-	-- Enforce per-airtime dash charges
+	-- Enforce per-airtime dash charges (must be explicitly granted on ground or via powerup)
 	local charges = airDashCharges[character]
 	if charges == nil then
-		charges = Config.DashAirChargesDefault or 1
-		airDashCharges[character] = charges
+		return false
 	end
 	if (charges or 0) <= 0 then
 		return false

@@ -55,6 +55,8 @@ local state = {
 	wallAttachLockedUntil = nil,
 	_airDashResetDone = false,
 	doubleJumpCharges = 0,
+	_groundedSince = nil,
+	_groundResetDone = false,
 }
 
 local function setProxyWorldY(proxy, targetY)
@@ -245,20 +247,7 @@ local function setupCharacter(character)
 				jumpLoopTrack = nil
 			end
 			-- Reset air dash charges once per airtime
-			if not state._airDashResetDone then
-				state._airDashResetDone = true
-				local Abilities = require(ReplicatedStorage.Movement.Abilities)
-				if Abilities and Abilities.resetAirDashCharges then
-					Abilities.resetAirDashCharges(character)
-				end
-				-- Double jump: refill per airtime
-				local maxDJ = Config.DoubleJumpMax or 0
-				if Config.DoubleJumpEnabled and maxDJ > 0 then
-					state.doubleJumpCharges = maxDJ
-				else
-					state.doubleJumpCharges = 0
-				end
-			end
+			-- No longer refilling dash/double jump on airtime; reset only on ground contact
 		elseif new == Enum.HumanoidStateType.Jumping then
 			-- Play one-shot JumpStart, then transition to Jump loop (unless blocked)
 			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
@@ -337,10 +326,9 @@ local function setupCharacter(character)
 				end
 			end
 		elseif new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
-			-- Allow next airtime to reset dash charges again
-			state._airDashResetDone = false
-			-- Double jump tracker cleared on landing
-			state.doubleJumpCharges = 0
+			-- Mark grounded time; actual reset is handled by dwell check in RenderStepped
+			state._groundedSince = os.clock()
+			state._groundResetDone = false
 			local root = character:FindFirstChild("HumanoidRootPart")
 			if rollPending and root and lastAirY then
 				local peakY = state._peakAirY or lastAirY
@@ -1718,6 +1706,50 @@ RunService.RenderStepped:Connect(function()
 			-- Reset timer while airborne
 			state._mantleGroundedSince = nil
 		end
+	end
+end)
+
+-- Grounded dwell confirmation for refilling double jump and air dash
+RunService.RenderStepped:Connect(function()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+	local inSpecial = false
+	do
+		local cs = ReplicatedStorage:FindFirstChild("ClientState")
+		local isMantling = cs and cs:FindFirstChild("IsMantling")
+		local isVaulting = cs and cs:FindFirstChild("IsVaulting")
+		inSpecial = (
+			WallRun.isActive(character)
+			or (WallJump.isWallSliding and WallJump.isWallSliding(character))
+			or Climb.isActive(character)
+			or Zipline.isActive(character)
+			or (isMantling and isMantling.Value)
+			or (isVaulting and isVaulting.Value)
+		)
+	end
+	if grounded and not inSpecial then
+		state._groundedSince = state._groundedSince or os.clock()
+		local dwell = Config.GroundedRefillDwellSeconds or 0.06
+		if not state._groundResetDone and (os.clock() - (state._groundedSince or 0)) >= dwell then
+			local Abilities = require(ReplicatedStorage.Movement.Abilities)
+			if Abilities and Abilities.resetAirDashCharges then
+				Abilities.resetAirDashCharges(character)
+			end
+			local maxDJ = Config.DoubleJumpMax or 0
+			if Config.DoubleJumpEnabled and maxDJ > 0 then
+				state.doubleJumpCharges = maxDJ
+			else
+				state.doubleJumpCharges = 0
+			end
+			state._groundResetDone = true
+		end
+	else
+		state._groundedSince = nil
+		state._groundResetDone = false
 	end
 end)
 
