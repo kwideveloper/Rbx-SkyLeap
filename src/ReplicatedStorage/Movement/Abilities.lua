@@ -318,7 +318,6 @@ function Abilities.slide(character)
 	local origSize = collisionPart and collisionPart.Size
 	-- Store the original size before any modifications to preserve it
 	local originalSize = origSize
-	print("[Slide] Original CollisionPart size: " .. tostring(originalSize)) -- Debug
 	local chosenJoint
 	local origC0, origC1
 	if collisionPart and origSize then
@@ -466,7 +465,6 @@ function Abilities.slide(character)
 		local root = character:FindFirstChild("HumanoidRootPart")
 		local cp = collisionPart
 		if not root or not cp then
-			print("[Slide] hasStandClearance: No root or collisionPart") -- Debug
 			return true
 		end
 
@@ -474,19 +472,7 @@ function Abilities.slide(character)
 		local standHeight = originalSize and originalSize.Y or 2
 		local extra = math.max(0, standHeight - currentHeight)
 
-		print(
-			"[Slide] hasStandClearance: currentHeight="
-				.. currentHeight
-				.. ", standHeight="
-				.. standHeight
-				.. ", extra="
-				.. extra
-				.. ", originalSize="
-				.. tostring(originalSize)
-		) -- Debug
-
 		if extra <= 0.05 then
-			print("[Slide] hasStandClearance: No extra height needed") -- Debug
 			return true
 		end
 
@@ -506,8 +492,6 @@ function Abilities.slide(character)
 
 		local parts = workspace:GetPartBoundsInBox(boxCFrame, size, params)
 		local hasClearance = #parts == 0
-
-		print("[Slide] hasStandClearance: Found " .. #parts .. " parts, hasClearance=" .. tostring(hasClearance)) -- Debug
 
 		return hasClearance
 	end
@@ -552,27 +536,21 @@ function Abilities.slide(character)
 			-- Check clearance while still in slide size (smaller CollisionPart)
 			if not hasStandClearance() then
 				-- No clearance - keep the small size and activate crawl
-				print("[Slide] No clearance detected, keeping small size and activating crawl") -- Debug
 
 				-- Store the original size in ClientState so crawl can use it
 				local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
 				local originalSizeValue = cs and cs:FindFirstChild("SlideOriginalSize")
 				if originalSizeValue then
 					originalSizeValue.Value = originalSize
-					print("[Slide] Stored original size in ClientState: " .. tostring(originalSize)) -- Debug
 				end
 
 				-- Signal to ParkourController that crawl should be activated
 				local shouldCrawl = cs and cs:FindFirstChild("ShouldActivateCrawl")
 				if shouldCrawl then
 					shouldCrawl.Value = true
-					print("[Slide] ShouldActivateCrawl signal sent") -- Debug
-				else
-					print("[Slide] ShouldActivateCrawl signal sent") -- Debug
 				end
 			else
 				-- Safe to restore normal size
-				print("[Slide] Clearance OK, restoring normal size") -- Debug
 				pcall(function()
 					collisionPart.Size = originalSize
 				end)

@@ -92,6 +92,34 @@ Config.FirstPersonForwardOffsetZ = -1.5 -- -1
 -- If true, show whole body in FP; if false, show only distal limbs (hands/feet) to avoid clipping
 Config.FirstPersonShowWholeBody = false
 
+-- Camera dynamics (shake, FOV ramp, speed wind)
+Config.CameraDynamicsEnabled = true
+-- FOV
+Config.CameraBaseFov = 70
+Config.CameraMaxFov = 84
+Config.CameraFovSpeedMin = 10 -- speed at which FOV starts ramping
+Config.CameraFovSpeedMax = 180 -- speed at which FOV hits max
+Config.CameraFovLerpPerSecond = 3 --6 -- smoothing speed towards target FOV
+Config.CameraFovSprintBonus = 30 --6 -- extra degrees added while sprinting
+-- Shake
+Config.CameraShakeEnabled = true
+Config.CameraShakeAmplitudeMinDeg = 0.0
+Config.CameraShakeAmplitudeMaxDeg = 1.0
+Config.CameraShakeFrequencyHz = 7.0
+Config.CameraShakeSprintMultiplier = 1.5
+Config.CameraShakeAirborneMultiplier = 0.8
+-- Speed wind FX
+Config.SpeedWindEnabled = true
+Config.SpeedWindMinSpeed = 24 --24
+Config.SpeedWindMaxSpeed = 85 --85
+Config.SpeedWindRateMin = 6 --6
+Config.SpeedWindRateMax = 500 --50
+Config.SpeedWindLifetime = 0.15 --0.15
+Config.SpeedWindOpacity = 0 --0.35
+Config.SpeedWindSpreadX = 0.4 --0.4 -- lateral spread near camera
+Config.SpeedWindSpreadY = 0.6 --0.6 -- vertical spread near camera
+Config.SpeedWindAccelFactor = 28 -- how strongly particles accelerate backwards relative to camera facing
+
 -- Wall run
 -- Wall running configuration:
 -- WallRunMaxDurationSeconds: Maximum time (in seconds) a player can wall run before being forced off.

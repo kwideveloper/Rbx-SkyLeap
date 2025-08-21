@@ -40,6 +40,7 @@ local state = {
 	clientStateFolder = nil,
 	staminaValue = nil,
 	speedValue = nil,
+	momentumValue = nil,
 	bunnyHopStacksValue = nil,
 	bunnyHopFlashValue = nil,
 	style = Style.create(),
@@ -523,6 +524,14 @@ local function ensureClientState()
 		speedValue.Parent = folder
 	end
 	state.speedValue = speedValue
+
+	local momentumValue = folder:FindFirstChild("Momentum")
+	if not momentumValue then
+		momentumValue = Instance.new("NumberValue")
+		momentumValue.Name = "Momentum"
+		momentumValue.Parent = folder
+	end
+	state.momentumValue = momentumValue
 
 	local isSprinting = folder:FindFirstChild("IsSprinting")
 	if not isSprinting then
@@ -1307,6 +1316,9 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	if state.speedValue then
 		state.speedValue.Value = speed
+	end
+	if state.momentumValue then
+		state.momentumValue.Value = state.momentum.value or 0
 	end
 	if state.isSprintingValue then
 		state.isSprintingValue.Value = state.stamina.isSprinting
