@@ -181,11 +181,9 @@ function Style.addEvent(state, event, magnitude)
 		bonus = Config.StyleWallRunEventBonus or 10
 		pushAction(state, "WallRun")
 	elseif event == "WallSlide" then
-		-- Only counts when chained
-		if isChained(state) then
-			bonus = Config.StyleWallSlideBonus or 10
-			pushAction(state, "WallSlide")
-		end
+		-- WallSlide removed from combo system to prevent unintended edge case combos
+		-- (falling near edges can trigger brief wallslides before mantle/verticalclimb)
+		bonus = 0
 	elseif event == "Pad" then
 		-- Only counts when chained with a subsequent action within the chain window.
 		-- The client sets lastEventTick on pad trigger, and the next qualifying action will allow this to contribute.

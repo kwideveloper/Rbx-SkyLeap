@@ -165,6 +165,11 @@ local function getNearbyWallInstance()
 end
 
 local function maybeConsumePadThenBump(eventName)
+	-- Skip WallSlide events entirely
+	if eventName == "WallSlide" then
+		return
+	end
+
 	local chainWin = Config.ComboChainWindowSeconds or 3
 	if state.pendingPadTick and (os.clock() - state.pendingPadTick) <= chainWin then
 		Style.addEvent(state.style, "Pad", 1)
@@ -172,7 +177,7 @@ local function maybeConsumePadThenBump(eventName)
 	end
 	-- Enforce per-wall chain cap
 	local maxPerWall = Config.MaxWallChainPerSurface or 3
-	if eventName == "WallJump" or eventName == "WallSlide" or eventName == "WallRun" then
+	if eventName == "WallJump" or eventName == "WallRun" then
 		local wall = getNearbyWallInstance()
 		if wall then
 			if wallChain.currentWall == wall then
@@ -1769,7 +1774,6 @@ do
 			end
 			local active = WallJump.isWallSliding(character) or false
 			if active and not prev then
-				maybeConsumePadThenBump("WallSlide")
 				nudgeT0 = os.clock()
 			end
 			-- (camera nudge during wall slide removed)
