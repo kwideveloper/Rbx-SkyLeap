@@ -977,58 +977,31 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			local sPressed = userInputService:IsKeyDown(Enum.KeyCode.S)
 			local dPressed = userInputService:IsKeyDown(Enum.KeyCode.D)
 
-			if Config.DebugLedgeHang then
-				print(
-					string.format(
-						"[ParkourController] Ledge hang Space input - W:%s A:%s S:%s D:%s",
-						tostring(wPressed),
-						tostring(aPressed),
-						tostring(sPressed),
-						tostring(dPressed)
-					)
-				)
-			end
-
 			local didDirectionalJump = false
 
 			-- Priority order: W > A/D > S > default mantle
 			if wPressed then
-				if Config.DebugLedgeHang then
-					print("[ParkourController] W + Space: vertical jump attempt")
-				end
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "up")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
 			elseif aPressed then
-				if Config.DebugLedgeHang then
-					print("[ParkourController] A + Space: left jump attempt")
-				end
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "left")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
 			elseif dPressed then
-				if Config.DebugLedgeHang then
-					print("[ParkourController] D + Space: right jump attempt")
-				end
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "right")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
 			elseif sPressed then
-				if Config.DebugLedgeHang then
-					print("[ParkourController] S + Space: backward jump attempt")
-				end
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "back")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 				end
 			else
 				-- No directional input, try normal mantle up
-				if Config.DebugLedgeHang then
-					print("[ParkourController] Space only: mantle up attempt")
-				end
 				local didMantle = LedgeHang.tryMantleUp(character)
 				if didMantle then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
@@ -1466,18 +1439,13 @@ RunService.RenderStepped:Connect(function(dt)
 
 	-- Check if crawl should be activated automatically (e.g., after slide with no clearance)
 	if state.shouldActivateCrawlValue and state.shouldActivateCrawlValue.Value then
-		print("[ParkourController] ShouldActivateCrawl detected, activating crawl mode") -- Debug
 		state.shouldActivateCrawlValue.Value = false
 		if not state.crawling then
 			-- Activate crawl mode automatically
 			state.crawling = true
-			print("[ParkourController] Crawl state set to true") -- Debug
 			-- Also trigger the crawl system if available
 			-- Note: Crawl is a local script, not a module, so we can't require it directly
 			-- The crawl state is already set to true, which should trigger the crawl system
-			print("[ParkourController] Crawl state activated, crawl system should handle the rest") -- Debug
-		else
-			print("[ParkourController] Already crawling, skipping activation") -- Debug
 		end
 	end
 	if state.isAirborneValue then
@@ -1616,9 +1584,6 @@ RunService.RenderStepped:Connect(function(dt)
 			-- Stop any active wallslide immediately
 			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
 				WallJump.stopSlide(character)
-			end
-			if Config.DebugLedgeHang then
-				print("[ParkourController] Wallslide DISABLED - skipping all wallslide logic")
 			end
 		end
 	end)
@@ -1810,33 +1775,13 @@ RunService.RenderStepped:Connect(function(dt)
 
 							-- Check clearance to decide between mantle and hang
 							local hasClearance = hasEnoughClearanceAbove(root, topY, forwardDir, hitRes.Position)
-							if Config.DebugLedgeHang then
-								print(
-									string.format(
-										"[ParkourController] Ledge detected at Y=%.2f, clearance: %s",
-										topY,
-										tostring(hasClearance)
-									)
-								)
-							end
 
 							-- Always try mantle first regardless of clearance
 							-- This ensures proper velocity/facing/approach checks
-							if Config.DebugLedgeHang then
-								print("[ParkourController] Trying mantle first")
-							end
 							didMantle = Abilities.tryMantle(character)
-							if Config.DebugLedgeHang then
-								print("[ParkourController] tryMantle result:", didMantle)
-							end
 
 							-- If mantle failed AND there's insufficient clearance, try ledge hang
 							if not didMantle and Config.LedgeHangEnabled and not hasClearance then
-								if Config.DebugLedgeHang then
-									print(
-										"[ParkourController] Mantle failed + insufficient clearance, trying ledge hang"
-									)
-								end
 								didHang = LedgeHang.tryStartFromMantleData(character, hitRes, topY)
 								if didHang then
 									state._lastLedgeHangTime = os.clock()
@@ -1847,20 +1792,8 @@ RunService.RenderStepped:Connect(function(dt)
 							if not didMantle and not didHang then
 								state._lastMantleTime = os.clock()
 							end
-						elseif Config.DebugLedgeHang then
-							print("[ParkourController] No ledge detected for mantle/hang")
 						end
 					end
-				elseif Config.DebugLedgeHang then
-					local mantleWait = math.max(0, mantleCooldown - timeSinceMantle)
-					local hangWait = math.max(0, hangCooldown - timeSinceHang)
-					print(
-						string.format(
-							"[ParkourController] Skipping mantle/hang, cooldowns remaining: mantle=%.2fs, hang=%.2fs",
-							mantleWait,
-							hangWait
-						)
-					)
 				end
 
 				if didMantle then
