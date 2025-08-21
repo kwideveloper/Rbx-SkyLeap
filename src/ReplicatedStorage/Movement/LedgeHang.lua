@@ -313,6 +313,11 @@ function LedgeHang.maintain(character, moveDirection)
 	-- Check for timeout
 	local maxDuration = Config.LedgeHangMaxDurationSeconds or 10
 	if os.clock() - hangData.startTime > maxDuration then
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] Timeout reached, auto-releasing with cooldown")
+		end
+		-- Mark hang time to prevent immediate re-hang
+		LedgeHang.markHangTime(character)
 		LedgeHang.stop(character)
 		return false
 	end
@@ -424,6 +429,330 @@ function LedgeHang.tryMantleUp(character)
 	end
 
 	return false
+end
+
+-- Directional jump from ledge hang
+function LedgeHang.tryDirectionalJump(character, direction)
+	local hangData = activeHangs[character]
+	if not hangData then
+		return false
+	end
+
+	local root, humanoid = getCharacterParts(character)
+	if not root or not humanoid then
+		return false
+	end
+
+	-- Check stamina cost - simplified for now, we'll integrate with ParkourController stamina later
+	local jumpCost = Config.LedgeHangJumpStaminaCost or 10
+
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Attempting directional jump: %s, cost: %d", direction, jumpCost))
+		print(
+			string.format(
+				"[LedgeHang] Config values - Up:%s, Side:%s, Back:%s, WallSep:%s",
+				tostring(Config.LedgeHangJumpUpForce),
+				tostring(Config.LedgeHangJumpSideForce),
+				tostring(Config.LedgeHangJumpBackForce),
+				tostring(Config.LedgeHangWallSeparationForce)
+			)
+		)
+	end
+
+	-- Calculate impulse direction and force
+	local impulseDirection = Vector3.new()
+	local force = 0
+
+	-- Use player's current facing direction for lateral movement (more intuitive)
+	local playerForward = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+	local playerRight = playerForward:Cross(Vector3.yAxis).Unit
+
+	-- For forward/back, use the hang orientation (wall direction)
+	local hangForward = hangData.forwardDirection
+
+	if direction == "up" then
+		-- W + Space: Jump straight up with slight forward momentum relative to wall
+		impulseDirection = Vector3.new(hangForward.X * 0.3, 1.0, hangForward.Z * 0.3)
+		force = Config.LedgeHangJumpUpForce or 120
+		if Config.DebugLedgeHang then
+			print(
+				string.format("[LedgeHang] UP force: Config=%s, final=%d", tostring(Config.LedgeHangJumpUpForce), force)
+			)
+		end
+	elseif direction == "left" then
+		-- A + Space: Jump left + slightly backward (combines lateral + back movement)
+		local leftComponent = Vector3.new(-playerRight.X * 0.8, 0.3, -playerRight.Z * 0.8)
+		local backComponent = Vector3.new(-hangForward.X * 0.3, 0, -hangForward.Z * 0.3)
+		impulseDirection = leftComponent + backComponent
+		force = Config.LedgeHangJumpSideForce or 120
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] LEFT force: Config=%s, final=%d",
+					tostring(Config.LedgeHangJumpSideForce),
+					force
+				)
+			)
+			print(
+				string.format(
+					"[LedgeHang] LEFT components - lateral:(%.2f,%.2f,%.2f) + back:(%.2f,%.2f,%.2f)",
+					leftComponent.X,
+					leftComponent.Y,
+					leftComponent.Z,
+					backComponent.X,
+					backComponent.Y,
+					backComponent.Z
+				)
+			)
+		end
+	elseif direction == "right" then
+		-- D + Space: Jump right + slightly backward (combines lateral + back movement)
+		local rightComponent = Vector3.new(playerRight.X * 0.8, 0.3, playerRight.Z * 0.8)
+		local backComponent = Vector3.new(-hangForward.X * 0.3, 0, -hangForward.Z * 0.3)
+		impulseDirection = rightComponent + backComponent
+		force = Config.LedgeHangJumpSideForce or 120
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] RIGHT force: Config=%s, final=%d",
+					tostring(Config.LedgeHangJumpSideForce),
+					force
+				)
+			)
+			print(
+				string.format(
+					"[LedgeHang] RIGHT components - lateral:(%.2f,%.2f,%.2f) + back:(%.2f,%.2f,%.2f)",
+					rightComponent.X,
+					rightComponent.Y,
+					rightComponent.Z,
+					backComponent.X,
+					backComponent.Y,
+					backComponent.Z
+				)
+			)
+		end
+	elseif direction == "back" then
+		-- S + Space: Jump backward from wall
+		impulseDirection = Vector3.new(-hangForward.X * 0.8, 0.3, -hangForward.Z * 0.8)
+		force = Config.LedgeHangJumpBackForce or 120
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] BACK force: Config=%s, final=%d",
+					tostring(Config.LedgeHangJumpBackForce),
+					force
+				)
+			)
+		end
+	else
+		return false -- invalid direction
+	end
+
+	-- Normalize the direction but keep reasonable magnitude
+	if impulseDirection.Magnitude > 0 then
+		impulseDirection = impulseDirection.Unit
+	else
+		return false
+	end
+
+	if Config.DebugLedgeHang then
+		print(
+			string.format(
+				"[LedgeHang] Direction calc - playerForward:(%.2f,%.2f,%.2f), playerRight:(%.2f,%.2f,%.2f)",
+				playerForward.X,
+				playerForward.Y,
+				playerForward.Z,
+				playerRight.X,
+				playerRight.Y,
+				playerRight.Z
+			)
+		)
+		print(string.format("[LedgeHang] hangForward:(%.2f,%.2f,%.2f)", hangForward.X, hangForward.Y, hangForward.Z))
+		print(
+			string.format(
+				"[LedgeHang] Raw impulse direction before normalize:(%.2f,%.2f,%.2f)",
+				impulseDirection.X,
+				impulseDirection.Y,
+				impulseDirection.Z
+			)
+		)
+		print(
+			string.format(
+				"[LedgeHang] Final impulse direction: (%.2f,%.2f,%.2f)",
+				impulseDirection.X,
+				impulseDirection.Y,
+				impulseDirection.Z
+			)
+		)
+	end
+
+	-- Mark hang time and stop hanging
+	LedgeHang.markHangTime(character)
+	LedgeHang.stop(character)
+
+	-- Simple physics setup (same as S+Space)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+
+	-- Calculate wall separation force (push away from wall)
+	local wallSeparationForce = Vector3.new(0, 0, 0)
+	if hangData and hangData.forwardDirection then
+		-- For side jumps, disable wall separation since we use backward component instead
+		local separationMagnitude = Config.LedgeHangWallSeparationForce or 30
+		if direction == "left" or direction == "right" then
+			separationMagnitude = 0 -- No wall separation for side jumps (backward component handles separation)
+		end
+		wallSeparationForce = hangData.forwardDirection * separationMagnitude
+
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] Wall separation: Config=%s, final=%.1f",
+					tostring(Config.LedgeHangWallSeparationForce),
+					separationMagnitude
+				)
+			)
+			print(
+				string.format(
+					"[LedgeHang] Wall separation force vector: (%.2f,%.2f,%.2f)",
+					wallSeparationForce.X,
+					wallSeparationForce.Y,
+					wallSeparationForce.Z
+				)
+			)
+		end
+	end
+
+	-- For side jumps, disable wallslide for 0.25 seconds to allow separation
+	if direction == "left" or direction == "right" then
+		pcall(function()
+			local WallJump = require(game:GetService("ReplicatedStorage").Movement.WallJump)
+
+			-- Stop current wallslide
+			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				WallJump.stopSlide(character)
+				if Config.DebugLedgeHang then
+					print("[LedgeHang] Stopping wallslide for side jump")
+				end
+			end
+
+			-- Set wallslide suppression flag for 0.25 seconds
+			local rs = game:GetService("ReplicatedStorage")
+			local cs = rs:FindFirstChild("ClientState") or Instance.new("Folder")
+			if not cs.Parent then
+				cs.Name = "ClientState"
+				cs.Parent = rs
+			end
+
+			local suppressFlag = cs:FindFirstChild("SuppressWallSlide")
+			if not suppressFlag then
+				suppressFlag = Instance.new("BoolValue")
+				suppressFlag.Name = "SuppressWallSlide"
+				suppressFlag.Value = false
+				suppressFlag.Parent = cs
+			end
+
+			suppressFlag.Value = true
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Wallslide DISABLED immediately for side jump")
+			end
+
+			-- Re-enable wallslide after 0.25 seconds
+			task.delay(0.25, function()
+				if suppressFlag and suppressFlag.Parent then
+					suppressFlag.Value = false
+					if Config.DebugLedgeHang then
+						print("[LedgeHang] Wallslide RE-ENABLED after 0.25s")
+					end
+				end
+			end)
+		end)
+	end
+
+	-- Apply impulse with wall separation (simple method like S+Space)
+	local baseVelocity = impulseDirection * force
+	local finalVelocity = baseVelocity + wallSeparationForce
+	root.AssemblyLinearVelocity = finalVelocity
+
+	-- Apply multiple times aggressively to counteract velocity reduction
+	task.wait()
+	root.AssemblyLinearVelocity = finalVelocity
+
+	-- Apply every 0.05 seconds for the first 0.2 seconds to maintain horizontal momentum
+	for i = 1, 4 do
+		task.delay(i * 0.05, function()
+			if root and root.Parent then
+				-- Only reapply if velocity has been significantly reduced
+				local currentVel = root.AssemblyLinearVelocity
+				if currentVel.Magnitude < finalVelocity.Magnitude * 0.7 then
+					if Config.DebugLedgeHang then
+						print(
+							string.format(
+								"[LedgeHang] Reapplying velocity at %.2fs - was %.1f, applying %.1f",
+								i * 0.05,
+								currentVel.Magnitude,
+								finalVelocity.Magnitude
+							)
+						)
+					end
+					root.AssemblyLinearVelocity = finalVelocity
+				end
+			end
+		end)
+	end
+
+	task.delay(0.1, function()
+		if root and root.Parent then
+			-- Boost the impulse if velocity was reduced
+			local currentVel = root.AssemblyLinearVelocity
+			if currentVel.Magnitude < finalVelocity.Magnitude * 0.5 then
+				if Config.DebugLedgeHang then
+					print(
+						string.format(
+							"[LedgeHang] Velocity was reduced to %.2f, re-applying boost",
+							currentVel.Magnitude
+						)
+					)
+				end
+				root.AssemblyLinearVelocity = finalVelocity
+			end
+		end
+	end)
+
+	-- Note: Stamina deduction will be handled by ParkourController
+
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Directional jump: %s, force: %.1f", direction, force))
+		print(
+			string.format(
+				"[LedgeHang] Final velocity applied: (%.2f,%.2f,%.2f), magnitude: %.2f",
+				finalVelocity.X,
+				finalVelocity.Y,
+				finalVelocity.Z,
+				finalVelocity.Magnitude
+			)
+		)
+
+		-- Monitor velocity after a short delay to see if something is interfering
+		task.delay(0.2, function()
+			if root and root.Parent then
+				local currentVel = root.AssemblyLinearVelocity
+				print(
+					string.format(
+						"[LedgeHang] Velocity after 0.2s: (%.2f,%.2f,%.2f), magnitude: %.2f",
+						currentVel.X,
+						currentVel.Y,
+						currentVel.Z,
+						currentVel.Magnitude
+					)
+				)
+			end
+		end)
+	end
+
+	return true
 end
 
 -- Mark hang time in ParkourController state for cooldown

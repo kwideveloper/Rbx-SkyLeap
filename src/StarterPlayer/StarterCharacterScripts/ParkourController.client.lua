@@ -967,6 +967,77 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				return
 			end
 		end
+
+		-- Handle ledge hanging input FIRST (highest priority)
+		if LedgeHang.isActive(character) then
+			-- Check for directional input combinations
+			local userInputService = game:GetService("UserInputService")
+			local wPressed = userInputService:IsKeyDown(Enum.KeyCode.W)
+			local aPressed = userInputService:IsKeyDown(Enum.KeyCode.A)
+			local sPressed = userInputService:IsKeyDown(Enum.KeyCode.S)
+			local dPressed = userInputService:IsKeyDown(Enum.KeyCode.D)
+
+			if Config.DebugLedgeHang then
+				print(
+					string.format(
+						"[ParkourController] Ledge hang Space input - W:%s A:%s S:%s D:%s",
+						tostring(wPressed),
+						tostring(aPressed),
+						tostring(sPressed),
+						tostring(dPressed)
+					)
+				)
+			end
+
+			local didDirectionalJump = false
+
+			-- Priority order: W > A/D > S > default mantle
+			if wPressed then
+				if Config.DebugLedgeHang then
+					print("[ParkourController] W + Space: vertical jump attempt")
+				end
+				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "up")
+				if didDirectionalJump then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+				end
+			elseif aPressed then
+				if Config.DebugLedgeHang then
+					print("[ParkourController] A + Space: left jump attempt")
+				end
+				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "left")
+				if didDirectionalJump then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+				end
+			elseif dPressed then
+				if Config.DebugLedgeHang then
+					print("[ParkourController] D + Space: right jump attempt")
+				end
+				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "right")
+				if didDirectionalJump then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+				end
+			elseif sPressed then
+				if Config.DebugLedgeHang then
+					print("[ParkourController] S + Space: backward jump attempt")
+				end
+				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "back")
+				if didDirectionalJump then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+				end
+			else
+				-- No directional input, try normal mantle up
+				if Config.DebugLedgeHang then
+					print("[ParkourController] Space only: mantle up attempt")
+				end
+				local didMantle = LedgeHang.tryMantleUp(character)
+				if didMantle then
+					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
+					Style.addEvent(state.style, "Mantle", 1)
+				end
+			end
+
+			return -- Important: exit early to prevent other Space handling
+		end
 		-- JumpStart now plays on Humanoid.StateChanged (Jumping)
 		-- If dashing or sliding, cancel those states to avoid animation overlap
 		pcall(function()
@@ -1009,17 +1080,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		else
-			-- Handle ledge hanging input first
-			if LedgeHang.isActive(character) then
-				-- Try to mantle up from hanging position
-				local didMantle = LedgeHang.tryMantleUp(character)
-				if didMantle then
-					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
-					Style.addEvent(state.style, "Mantle", 1)
-				end
-				return
-			end
-
 			-- Attempt vault if a low obstacle is in front
 			local didVault = Abilities.tryVault(character)
 			if didVault then
@@ -1546,6 +1606,23 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
+	-- Check if wallslide is suppressed (e.g., during ledge hang side jumps)
+	local wallslideSuppressed = false
+	pcall(function()
+		local cs = ReplicatedStorage:FindFirstChild("ClientState")
+		local suppressFlag = cs and cs:FindFirstChild("SuppressWallSlide")
+		if suppressFlag and suppressFlag.Value then
+			wallslideSuppressed = true
+			-- Stop any active wallslide immediately
+			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				WallJump.stopSlide(character)
+			end
+			if Config.DebugLedgeHang then
+				print("[ParkourController] Wallslide DISABLED - skipping all wallslide logic")
+			end
+		end
+	end)
+
 	-- Maintain Wall Slide when airborne near walls (independent of sprint)
 	if
 		humanoid.FloorMaterial == Enum.Material.Air
@@ -1553,6 +1630,7 @@ RunService.RenderStepped:Connect(function(dt)
 		and not Climb.isActive(character)
 		and not LedgeHang.isActive(character)
 		and not (state.isMantlingValue and state.isMantlingValue.Value)
+		and not wallslideSuppressed
 	then
 		-- Do not start slide if sprinting (wallrun has priority) or if out of stamina
 		local suppressUntil = state.wallSlideSuppressUntil or 0

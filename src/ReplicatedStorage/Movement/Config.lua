@@ -307,7 +307,7 @@ Config.VaultUpMax = 26
 Config.LedgeHangEnabled = true
 Config.DebugLedgeHang = true
 Config.MantleLedgeHangCooldown = 0.5 -- seconds to wait after successful mantle before allowing ledge hang
-Config.LedgeHangCooldown = 3.0 -- seconds to wait after ledge hang before allowing another hang
+Config.LedgeHangCooldown = 2.0 -- seconds to wait after ledge hang before allowing another hang
 Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge
 Config.LedgeHangMinHeight = 1.5 -- min height above waist for hang
 Config.LedgeHangMaxHeight = 4.0 -- max height above waist for hang
@@ -318,6 +318,13 @@ Config.LedgeHangMoveSpeed = 8 -- horizontal movement speed while hanging
 Config.LedgeHangMaxDurationSeconds = 10 -- max time before auto-release
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
+
+-- Ledge Hang Jump impulses
+Config.LedgeHangJumpUpForce = 100 -- vertical impulse when pressing W + Space
+Config.LedgeHangJumpSideForce = 100 -- horizontal impulse when pressing A/D + Space (increased for side momentum)
+Config.LedgeHangJumpBackForce = 100 -- backward impulse when pressing S + Space
+Config.LedgeHangJumpStaminaCost = 10 -- stamina cost for directional jumps
+Config.LedgeHangWallSeparationForce = 100 -- force to push away from wall during jumps
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06
