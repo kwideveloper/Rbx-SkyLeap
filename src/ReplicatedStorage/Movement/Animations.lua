@@ -41,9 +41,12 @@ local Animations = {
 	Mantle = "rbxassetid://82189151823059",
 
 	-- Ledge Hang (hanging from ledge)
-	LedgeHangStart = "", -- animation when starting to hang
-	LedgeHangLoop = "", -- idle hanging animation
+	LedgeHangStart = "rbxassetid://82144582851439", -- animation when starting to hang
+	LedgeHangLoop = "rbxassetid://91323918920205", -- idle hanging animation (ledge idle)
 	LedgeHangMove = "", -- moving left/right while hanging
+	LedgeHangLeft = "rbxassetid://134252704996098", -- moving left while hanging
+	LedgeHangRight = "rbxassetid://140051038203928", -- moving right while hanging
+	LedgeHangUp = "rbxassetid://106579117059480", -- jumping up from hang
 
 	-- Climb (optional)
 	ClimbStart = "",

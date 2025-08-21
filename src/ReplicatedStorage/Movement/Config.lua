@@ -312,8 +312,8 @@ Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge
 Config.LedgeHangMinHeight = 1.5 -- min height above waist for hang
 Config.LedgeHangMaxHeight = 4.0 -- max height above waist for hang
 Config.LedgeHangMinClearance = 5.0 -- min clearance above ledge required to mantle instead of hang (character height + headroom)
-Config.LedgeHangDistance = 1.2 -- horizontal distance from wall while hanging
-Config.LedgeHangDropDistance = 0.8 -- how far below ledge to hang
+Config.LedgeHangDistance = 2 -- 0.3-- horizontal distance from wall while hanging
+Config.LedgeHangDropDistance = 1.8 -- how far below ledge to hang
 Config.LedgeHangMoveSpeed = 8 -- horizontal movement speed while hanging
 Config.LedgeHangMaxDurationSeconds = 10 -- max time before auto-release
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
@@ -325,6 +325,12 @@ Config.LedgeHangJumpSideForce = 80 -- horizontal impulse when pressing A/D + Spa
 Config.LedgeHangJumpBackForce = 100 -- backward impulse when pressing S + Space
 Config.LedgeHangJumpStaminaCost = 10 -- stamina cost for directional jumps
 Config.LedgeHangWallSeparationForce = 0 -- force to push away from wall during jumps
+
+-- Animation Duration Control
+Config.LedgeHangStartAnimationDuration = 0.5 -- seconds for LedgeHangStart animation to complete
+Config.LedgeHangUpAnimationDuration = 0.25 -- seconds for LedgeHangUp animation to complete
+Config.LedgeHangLeftAnimationDuration = 1 -- seconds for LedgeHangLeft animation to complete (optional)
+Config.LedgeHangRightAnimationDuration = 1 -- seconds for LedgeHangRight animation to complete (optional)
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06

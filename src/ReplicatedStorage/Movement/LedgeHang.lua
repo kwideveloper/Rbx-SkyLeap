@@ -169,6 +169,15 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		hitRes.Position.Z - forwardDir.Z * hangDistance
 	)
 
+	-- Store original collision settings
+	local originalCanCollide = {}
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			originalCanCollide[part] = part.CanCollide
+			part.CanCollide = false -- Disable collisions to prevent being pushed away from wall
+		end
+	end
+
 	-- Create hang state
 	local hangData = {
 		ledgePosition = hitRes.Position,
@@ -177,6 +186,7 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		surfaceNormal = hitRes.Normal,
 		originalAutoRotate = humanoid.AutoRotate,
 		originalWalkSpeed = humanoid.WalkSpeed,
+		originalCanCollide = originalCanCollide,
 		startTime = os.clock(),
 	}
 
@@ -184,9 +194,12 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 
 	-- Set character state
 	humanoid.AutoRotate = false
-	humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics) -- Use Physics state to prevent automatic movement
 	root.CFrame = CFrame.new(hangPos, hangPos + forwardDir)
 	root.AssemblyLinearVelocity = Vector3.new()
+
+	-- Anchor the root part to prevent physics interference
+	root.Anchored = true
 
 	-- Play ledge hang start animation
 	local startTrack = nil
@@ -211,15 +224,36 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 				startTrack.Looped = false
 				startTrack:Play()
 
-				-- When start ends, play loop animation
-				startTrack.Stopped:Connect(function()
-					local loopAnim = Animations.get("LedgeHangLoop")
-					if loopAnim and activeHangs[character] then
-						loopTrack = animator:LoadAnimation(loopAnim)
-						if loopTrack then
-							loopTrack.Priority = Enum.AnimationPriority.Action
-							loopTrack.Looped = true
-							loopTrack:Play()
+				-- Adjust animation speed based on configured duration
+				local desiredDuration = Config.LedgeHangStartAnimationDuration or 0.5
+				local originalDuration = startTrack.Length
+				if originalDuration > 0 then
+					local speedMultiplier = originalDuration / desiredDuration
+					startTrack:AdjustSpeed(speedMultiplier)
+
+					if Config.DebugLedgeHang then
+						print(
+							string.format(
+								"[LedgeHang] LedgeHangStart - Original: %.2fs, Desired: %.2fs, Speed: %.2fx",
+								originalDuration,
+								desiredDuration,
+								speedMultiplier
+							)
+						)
+					end
+				end
+
+				-- When start ends, play loop animation (use configured duration for timing)
+				task.delay(desiredDuration, function()
+					if activeHangs[character] then
+						local loopAnim = Animations.get("LedgeHangLoop")
+						if loopAnim then
+							loopTrack = animator:LoadAnimation(loopAnim)
+							if loopTrack then
+								loopTrack.Priority = Enum.AnimationPriority.Action
+								loopTrack.Looped = true
+								loopTrack:Play()
+							end
 						end
 					end
 				end)
@@ -279,7 +313,21 @@ function LedgeHang.stop(character)
 		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	end
 
-	-- Stop hang animations
+	-- Restore collision settings
+	if hangData.originalCanCollide then
+		for part, originalValue in pairs(hangData.originalCanCollide) do
+			if part and part.Parent then
+				part.CanCollide = originalValue
+			end
+		end
+	end
+
+	-- Unanchor the root part
+	if root then
+		root.Anchored = false
+	end
+
+	-- Stop all hang animations
 	pcall(function()
 		if hangData.startTrack then
 			hangData.startTrack:Stop(0.1)
@@ -289,6 +337,160 @@ function LedgeHang.stop(character)
 		end
 		if hangData.moveTrack then
 			hangData.moveTrack:Stop(0.1)
+		end
+
+		-- Don't stop jump animations immediately - let them play during transition
+		-- if hangData.jumpTrack then
+		--     hangData.jumpTrack:Stop(0.1)
+		-- end
+
+		-- Also stop any ledge hang animations that might be playing
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			local animator = humanoid:FindFirstChildOfClass("Animator")
+			if animator then
+				for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+					if
+						track.Name
+						and (string.find(track.Name:lower(), "ledgehang") or string.find(track.Name:lower(), "hang"))
+					then
+						-- Don't stop jump animations (LedgeHangUp, LedgeHangLeft, LedgeHangRight) immediately
+						-- Let them finish naturally
+						local isJumpAnim = false
+
+						-- Check if this is the current jump animation by comparing animation IDs
+						local hangData = activeHangs[character]
+						if hangData and hangData.jumpAnimationId and track.Animation then
+							isJumpAnim = track.Animation.AnimationId == hangData.jumpAnimationId
+						end
+
+						-- Fallback: check by name pattern
+						if not isJumpAnim and track.Name then
+							local trackNameLower = track.Name:lower()
+							isJumpAnim = string.find(trackNameLower, "ledgehangup")
+								or string.find(trackNameLower, "ledgehangleft")
+								or string.find(trackNameLower, "ledgehangright")
+						end
+
+						if Config.DebugLedgeHang then
+							print(
+								string.format(
+									"[LedgeHang] Checking track '%s', isJumpAnim: %s",
+									track.Name or "No Name",
+									tostring(isJumpAnim)
+								)
+							)
+							if track.Animation then
+								print(string.format("[LedgeHang] Track AnimationId: %s", track.Animation.AnimationId))
+							end
+						end
+
+						if not isJumpAnim then
+							track:Stop(0.1)
+						else
+							if Config.DebugLedgeHang then
+								print(
+									string.format("[LedgeHang] Preserving jump animation: %s", track.Name or "No Name")
+								)
+							end
+						end
+					end
+				end
+
+				-- Force return to normal animations asynchronously
+				task.delay(0.1, function()
+					if not animator or not animator.Parent then
+						return
+					end
+
+					-- Stop all custom animations to reset to default state, except jump animations
+					for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+						if
+							track.Priority == Enum.AnimationPriority.Action
+							or track.Priority == Enum.AnimationPriority.Action2
+						then
+							-- Don't stop jump animations - let them finish
+							local isJumpAnim = false
+
+							-- Check by animation ID first (more reliable)
+							if track.Animation then
+								local jumpAnimIds = {
+									[Animations.LedgeHangUp] = true,
+									[Animations.LedgeHangLeft] = true,
+									[Animations.LedgeHangRight] = true,
+								}
+								isJumpAnim = jumpAnimIds[track.Animation.AnimationId] == true
+							end
+
+							-- Fallback: check by name pattern
+							if not isJumpAnim and track.Name then
+								local trackNameLower = track.Name:lower()
+								isJumpAnim = string.find(trackNameLower, "ledgehangup")
+									or string.find(trackNameLower, "ledgehangleft")
+									or string.find(trackNameLower, "ledgehangright")
+							end
+
+							if not isJumpAnim then
+								track:Stop(0.1)
+							else
+								if Config.DebugLedgeHang then
+									print(
+										string.format(
+											"[LedgeHang] Preserving jump animation during reset: %s",
+											track.Name or "No Name"
+										)
+									)
+								end
+							end
+						end
+					end
+
+					-- Force humanoid state change to trigger default animations
+					local currentHumanoid = animator.Parent
+					if currentHumanoid and currentHumanoid:IsA("Humanoid") then
+						local currentState = currentHumanoid:GetState()
+						-- Briefly change to a different state, then back to trigger animation reset
+						if currentState ~= Enum.HumanoidStateType.Jumping then
+							currentHumanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+						end
+
+						task.delay(0.05, function()
+							if currentHumanoid and currentHumanoid.Parent then
+								currentHumanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+								-- Additional failsafe: Check if animations are playing after state change
+								task.delay(0.2, function()
+									if currentHumanoid and currentHumanoid.Parent and animator and animator.Parent then
+										local playingTracks = animator:GetPlayingAnimationTracks()
+										local hasDefaultAnimation = false
+
+										-- Check if any default/core animations are playing
+										for _, track in ipairs(playingTracks) do
+											if track.Priority == Enum.AnimationPriority.Core then
+												hasDefaultAnimation = true
+												break
+											end
+										end
+
+										-- If no default animations are playing, force idle state
+										if not hasDefaultAnimation then
+											if Config.DebugLedgeHang then
+												print("[LedgeHang] No default animations detected, forcing idle state")
+											end
+											currentHumanoid:ChangeState(Enum.HumanoidStateType.Running)
+											task.delay(0.1, function()
+												if currentHumanoid and currentHumanoid.Parent then
+													currentHumanoid:ChangeState(Enum.HumanoidStateType.Standing)
+												end
+											end)
+										end
+									end
+								end)
+							end
+						end)
+					end
+				end)
+			end
 		end
 	end)
 
@@ -357,7 +559,17 @@ function LedgeHang.maintain(character, moveDirection)
 					hangData.loopTrack:Stop(0.1)
 				end
 
-				local moveAnim = Animations.get("LedgeHangMove")
+				-- Determine direction and play appropriate animation
+				local rightDot = moveDirection and moveDirection:Dot(rightVector) or 0
+				local animName = "LedgeHangMove" -- fallback
+
+				if rightDot > 0.1 then
+					animName = "LedgeHangRight"
+				elseif rightDot < -0.1 then
+					animName = "LedgeHangLeft"
+				end
+
+				local moveAnim = Animations.get(animName)
 				if moveAnim and animator then
 					hangData.moveTrack = animator:LoadAnimation(moveAnim)
 					if hangData.moveTrack then
@@ -365,6 +577,24 @@ function LedgeHang.maintain(character, moveDirection)
 						hangData.moveTrack.Looped = true
 						hangData.moveTrack:Play()
 						hangData.isPlayingMoveAnim = true
+						hangData.currentMoveDirection = animName
+
+						if Config.DebugLedgeHang then
+							print(string.format("[LedgeHang] Playing movement animation: %s", animName))
+						end
+					end
+				else
+					-- Fallback to generic move animation
+					local fallbackAnim = Animations.get("LedgeHangMove")
+					if fallbackAnim and animator then
+						hangData.moveTrack = animator:LoadAnimation(fallbackAnim)
+						if hangData.moveTrack then
+							hangData.moveTrack.Priority = Enum.AnimationPriority.Action
+							hangData.moveTrack.Looped = true
+							hangData.moveTrack:Play()
+							hangData.isPlayingMoveAnim = true
+							hangData.currentMoveDirection = "LedgeHangMove"
+						end
 					end
 				end
 			end
@@ -375,6 +605,11 @@ function LedgeHang.maintain(character, moveDirection)
 				hangData.moveTrack = nil
 			end
 			hangData.isPlayingMoveAnim = false
+			hangData.currentMoveDirection = nil
+
+			if Config.DebugLedgeHang then
+				print("[LedgeHang] Returning to idle animation")
+			end
 
 			-- Resume loop animation
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -387,6 +622,42 @@ function LedgeHang.maintain(character, moveDirection)
 						hangData.loopTrack.Priority = Enum.AnimationPriority.Action
 						hangData.loopTrack.Looped = true
 						hangData.loopTrack:Play()
+					end
+				end
+			end
+		elseif isMoving and hangData.isPlayingMoveAnim then
+			-- Check if direction changed while moving
+			local rightDot = moveDirection and moveDirection:Dot(rightVector) or 0
+			local newAnimName = "LedgeHangMove" -- fallback
+
+			if rightDot > 0.1 then
+				newAnimName = "LedgeHangRight"
+			elseif rightDot < -0.1 then
+				newAnimName = "LedgeHangLeft"
+			end
+
+			-- If direction changed, switch animation
+			if hangData.currentMoveDirection ~= newAnimName then
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					local animator = humanoid:FindFirstChildOfClass("Animator")
+					if animator and hangData.moveTrack then
+						hangData.moveTrack:Stop(0.1)
+
+						local moveAnim = Animations.get(newAnimName)
+						if moveAnim then
+							hangData.moveTrack = animator:LoadAnimation(moveAnim)
+							if hangData.moveTrack then
+								hangData.moveTrack.Priority = Enum.AnimationPriority.Action
+								hangData.moveTrack.Looped = true
+								hangData.moveTrack:Play()
+								hangData.currentMoveDirection = newAnimName
+
+								if Config.DebugLedgeHang then
+									print(string.format("[LedgeHang] Switched to animation: %s", newAnimName))
+								end
+							end
+						end
 					end
 				end
 			end
@@ -411,7 +682,7 @@ function LedgeHang.maintain(character, moveDirection)
 
 	newPos = Vector3.new(newPos.X, hangY, newPos.Z)
 
-	-- Update position
+	-- Update position (character is anchored, so we use CFrame directly)
 	root.CFrame = CFrame.new(newPos, newPos + hangData.forwardDirection)
 	root.AssemblyLinearVelocity = Vector3.new()
 
@@ -449,6 +720,12 @@ function LedgeHang.tryMantleUp(character)
 	if hasClearance then
 		-- Mark the hang time for cooldown purposes
 		LedgeHang.markHangTime(character)
+
+		-- Unanchor before mantle
+		if root then
+			root.Anchored = false
+		end
+
 		LedgeHang.stop(character)
 
 		-- Ensure Abilities module is properly loaded
@@ -663,6 +940,106 @@ function LedgeHang.tryDirectionalJump(character, direction)
 		)
 	end
 
+	-- Play directional jump animation before jumping
+	pcall(function()
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			local animator = humanoid:FindFirstChildOfClass("Animator")
+			if animator then
+				-- Stop any current ledge hang animations
+				local hangData = activeHangs[character]
+				if hangData then
+					if hangData.loopTrack then
+						hangData.loopTrack:Stop(0.1)
+					end
+					if hangData.moveTrack then
+						hangData.moveTrack:Stop(0.1)
+					end
+				end
+
+				-- Play directional jump animation
+				local jumpAnimName = ""
+				if direction == "up" then
+					jumpAnimName = "LedgeHangUp"
+				elseif direction == "left" then
+					jumpAnimName = "LedgeHangLeft"
+				elseif direction == "right" then
+					jumpAnimName = "LedgeHangRight"
+				elseif direction == "back" then
+					jumpAnimName = "LedgeHangMove" -- or create LedgeHangBack
+				end
+
+				if jumpAnimName ~= "" then
+					local jumpAnim = Animations.get(jumpAnimName)
+					if jumpAnim then
+						local jumpTrack = animator:LoadAnimation(jumpAnim)
+						if jumpTrack then
+							jumpTrack.Priority = Enum.AnimationPriority.Action2 -- Higher priority to avoid interruption
+							jumpTrack.Looped = false
+							jumpTrack:Play()
+
+							-- Adjust animation speed based on configured duration
+							local desiredDuration = nil
+							if jumpAnimName == "LedgeHangUp" then
+								desiredDuration = Config.LedgeHangUpAnimationDuration or 0.4
+							elseif jumpAnimName == "LedgeHangLeft" then
+								desiredDuration = Config.LedgeHangLeftAnimationDuration or 0.3
+							elseif jumpAnimName == "LedgeHangRight" then
+								desiredDuration = Config.LedgeHangRightAnimationDuration or 0.3
+							end
+
+							if desiredDuration then
+								local originalDuration = jumpTrack.Length
+								if originalDuration > 0 then
+									local speedMultiplier = originalDuration / desiredDuration
+									jumpTrack:AdjustSpeed(speedMultiplier)
+
+									if Config.DebugLedgeHang then
+										print(
+											string.format(
+												"[LedgeHang] %s - Original: %.2fs, Desired: %.2fs, Speed: %.2fx",
+												jumpAnimName,
+												originalDuration,
+												desiredDuration,
+												speedMultiplier
+											)
+										)
+									end
+								end
+							end
+
+							if Config.DebugLedgeHang then
+								print(
+									string.format("[LedgeHang] Successfully playing jump animation: %s", jumpAnimName)
+								)
+								print(
+									string.format("[LedgeHang] Animation track name: %s", jumpTrack.Name or "No Name")
+								)
+								print(string.format("[LedgeHang] Animation priority: %s", tostring(jumpTrack.Priority)))
+								print(string.format("[LedgeHang] Animation length: %s", tostring(jumpTrack.Length)))
+								if desiredDuration then
+									print(string.format("[LedgeHang] Configured duration: %.2fs", desiredDuration))
+								end
+							end
+
+							-- Store track reference to prevent it from being stopped immediately
+							hangData.jumpTrack = jumpTrack
+							hangData.jumpAnimationId = jumpAnim.AnimationId -- Store the animation ID for comparison
+						else
+							if Config.DebugLedgeHang then
+								print(string.format("[LedgeHang] Failed to load animation track for: %s", jumpAnimName))
+							end
+						end
+					else
+						if Config.DebugLedgeHang then
+							print(string.format("[LedgeHang] Failed to get animation for: %s", jumpAnimName))
+						end
+					end
+				end
+			end
+		end
+	end)
+
 	-- Mark hang time and stop hanging
 	LedgeHang.markHangTime(character)
 
@@ -688,7 +1065,74 @@ function LedgeHang.tryDirectionalJump(character, direction)
 		end
 	end)
 
+	-- Unanchor before applying velocity (must be done before LedgeHang.stop to ensure velocity works)
+	if root then
+		root.Anchored = false
+	end
+
+	-- Store the jump animation reference before stopping hang
+	local jumpAnimTrack = hangData and hangData.jumpTrack
+
+	if Config.DebugLedgeHang then
+		print(string.format("[LedgeHang] Before stop - jumpAnimTrack exists: %s", tostring(jumpAnimTrack ~= nil)))
+		if jumpAnimTrack then
+			print(
+				string.format(
+					"[LedgeHang] Jump track name: %s, IsPlaying: %s",
+					jumpAnimTrack.Name or "No Name",
+					tostring(jumpAnimTrack.IsPlaying)
+				)
+			)
+		end
+	end
+
 	LedgeHang.stop(character)
+
+	-- Restore jump animation after cleanup if it exists
+	if jumpAnimTrack and jumpAnimTrack.IsPlaying then
+		-- Use configured duration for LedgeHangUp, or default 0.3s for others
+		local preserveDuration = 0.3
+		if direction == "up" then
+			preserveDuration = Config.LedgeHangUpAnimationDuration or 0.4
+		end
+
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] Preserving jump animation for %.2fs: %s",
+					preserveDuration,
+					jumpAnimTrack.Name or "No Name"
+				)
+			)
+		end
+		-- Give it time to play, then stop it naturally
+		task.delay(preserveDuration, function()
+			if jumpAnimTrack and jumpAnimTrack.IsPlaying then
+				if Config.DebugLedgeHang then
+					print(
+						string.format(
+							"[LedgeHang] Stopping jump animation after delay: %s",
+							jumpAnimTrack.Name or "No Name"
+						)
+					)
+				end
+				jumpAnimTrack:Stop(0.2) -- Fade out over 0.2 seconds
+			end
+		end)
+	elseif jumpAnimTrack then
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] Jump animation track exists but not playing: %s",
+					jumpAnimTrack.Name or "No Name"
+				)
+			)
+		end
+	else
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] No jump animation track to preserve")
+		end
+	end
 
 	-- Simple physics setup (same as S+Space)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")

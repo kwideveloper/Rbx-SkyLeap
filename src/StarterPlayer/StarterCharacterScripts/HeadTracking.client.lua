@@ -2,6 +2,7 @@
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -52,6 +53,30 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	if not neck or not neck.Parent then
 		return
+	end
+
+	-- Check if ledge hanging - disable head/torso tracking during ledge hang
+	local isLedgeHanging = false
+	pcall(function()
+		local cs = ReplicatedStorage:FindFirstChild("ClientState")
+		local hangFlag = cs and cs:FindFirstChild("IsLedgeHanging")
+		isLedgeHanging = hangFlag and hangFlag.Value == true
+	end)
+
+	-- If ledge hanging, gradually return head and waist to base positions
+	if isLedgeHanging then
+		-- Smoothly return neck to base position
+		local neckReturnSpeed = 8
+		local neckAlpha = 1 - math.exp(-(neckReturnSpeed * (dt or 0)))
+		neck.C0 = neck.C0:Lerp(baseC0, neckAlpha)
+
+		-- Return waist to base position if it exists
+		if waist and baseWaistC0 then
+			local waistReturnSpeed = 6
+			local waistAlpha = 1 - math.exp(-(waistReturnSpeed * (dt or 0)))
+			waist.C0 = waist.C0:Lerp(baseWaistC0, waistAlpha)
+		end
+		return -- Skip normal head tracking logic
 	end
 
 	local camCF = camera.CFrame
