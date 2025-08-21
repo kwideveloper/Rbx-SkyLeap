@@ -405,22 +405,23 @@ Config.SpeedWindLinesOpacityStart = 0 -- transparency at spawn (0=visible, 1=inv
 Config.SpeedWindLinesOpacityEnd = 1.0 -- transparency when fading out
 
 -- Wind line size/width scaling
-Config.SpeedWindLinesWidthStart = 0.3 -- width at the ends of the trail
-Config.SpeedWindLinesWidthMiddle = 1.2 -- width at the middle of the trail (thickest part)
+Config.SpeedWindLinesWidthStart = 0.8 -- width at the ends of the trail
+Config.SpeedWindLinesWidthMiddle = 3.2 -- width at the middle of the trail (thickest part)
 
 -- Wind line length and lifetime
 Config.SpeedWindLinesLengthBase = 18 -- base trail length in studs
 Config.SpeedWindLinesLengthSpeedFactor = 0.25 -- extra length per speed unit
-Config.SpeedWindLinesLengthMin = 12 -- minimum trail length
+Config.SpeedWindLinesLengthMin = 20 -- minimum trail length
 Config.SpeedWindLinesLengthMax = 35 -- maximum trail length
-Config.SpeedWindLinesLifetimeMin = 0.8 -- minimum time each wind line lives (seconds)
-Config.SpeedWindLinesLifetimeMax = 1.3 -- maximum time each wind line lives (seconds)
+Config.SpeedWindLinesLifetimeMin = 0.2 --0.8 -- minimum time each wind line lives (seconds)
+Config.SpeedWindLinesLifetimeMax = 0.5 --1.3 -- maximum time each wind line lives (seconds)
 
 -- Spawn positioning around camera
-Config.SpeedWindLinesSpawnDistanceMin = 10 -- closest spawn distance from camera
-Config.SpeedWindLinesSpawnDistanceMax = 30 -- farthest spawn distance from camera
-Config.SpeedWindLinesSpawnAngleX = 35 -- maximum angle up/down from camera center (degrees)
-Config.SpeedWindLinesSpawnAngleY = 50 -- maximum angle left/right from camera center (degrees)
+Config.SpeedWindLinesSpawnDistanceMin = 20 --20 -- closest spawn distance from camera (increased for better visibility)
+Config.SpeedWindLinesSpawnDistanceMax = 35 --45 -- farthest spawn distance from camera (increased for better visibility)
+Config.SpeedWindLinesSpawnAngleX = 35 --35 -- maximum angle up/down from camera center (degrees)
+Config.SpeedWindLinesSpawnAngleY = 50 --50 -- maximum angle left/right from camera center (degrees)
+Config.SpeedWindLinesSpawnForwardOffset = 30 --15 -- additional forward distance from camera (pushes lines further ahead)
 
 -- Movement physics of wind lines
 Config.SpeedWindLinesSpeedFactor = 0.3 -- how fast wind lines move relative to player speed

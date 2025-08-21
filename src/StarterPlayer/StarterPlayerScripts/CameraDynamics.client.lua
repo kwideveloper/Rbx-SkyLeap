@@ -41,14 +41,20 @@ local windLines = {}
 local lastWindSpawn = 0
 
 local function createSpeedWindLine(speed)
-	if not camera or speed <= 0 then
+	if not camera or speed <= 0 or not state.root then
 		return
 	end
 
-	-- Calculate spawn position around camera with configurable randomness
+	-- Get camera and character positions
 	local cameraCFrame = camera.CFrame
-	local minDist = Config.SpeedWindLinesSpawnDistanceMin or 10
-	local maxDist = Config.SpeedWindLinesSpawnDistanceMax or 30
+	local characterPos = state.root.Position
+
+	-- Calculate direction from camera towards character (where the wind should flow)
+	local cameraToCharacter = (characterPos - cameraCFrame.Position).Unit
+
+	-- Calculate spawn position: in front of camera but scattered around the view
+	local minDist = Config.SpeedWindLinesSpawnDistanceMin or 20
+	local maxDist = Config.SpeedWindLinesSpawnDistanceMax or 45
 	local spawnDistance = math.random(minDist, maxDist)
 
 	local maxAngleX = Config.SpeedWindLinesSpawnAngleX or 35
@@ -56,7 +62,14 @@ local function createSpeedWindLine(speed)
 	local angleX = math.rad(math.random(-maxAngleX, maxAngleX))
 	local angleY = math.rad(math.random(-maxAngleY, maxAngleY))
 
-	local spawnPos = (cameraCFrame * CFrame.Angles(angleX, angleY, 0) * CFrame.new(0, 0, -spawnDistance)).Position
+	-- Add forward offset to push lines further ahead
+	local forwardOffset = Config.SpeedWindLinesSpawnForwardOffset or 15
+
+	-- Spawn position is offset from camera with some randomness, plus forward push
+	local spawnOffset = (cameraCFrame * CFrame.Angles(angleX, angleY, 0) * CFrame.new(0, 0, spawnDistance)).Position
+	local spawnPos = cameraCFrame.Position
+		+ (spawnOffset - cameraCFrame.Position)
+		+ (cameraCFrame.LookVector * forwardOffset)
 
 	-- Create attachments for the trail
 	local attachment0 = Instance.new("Attachment")
@@ -111,11 +124,8 @@ local function createSpeedWindLine(speed)
 	attachment0.Parent = terrain
 	attachment1.Parent = terrain
 
-	-- Calculate wind direction (backwards from camera movement)
-	local windDirection = -cameraCFrame.LookVector
-	if state.humanoid and state.humanoid.MoveDirection.Magnitude > 0.1 then
-		windDirection = -state.humanoid.MoveDirection.Unit
-	end
+	-- Calculate wind direction: from spawn position towards character (simulating wind flowing past camera)
+	local windDirection = cameraToCharacter
 
 	-- Configurable wind speed
 	local speedFactor = Config.SpeedWindLinesSpeedFactor or 0.3
@@ -129,15 +139,15 @@ local function createSpeedWindLine(speed)
 	local lifetimeMax = Config.SpeedWindLinesLifetimeMax or 1.3
 	local lifetime = math.random(lifetimeMin * 100, lifetimeMax * 100) * 0.01
 
-	-- Store wind line data
+	-- Store wind line data with initial direction frozen
 	local windLine = {
 		attachment0 = attachment0,
 		attachment1 = attachment1,
 		trail = trail,
 		startTime = tick(),
 		lifetime = lifetime,
-		position = spawnPos,
-		direction = windDirection,
+		initialPosition = spawnPos, -- fixed spawn position
+		direction = windDirection, -- direction flows from camera towards character
 		speed = windSpeed,
 		seed = math.random(1, 1000) * 0.1,
 		maxLength = trailLength,
@@ -167,19 +177,20 @@ local function updateSpeedWindLines()
 			end
 			table.remove(windLines, i)
 		else
+			-- Keep the line moving in its original direction for straight lines
+			local moveDistance = windLine.speed * aliveTime
+			local basePos = windLine.initialPosition + (windLine.direction * moveDistance)
+
 			-- Update position with configurable wave motion for natural feel
 			local waveSpeed = Config.SpeedWindLinesWaveSpeed or 0.15
 			local seededTime = (currentTime + windLine.seed) * (windLine.speed * waveSpeed)
-			local startPos = windLine.position
-			local moveDistance = windLine.speed * aliveTime
-
-			local basePos = startPos + (windLine.direction * moveDistance)
 
 			-- Configurable wave amplitudes
 			local waveAmpX = Config.SpeedWindLinesWaveAmplitudeX or 1.0
 			local waveAmpY = Config.SpeedWindLinesWaveAmplitudeY or 1.5
 			local waveAmpZ = Config.SpeedWindLinesWaveAmplitudeZ or 0.8
 
+			-- Apply subtle wave motion in world space (not camera relative to avoid curves)
 			local waveMotion = Vector3.new(
 				math.sin(seededTime) * waveAmpX,
 				math.sin(seededTime * 0.7) * waveAmpY,
