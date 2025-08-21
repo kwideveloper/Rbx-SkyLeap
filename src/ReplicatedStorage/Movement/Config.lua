@@ -39,6 +39,7 @@ Config.DoubleJumpImpulse = 50 -- vertical speed applied on double jump
 -- Air dash charges (per airtime)
 Config.DashAirChargesDefault = 1
 Config.DashAirChargesMax = 1
+Config.GroundedRefillDwellSeconds = 0.06 -- time grounded before refilling dash/double jump
 
 -- Slide
 Config.SlideDurationSeconds = 0.5
@@ -254,6 +255,7 @@ Config.StyleMultiplierMax = 5.0
 Config.StyleBunnyHopBonusBase = 5 -- per jump
 Config.StyleBunnyHopBonusPerStack = 5
 Config.StyleDashBonus = 8 -- counts only when chained
+Config.StyleDoubleJumpBonus = 12 -- counts only when chained
 Config.StyleWallJumpBonus = 15
 Config.StyleWallSlideBonus = 10 -- counts only when chained
 Config.StylePadChainBonus = 5 -- counts only when chained

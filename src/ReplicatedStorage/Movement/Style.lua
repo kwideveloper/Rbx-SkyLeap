@@ -77,9 +77,11 @@ function Style.tick(state, ctx)
 		end
 	end
 	if ctx.airborne then
-		comboActive = true
-		local perSec = Config.StyleAirTimePerSecond or 6
-		if (state.combo or 0) >= 1 then
+		-- Only maintain combo during airborne if already in a combo or in special movement states
+		-- This prevents regular ground jumps from resetting the combo timer
+		if (state.combo or 0) >= 1 and (ctx.wallRun or ctx.climbing or ctx.sliding) then
+			comboActive = true
+			local perSec = Config.StyleAirTimePerSecond or 6
 			addScore(state, perSec * dt)
 		end
 	end
@@ -205,6 +207,12 @@ function Style.addEvent(state, event, magnitude)
 		-- Only counts when chained into a follow-up (e.g., wallrun, walljump, pad)
 		if isChained(state) then
 			pushAction(state, "Zipline")
+		end
+	elseif event == "DoubleJump" then
+		-- Only count double jump if chained from previous action within window
+		if isChained(state) then
+			bonus = Config.StyleDoubleJumpBonus or 12
+			pushAction(state, "DoubleJump")
 		end
 	end
 	-- Anti-repeat: do not grow combo if same action repeated too many times in a row
