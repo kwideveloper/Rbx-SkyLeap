@@ -1,6 +1,7 @@
 -- Centralized audio manager for player SFX/music
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -17,6 +18,8 @@ local state = {
 	commitActive = false,
 	comboToken = 0,
 	wasGrounded = true,
+	-- Managed crawl loop sound instance
+	crawlLoop = nil,
 }
 
 local function getSfxFolder()
@@ -27,7 +30,46 @@ local function getSfxFolder()
 	return playerFolder
 end
 
-local function getTemplate(name)
+-- Forward declare so it can be used above its definition
+local getTemplate
+
+local function getOrCreateCrawlLoop()
+	local root = state.root
+	if not root then
+		return nil
+	end
+	if state.crawlLoop and state.crawlLoop.Parent then
+		return state.crawlLoop
+	end
+	local template = getTemplate("Crawl")
+	if not template then
+		return nil
+	end
+	local s = template:Clone()
+	s.Name = "CrawlLoop"
+	s.Looped = true
+	s.Parent = root
+	-- Ensure it does not auto-play on creation; only play when moving
+	s.Playing = false
+	pcall(function()
+		s:Pause()
+	end)
+	state.crawlLoop = s
+	return s
+end
+
+local function destroyCrawlLoop()
+	local s = state.crawlLoop
+	if s then
+		pcall(function()
+			s:Stop()
+			s:Destroy()
+		end)
+	end
+	state.crawlLoop = nil
+end
+
+getTemplate = function(name)
 	local folder = getSfxFolder()
 	if not folder then
 		return nil
@@ -72,8 +114,8 @@ local function playOneShot(name, playbackSpeed)
 end
 
 -- Replace the default "Running" sound SoundId; let Roblox handle playback
-local function overrideDefaultRunningSound(root: BasePart)
-	local function apply(sound: Sound)
+local function overrideDefaultRunningSound(root)
+	local function apply(sound)
 		local tpl = getTemplate("Running")
 		if tpl then
 			sound.SoundId = tpl.SoundId
@@ -108,7 +150,7 @@ local function overrideDefaultRunningSound(root: BasePart)
 	end)
 end
 
-local function disableDefaultFootsteps(humanoid: Humanoid)
+local function disableDefaultFootsteps(humanoid)
 	-- Roblox humanoids typically use internal footstep sounds; ensure they are not playing accidentally
 	-- We keep the default Running sound (we override its SoundId). Mute any legacy custom run loops.
 	local root = state.root
@@ -174,6 +216,17 @@ local function setup()
 	bindJumpSounds(state.humanoid)
 
 	player.CharacterAdded:Connect(function(char)
+		-- Cleanup any lingering crawl loop from previous character
+		do
+			local prev = state.crawlLoop
+			if prev then
+				pcall(function()
+					prev:Stop()
+					prev:Destroy()
+				end)
+			end
+			state.crawlLoop = nil
+		end
 		state.character = char
 		state.humanoid = char:WaitForChild("Humanoid")
 		state.root = char:WaitForChild("HumanoidRootPart")
@@ -192,16 +245,62 @@ local function setup()
 		if not root then
 			return
 		end
-		local running: Sound? = root:FindFirstChild("Running")
-		if not (running and running:IsA("Sound")) then
-			return
-		end
+		local running = root:FindFirstChild("Running")
 		local cs = ReplicatedStorage:FindFirstChild("ClientState")
 		local isSprinting = cs and cs:FindFirstChild("IsSprinting") and cs.IsSprinting.Value or false
-		local desired = isSprinting and 1.35 or 0.85
-		if math.abs((running.PlaybackSpeed or 1) - desired) > 1e-3 then
-			running.PlaybackSpeed = desired
-			running.Volume = isSprinting and 0.2 or 0.2
+		local isCrawling = cs and cs:FindFirstChild("IsCrawling") and cs.IsCrawling.Value or false
+		if running and running:IsA("Sound") then
+			local desired = isSprinting and 1.35 or 0.85
+			if math.abs((running.PlaybackSpeed or 1) - desired) > 1e-3 then
+				running.PlaybackSpeed = desired
+			end
+			-- Mute default Running while crawling
+			running.Volume = isCrawling and 0 or 0.2
+		end
+
+		-- Remove stray one-shot Crawl clones (safety)
+		for _, d in ipairs(root:GetChildren()) do
+			if d:IsA("Sound") and d.Name == "Crawl" then
+				pcall(function()
+					d:Stop()
+					d:Destroy()
+				end)
+			end
+		end
+
+		-- Crawl loop management
+		local humanoid = state.humanoid
+		local moving = humanoid and humanoid.MoveDirection and (humanoid.MoveDirection.Magnitude > 0.05) or false
+		if isCrawling then
+			local loop = getOrCreateCrawlLoop()
+			if loop then
+				-- Speed up with Shift while crawling
+				local shiftDown = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				local targetSpeed = shiftDown and 1.35 or 1.0
+				if math.abs((loop.PlaybackSpeed or 1) - targetSpeed) > 1e-3 then
+					loop.PlaybackSpeed = targetSpeed
+				end
+				if moving then
+					if not loop.IsPlaying then
+						local ok = pcall(function()
+							loop:Resume()
+						end)
+						if not ok then
+							pcall(function()
+								loop:Play()
+							end)
+						end
+					end
+				else
+					if loop.IsPlaying then
+						pcall(function()
+							loop:Pause()
+						end)
+					end
+				end
+			end
+		else
+			destroyCrawlLoop()
 		end
 
 		-- Hook/Grapple SFX on start
@@ -242,12 +341,12 @@ local function setup()
 				end
 			end)
 		end
-		-- Crawl enter
+		-- Crawl enter: handled by managed loop; no one-shot
 		local crawl = cs:FindFirstChild("IsCrawling")
 		if crawl and crawl:IsA("BoolValue") then
 			crawl.Changed:Connect(function()
-				if crawl.Value then
-					playOneShot("Crawl")
+				if not crawl.Value then
+					destroyCrawlLoop()
 				end
 			end)
 		end
