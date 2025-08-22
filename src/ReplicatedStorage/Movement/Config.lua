@@ -321,6 +321,8 @@ Config.LedgeHangMoveSpeed = 15 -- horizontal movement speed while hanging
 -- Config.LedgeHangMaxDurationSeconds = 10 -- DISABLED: max time before auto-release (now only stamina controls duration)
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
+Config.LedgeHangMinStamina = 10 -- Minimum stamina required to start a ledge hang
+Config.LedgeHangStaminaDepletionCooldown = 1.0 -- Cooldown after stamina depletion before allowing auto hang again
 
 -- Ledge Hang Jump impulses
 Config.LedgeHangJumpUpForce = 80 -- vertical impulse when pressing W + Space

@@ -1800,7 +1800,10 @@ RunService.RenderStepped:Connect(function(dt)
 
 		-- Auto-release if no stamina
 		if state.stamina.current <= 0 then
-			LedgeHang.stop(character)
+			print("[DEBUG] Stamina depleted, stopping ledge hang and setting cooldown")
+			LedgeHang.stop(character, true) -- true = manual release (same as C key)
+			-- Set a temporary cooldown to prevent immediate re-hang due to stamina depletion
+			state._staminaDepletedHangCooldown = os.clock() + (Config.LedgeHangStaminaDepletionCooldown or 2.0)
 		else
 			-- Maintain hanging position with horizontal movement
 			LedgeHang.maintain(character, humanoid.MoveDirection)
@@ -1808,7 +1811,11 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 
 	-- Auto-detect tagged ledges nearby and start hang when close
-	if Config.LedgeTagAutoEnabled and not LedgeHang.isActive(character) then
+	-- But only if we have sufficient stamina (prevent infinite loops when stamina is depleted)
+	local canAutoHang = state.stamina.current >= (Config.LedgeHangMinStamina or 10)
+	local hasStaminaCooldown = state._staminaDepletedHangCooldown and os.clock() < state._staminaDepletedHangCooldown
+
+	if Config.LedgeTagAutoEnabled and not LedgeHang.isActive(character) and canAutoHang and not hasStaminaCooldown then
 		local root = character:FindFirstChild("HumanoidRootPart")
 		if root then
 			local range = Config.LedgeTagAutoHangRange or 3.5
@@ -1919,7 +1926,16 @@ RunService.RenderStepped:Connect(function(dt)
 						Instance = nearest,
 					}
 				end
-				local ok = LedgeHang.tryStartFromMantleData(character, fakeHit, nearestTopY)
+				-- Check stamina before attempting tagged ledge hang
+				local ok = false
+				if
+					state.stamina.current >= (Config.LedgeHangMinStamina or 10)
+					and not (state._staminaDepletedHangCooldown and os.clock() < state._staminaDepletedHangCooldown)
+				then
+					ok = LedgeHang.tryStartFromMantleData(character, fakeHit, nearestTopY)
+				else
+					print("[DEBUG] Skipping tagged ledge hang - insufficient stamina or on cooldown")
+				end
 				if Config.DebugLedgeHang then
 					print(
 						string.format(
@@ -2141,10 +2157,39 @@ RunService.RenderStepped:Connect(function(dt)
 							didMantle = Abilities.tryMantle(character)
 
 							-- If mantle failed AND there's insufficient clearance, try ledge hang
+							-- But only if we have enough stamina to sustain the hang and no recent stamina depletion
+							local minStaminaForHang = Config.LedgeHangMinStamina or 10
+							local hasStaminaDepletionCooldown = state._staminaDepletedHangCooldown
+								and os.clock() < state._staminaDepletedHangCooldown
+							local hasEnoughStamina = state.stamina.current >= minStaminaForHang
+
+							-- Debug prints for ledge hang logic
 							if not didMantle and Config.LedgeHangEnabled and not hasClearance then
+								print(
+									string.format(
+										"[DEBUG] Ledge hang check - Stamina: %.1f/%.1f, HasCooldown: %s, EnoughStamina: %s",
+										state.stamina.current,
+										minStaminaForHang,
+										tostring(hasStaminaDepletionCooldown),
+										tostring(hasEnoughStamina)
+									)
+								)
+							end
+
+							if
+								not didMantle
+								and Config.LedgeHangEnabled
+								and not hasClearance
+								and hasEnoughStamina
+								and not hasStaminaDepletionCooldown
+							then
+								print("[DEBUG] Attempting ledge hang...")
 								didHang = LedgeHang.tryStartFromMantleData(character, hitRes, topY)
 								if didHang then
+									print("[DEBUG] Ledge hang started successfully")
 									state._lastLedgeHangTime = os.clock()
+								else
+									print("[DEBUG] Ledge hang failed to start")
 								end
 							end
 
