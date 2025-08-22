@@ -25,6 +25,110 @@ local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
 local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
 local Powerups = require(ReplicatedStorage.Movement.Powerups)
 
+-- One-shot FX helper: plays ReplicatedStorage/FX/<name> once at character position
+local function playOneShotFx(character, fxName, customPosition)
+	local root = character and (character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart)
+	if not root then
+		return
+	end
+	local fxFolder = ReplicatedStorage:FindFirstChild("FX")
+	local template = fxFolder and fxFolder:FindFirstChild(fxName)
+	if not template then
+		return
+	end
+
+	-- For double jump, position at character's feet
+	local fxPosition = customPosition
+	if not fxPosition and fxName == "DoubleJump" then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local feetOffset = humanoid and humanoid.HipHeight or 3
+		fxPosition = root.Position - Vector3.new(0, feetOffset, 0)
+	end
+
+	if fxPosition then
+		-- Create invisible anchor part for precise positioning
+		local fxAnchor = Instance.new("Part")
+		fxAnchor.Name = "FXAnchor_" .. fxName
+		fxAnchor.Size = Vector3.new(0.1, 0.1, 0.1)
+		fxAnchor.Transparency = 1
+		fxAnchor.CanCollide = false
+		fxAnchor.Anchored = true
+		fxAnchor.Position = fxPosition
+		fxAnchor.Parent = workspace
+
+		local inst = template:Clone()
+		inst.Name = "OneShot_" .. fxName
+		inst.Parent = fxAnchor
+
+		-- Debug: Print FX info
+		print("[FX DEBUG] Creating FX:", fxName, "at position:", fxPosition)
+		print("[FX DEBUG] Template found:", template.Name, "with children:", #template:GetDescendants())
+
+		-- Emit particles once and play sounds
+		for _, d in ipairs(inst:GetDescendants()) do
+			if d:IsA("ParticleEmitter") then
+				print("[FX DEBUG] Found ParticleEmitter:", d.Name, "Enabled:", d.Enabled)
+				local burst = tonumber(d:GetAttribute("Burst") or 30)
+				-- Enable the emitter first, then emit
+				d.Enabled = true
+				pcall(function()
+					d:Emit(burst)
+					print("[FX DEBUG] Emitted", burst, "particles from", d.Name)
+				end)
+			elseif d:IsA("Sound") then
+				print("[FX DEBUG] Found Sound:", d.Name, "Volume:", d.Volume)
+				pcall(function()
+					d:Play()
+					print("[FX DEBUG] Playing sound:", d.Name)
+				end)
+			elseif d:IsA("Attachment") then
+				print("[FX DEBUG] Found Attachment:", d.Name)
+			else
+				print("[FX DEBUG] Found other:", d.Name, d.ClassName)
+			end
+		end
+
+		-- Cleanup after a longer lifetime to see if FX appears
+		task.delay(5, function()
+			if fxAnchor then
+				print("[FX DEBUG] Destroying FX anchor for:", fxName)
+				fxAnchor:Destroy()
+			end
+		end)
+	else
+		-- Fallback to attaching to character root
+		local inst = template:Clone()
+		inst.Name = "OneShot_" .. fxName
+		inst.Parent = root
+
+		-- Debug fallback FX
+		print("[FX DEBUG] Using fallback: attaching to character root")
+
+		for _, d in ipairs(inst:GetDescendants()) do
+			if d:IsA("ParticleEmitter") then
+				print("[FX DEBUG] Fallback ParticleEmitter:", d.Name, "Enabled:", d.Enabled)
+				local burst = tonumber(d:GetAttribute("Burst") or 30)
+				d.Enabled = true
+				pcall(function()
+					d:Emit(burst)
+					print("[FX DEBUG] Fallback emitted", burst, "particles from", d.Name)
+				end)
+			elseif d:IsA("Sound") then
+				print("[FX DEBUG] Fallback Sound:", d.Name)
+				pcall(function()
+					d:Play()
+				end)
+			end
+		end
+
+		task.delay(2, function()
+			if inst then
+				inst:Destroy()
+			end
+		end)
+	end
+end
+
 -- Helper function to check clearance above ledge - improved version
 local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
 	local params = RaycastParams.new()
@@ -841,7 +945,7 @@ ensureClientState()
 Powerups.init()
 
 -- Apply powerup effects to authoritative local state so HUD doesn't revert
-PowerupActivatedEvt.OnClientEvent:Connect(function(powerupTag, success, partName, quantity)
+PowerupActivatedEvt.OnClientEvent:Connect(function(powerupTag, success, partName, quantity, partPosition)
 	local q = tonumber(quantity)
 	if powerupTag == "AddStamina" then
 		local maxStam = (state.maxStaminaValue and state.maxStaminaValue.Value) or Config.StaminaMax
@@ -1208,6 +1312,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 									end
 								end)
 							end
+							-- One-shot VFX for double jump
+							playOneShotFx(character, "DoubleJump")
 							-- Spend resources
 							state.doubleJumpCharges = math.max(0, (state.doubleJumpCharges or 0) - 1)
 							state.stamina.current =

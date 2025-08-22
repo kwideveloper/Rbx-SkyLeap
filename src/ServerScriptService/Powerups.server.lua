@@ -329,8 +329,9 @@ powerupTouched.OnServerEvent:Connect(function(player, part)
 		qty = getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
 	end
 
-	-- Notify client with payload
-	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty)
+	-- Notify client with payload (include part position for FX)
+	local partPosition = part.Position
+	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty, partPosition)
 end)
 
 -- Handle when a character touches a powerup part (server-side detection as backup)
@@ -385,8 +386,9 @@ local function onPartTouched(hit, part)
 		qty2 = getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
 	end
 
-	-- Notify client with payload
-	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty2)
+	-- Notify client with payload (include part position for FX)
+	local partPosition2 = part.Position
+	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty2, partPosition2)
 end
 
 -- Initialize powerup system

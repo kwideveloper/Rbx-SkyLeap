@@ -69,7 +69,7 @@ function Powerups.getRemainingCooldown(part)
 end
 
 -- Handle powerup activation notification from server
-powerupActivated.OnClientEvent:Connect(function(powerupTag, success, partName, quantity)
+powerupActivated.OnClientEvent:Connect(function(powerupTag, success, partName, quantity, partPosition)
 	-- Apply locally regardless of success for responsiveness; server guards cooldowns
 	local cs = Powerups.getClientState()
 	if cs then
@@ -121,6 +121,47 @@ powerupActivated.OnClientEvent:Connect(function(powerupTag, success, partName, q
 			end
 		end
 	end
+	-- One-shot FX for powerup pickup at the powerup location
+	pcall(function()
+		local fxFolder = ReplicatedStorage:FindFirstChild("FX")
+		local template = fxFolder and fxFolder:FindFirstChild("DoubleJump")
+		if template and partPosition then
+			-- Create invisible part at powerup position for FX anchor
+			local fxAnchor = Instance.new("Part")
+			fxAnchor.Name = "PowerupFXAnchor"
+			fxAnchor.Size = Vector3.new(0.1, 0.1, 0.1)
+			fxAnchor.Transparency = 1
+			fxAnchor.CanCollide = false
+			fxAnchor.Anchored = true
+			fxAnchor.Position = partPosition
+			fxAnchor.Parent = workspace
+
+			local inst = template:Clone()
+			inst.Name = "OneShot_Powerup"
+			inst.Parent = fxAnchor
+
+			-- Scale up the effect to be bigger than the powerup
+			for _, d in ipairs(inst:GetDescendants()) do
+				if d:IsA("ParticleEmitter") then
+					local burst = tonumber(d:GetAttribute("Burst") or 30)
+					-- Make powerup pickup effect more prominent
+					d:Emit(burst * 2)
+					-- Scale up size if possible
+					if d.Size then
+						d.Size = NumberSequence.new(d.Size.Keypoints[1].Value * 1.5)
+					end
+				elseif d:IsA("Sound") then
+					d:Play()
+				end
+			end
+
+			task.delay(3, function()
+				if fxAnchor then
+					fxAnchor:Destroy()
+				end
+			end)
+		end
+	end)
 	if success then
 		print("Powerup activated:", powerupTag, "from", partName, "qty:", quantity)
 	else
