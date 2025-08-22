@@ -212,6 +212,10 @@ function Style.addEvent(state, event, magnitude)
 			bonus = Config.StyleDoubleJumpBonus or 12
 			pushAction(state, "DoubleJump")
 		end
+	elseif event == "LedgeJump" then
+		-- Ledge hang directional jumps always count (no chaining requirement)
+		bonus = Config.StyleLedgeJumpBonus or 15
+		pushAction(state, "LedgeJump")
 	end
 	-- Anti-repeat: do not grow combo if same action repeated too many times in a row
 	local repeatLimit = Config.StyleRepeatLimit or 3

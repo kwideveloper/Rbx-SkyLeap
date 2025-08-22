@@ -263,6 +263,7 @@ Config.StyleWallSlideBonus = 10 -- counts only when chained
 Config.StylePadChainBonus = 5 -- counts only when chained
 Config.StyleVaultBonus = 12
 Config.StyleGroundSlideBonus = 8
+Config.StyleLedgeJumpBonus = 15 -- bonus for directional jumps from ledge hang (A/D/W/S + Space)
 -- Combo/variety rules
 Config.ComboChainWindowSeconds = 3.0 -- window to chain dependent actions (dash, pad, wallslide, zipline)
 Config.StyleRepeatLimit = 3 -- identical consecutive actions beyond this won't bump combo

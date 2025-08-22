@@ -985,16 +985,40 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "up")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+					Style.addEvent(state.style, "LedgeJump", 1)
+					-- Update HUD values immediately
+					if state.styleScoreValue then
+						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+					end
+					if state.styleComboValue then
+						state.styleComboValue.Value = state.style.combo or 0
+					end
 				end
 			elseif aPressed then
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "left")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+					Style.addEvent(state.style, "LedgeJump", 1)
+					-- Update HUD values immediately
+					if state.styleScoreValue then
+						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+					end
+					if state.styleComboValue then
+						state.styleComboValue.Value = state.style.combo or 0
+					end
 				end
 			elseif dPressed then
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "right")
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+					Style.addEvent(state.style, "LedgeJump", 1)
+					-- Update HUD values immediately
+					if state.styleScoreValue then
+						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+					end
+					if state.styleComboValue then
+						state.styleComboValue.Value = state.style.combo or 0
+					end
 				end
 			elseif sPressed then
 				print("[ParkourController] S+Space pressed during ledge hang - attempting back jump")
@@ -1002,6 +1026,14 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				print(string.format("[ParkourController] Back jump result: %s", tostring(didDirectionalJump)))
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
+					Style.addEvent(state.style, "LedgeJump", 1)
+					-- Update HUD values immediately
+					if state.styleScoreValue then
+						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+					end
+					if state.styleComboValue then
+						state.styleComboValue.Value = state.style.combo or 0
+					end
 				end
 			else
 				-- No directional input, try normal mantle up
