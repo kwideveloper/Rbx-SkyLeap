@@ -306,7 +306,7 @@ Config.VaultUpMax = 26
 -- Ledge Hanging (when mantle fails due to insufficient clearance)
 Config.LedgeHangEnabled = true
 Config.DebugLedgeHang = true
-Config.MantleLedgeHangCooldown = 0.5 -- seconds to wait after successful mantle before allowing ledge hang
+Config.MantleLedgeHangCooldown = 0.25 -- seconds to wait after successful mantle before allowing ledge hang
 Config.LedgeHangCooldown = 3.0 -- seconds to wait after ledge hang before allowing another hang
 Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge
 Config.LedgeHangMinHeight = 1.5 -- min height above waist for hang
@@ -315,7 +315,7 @@ Config.LedgeHangMinClearance = 5.0 -- min clearance above ledge required to mant
 Config.LedgeHangDistance = 1.5 -- 0.3-- horizontal distance from wall while hanging
 Config.LedgeHangDropDistance = 1.8 -- how far below ledge to hang
 Config.LedgeHangMoveSpeed = 20 -- horizontal movement speed while hanging
-Config.LedgeHangMaxDurationSeconds = 10 -- max time before auto-release
+-- Config.LedgeHangMaxDurationSeconds = 10 -- DISABLED: max time before auto-release (now only stamina controls duration)
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
 
@@ -339,6 +339,21 @@ Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06
 Config.VaultAlignHoldSeconds = 0.0
 Config.VaultUseGroundHeight = true -- if true, measure obstacle height from ground under player instead of HRP feet
+
+-- Tagged Ledge Auto-Hang
+Config.LedgeTagAutoEnabled = true -- auto-detect tagged ledges nearby
+Config.LedgeTagName = "Ledge" -- CollectionService tag name
+Config.LedgeTagAutoHangRange = 7 -- horizontal half-extent (X/Z) for auto-start near tagged ledge
+Config.LedgeTagAutoVerticalRange = 7 -- vertical half-extent around the ledge top to allow auto-hang
+Config.LedgeTagFaceLateralMargin = 0.75 -- lateral slack on the orthogonal axis when selecting outward face
+Config.LedgeTagFaceMinDot = 0.4 -- require face normal dot(toPlayerDir) >= this to accept, avoids lateral faces
+Config.LedgeTagFaceRaycastBonus = 10 -- extra studs for face raycast depth
+
+-- Ledge-to-Ledge chaining (jump up to catch the next ledge above)
+Config.LedgeHangChainEnabled = true
+Config.LedgeHangChainMaxUpSearch = 6.0 -- how far above current ledge to search (studs)
+Config.LedgeHangChainMaxHorizontal = 1.5 -- allowed horizontal offset from current wall alignment
+Config.LedgeHangChainNormalDotMin = 0.8 -- require new ledge surface normal to match current wall direction
 Config.VaultApproachSpeedMin = 6
 Config.VaultFacingDotMin = 0.35
 Config.VaultApproachDotMin = 0.35

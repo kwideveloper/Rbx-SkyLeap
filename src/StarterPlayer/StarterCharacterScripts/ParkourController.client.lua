@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Movement.Config)
 local Animations = require(ReplicatedStorage.Movement.Animations)
@@ -1574,6 +1575,135 @@ RunService.RenderStepped:Connect(function(dt)
 		else
 			-- Maintain hanging position with horizontal movement
 			LedgeHang.maintain(character, humanoid.MoveDirection)
+		end
+	end
+
+	-- Auto-detect tagged ledges nearby and start hang when close
+	if Config.LedgeTagAutoEnabled and not LedgeHang.isActive(character) then
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local range = Config.LedgeTagAutoHangRange or 3.5
+			local vertRange = Config.LedgeTagAutoVerticalRange or 4.0
+			local nearest, nearestDist, nearestTopY
+			for _, inst in ipairs(CollectionService:GetTagged(Config.LedgeTagName or "Ledge")) do
+				if inst:IsA("BasePart") and inst.Parent then
+					-- Create expanded AABB around the part
+					local partMin = inst.Position - inst.Size * 0.5
+					local partMax = inst.Position + inst.Size * 0.5
+					-- Expand by detection range (except Y which uses separate vertical range)
+					local expandedMin = Vector3.new(partMin.X - range, partMin.Y - vertRange, partMin.Z - range)
+					local expandedMax = Vector3.new(partMax.X + range, partMax.Y + vertRange, partMax.Z + range)
+
+					-- Check if player is within expanded zone
+					local playerPos = root.Position
+					local withinZone = (
+						playerPos.X >= expandedMin.X
+						and playerPos.X <= expandedMax.X
+						and playerPos.Y >= expandedMin.Y
+						and playerPos.Y <= expandedMax.Y
+						and playerPos.Z >= expandedMin.Z
+						and playerPos.Z <= expandedMax.Z
+					)
+
+					if withinZone then
+						-- Calculate distance from player to part surface (not center)
+						local clampedX = math.clamp(playerPos.X, partMin.X, partMax.X)
+						local clampedY = math.clamp(playerPos.Y, partMin.Y, partMax.Y)
+						local clampedZ = math.clamp(playerPos.Z, partMin.Z, partMax.Z)
+						local surfacePoint = Vector3.new(clampedX, clampedY, clampedZ)
+						local distToSurface = (playerPos - surfacePoint).Magnitude
+
+						-- Use top Y for ledge attachment
+						local topY = (inst.Position + inst.CFrame.UpVector * (inst.Size.Y * 0.5)).Y
+
+						if (not nearestDist) or distToSurface < nearestDist then
+							nearest, nearestDist, nearestTopY = inst, distToSurface, topY
+						end
+					end
+				end
+			end
+			if nearest then
+				local faceAttr = (typeof(nearest.GetAttribute) == "function") and nearest:GetAttribute("LedgeFace")
+					or nil
+				local fakeHit
+				if type(faceAttr) == "string" then
+					local lv = nearest.CFrame.LookVector
+					local rv = nearest.CFrame.RightVector
+					local normal
+					local half
+					local f = string.lower(faceAttr)
+					if f == "front" then
+						normal = -lv
+						half = (nearest.Size.Z or 0) * 0.5
+					elseif f == "back" then
+						normal = lv
+						half = (nearest.Size.Z or 0) * 0.5
+					elseif f == "left" then
+						normal = -rv
+						half = (nearest.Size.X or 0) * 0.5
+					elseif f == "right" then
+						normal = rv
+						half = (nearest.Size.X or 0) * 0.5
+					end
+					if normal and half then
+						local p = nearest.Position + normal * half
+						fakeHit = { Position = Vector3.new(p.X, nearestTopY, p.Z), Normal = normal, Instance = nearest }
+					end
+				end
+				if not fakeHit then
+					local toPlayer = (root.Position - nearest.Position)
+					local toPlayerDir = (toPlayer.Magnitude > 0) and toPlayer.Unit or nearest.CFrame.LookVector
+					local right = nearest.CFrame.RightVector
+					local look = nearest.CFrame.LookVector
+					local candidates = {
+						{ n = right, half = (nearest.Size.X or 0) * 0.5, axis = "X" },
+						{ n = -right, half = (nearest.Size.X or 0) * 0.5, axis = "X" },
+						{ n = look, half = (nearest.Size.Z or 0) * 0.5, axis = "Z" },
+						{ n = -look, half = (nearest.Size.Z or 0) * 0.5, axis = "Z" },
+					}
+					local best = candidates[1]
+					local bestDot = -1e9
+					for _, c in ipairs(candidates) do
+						local d = c.n:Dot(toPlayerDir)
+						local lateralPenalty = 0
+						if c.axis == "X" then
+							local dz = math.abs(nearest.Position.Z - root.Position.Z)
+							if dz > (Config.LedgeTagFaceLateralMargin or 0.75) then
+								lateralPenalty = -0.25
+							end
+						else
+							local dx = math.abs(nearest.Position.X - root.Position.X)
+							if dx > (Config.LedgeTagFaceLateralMargin or 0.75) then
+								lateralPenalty = -0.25
+							end
+						end
+						local score = d + lateralPenalty
+						if score > bestDot then
+							bestDot = score
+							best = c
+						end
+					end
+					local facePoint = nearest.Position + best.n * best.half
+					fakeHit = {
+						Position = Vector3.new(facePoint.X, nearestTopY, facePoint.Z),
+						Normal = best.n,
+						Instance = nearest,
+					}
+				end
+				local ok = LedgeHang.tryStartFromMantleData(character, fakeHit, nearestTopY)
+				if Config.DebugLedgeHang then
+					print(
+						string.format(
+							"[AutoLedge] candidate='%s' dist=%.2f topY=%.2f ok=%s (faceAttr=%s)",
+							nearest.Name,
+							nearestDist or -1,
+							nearestTopY or -1,
+							tostring(ok),
+							tostring(faceAttr)
+						)
+					)
+				end
+			end
 		end
 	end
 

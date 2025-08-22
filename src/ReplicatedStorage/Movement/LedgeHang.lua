@@ -104,6 +104,29 @@ function LedgeHang.tryStartFromMantleData(character, hitRes, ledgeY)
 		return false
 	end
 
+	-- Global cooldown gate
+	local globalCooldownActive = false
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState")
+		local lastHangTime = cs and cs:FindFirstChild("LastLedgeHangTime")
+		if lastHangTime and lastHangTime.Value > os.clock() then
+			globalCooldownActive = true
+			if Config.DebugLedgeHang then
+				local remaining = lastHangTime.Value - os.clock()
+				print(
+					string.format(
+						"[LedgeHang] Global cooldown active in tryStartFromMantleData: %.2fs remaining",
+						remaining
+					)
+				)
+			end
+		end
+	end)
+	if globalCooldownActive then
+		return false
+	end
+
 	-- Check global cooldown (especially for manual releases)
 	local globalCooldownActive = false
 	pcall(function()
@@ -139,13 +162,33 @@ function LedgeHang.tryStartFromMantleData(character, hitRes, ledgeY)
 		return false
 	end
 
-	-- Calculate forward direction from hit
-	local toWall = (hitRes.Position - root.Position)
-	local forwardDir = Vector3.new(toWall.X, 0, toWall.Z)
-	if forwardDir.Magnitude > 0.01 then
-		forwardDir = forwardDir.Unit
+	-- Calculate forward direction from hit normal (for proper wall facing)
+	local forwardDir
+	if hitRes.Normal then
+		-- Use the hit normal to determine proper facing direction
+		-- The character should face opposite to the wall normal
+		forwardDir = Vector3.new(-hitRes.Normal.X, 0, -hitRes.Normal.Z)
+		if forwardDir.Magnitude > 0.01 then
+			forwardDir = forwardDir.Unit
+		else
+			-- Fallback to position-based calculation
+			local toWall = (hitRes.Position - root.Position)
+			forwardDir = Vector3.new(toWall.X, 0, toWall.Z)
+			if forwardDir.Magnitude > 0.01 then
+				forwardDir = forwardDir.Unit
+			else
+				forwardDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+			end
+		end
 	else
-		forwardDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+		-- Fallback to position-based calculation
+		local toWall = (hitRes.Position - root.Position)
+		forwardDir = Vector3.new(toWall.X, 0, toWall.Z)
+		if forwardDir.Magnitude > 0.01 then
+			forwardDir = forwardDir.Unit
+		else
+			forwardDir = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+		end
 	end
 
 	return LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
@@ -232,6 +275,7 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		originalWalkSpeed = humanoid.WalkSpeed,
 		originalCanCollide = originalCanCollide,
 		startTime = os.clock(),
+		ledgeInstance = hitRes.Instance, -- Store the ledge part for boundary checking
 	}
 
 	activeHangs[character] = hangData
@@ -744,17 +788,7 @@ function LedgeHang.maintain(character, moveDirection)
 		return false
 	end
 
-	-- Check for timeout
-	local maxDuration = Config.LedgeHangMaxDurationSeconds or 10
-	if os.clock() - hangData.startTime > maxDuration then
-		if Config.DebugLedgeHang then
-			print("[LedgeHang] Timeout reached, auto-releasing with cooldown")
-		end
-		-- Mark hang time to prevent immediate re-hang
-		LedgeHang.markHangTime(character)
-		LedgeHang.stop(character)
-		return false
-	end
+	-- Timeout check removed - only stamina controls hang duration
 
 	-- Handle horizontal movement along the ledge
 	local rightVector = hangData.forwardDirection:Cross(Vector3.yAxis)
@@ -887,7 +921,65 @@ function LedgeHang.maintain(character, moveDirection)
 	-- Move along the ledge
 	local moveSpeed = Config.LedgeHangMoveSpeed or 8
 	local currentPos = root.Position
-	local newPos = currentPos + horizontalInput * moveSpeed * (1 / 60) -- assume 60fps for now
+	local proposedNewPos = currentPos + horizontalInput * moveSpeed * (1 / 60) -- assume 60fps for now
+
+	-- Check if proposed movement is within ledge bounds
+	local finalNewPos = proposedNewPos
+	if hangData.ledgeInstance and horizontalInput.Magnitude > 0.01 then
+		local ledge = hangData.ledgeInstance
+
+		-- Calculate the surface position that corresponds to the movement
+		-- We need to project the movement along the ledge surface, not constrain to the part volume
+		local rightVector = hangData.forwardDirection:Cross(Vector3.yAxis)
+		local movementDot = horizontalInput:Dot(rightVector)
+
+		-- Calculate the range of movement along the right vector on the ledge surface
+		local ledgeHalfSize = ledge.Size * 0.5
+		local ledgeToCurrentPos = currentPos - ledge.Position
+
+		-- Project current position onto the right vector to find our position along the ledge
+		local currentAlongLedge = ledgeToCurrentPos:Dot(rightVector)
+
+		-- Calculate the maximum extent we can move in each direction
+		-- This depends on the orientation of the ledge relative to our right vector
+		local maxMovement = 0
+
+		-- Calculate maximum movement by checking which dimension of the ledge aligns with our movement
+		local rightDotX = math.abs(rightVector.X)
+		local rightDotZ = math.abs(rightVector.Z)
+
+		if rightDotX > rightDotZ then
+			-- Movement is primarily along X axis
+			maxMovement = ledgeHalfSize.X
+		else
+			-- Movement is primarily along Z axis
+			maxMovement = ledgeHalfSize.Z
+		end
+
+		-- Add buffer to prevent edge-of-edge issues
+		local buffer = 0.5
+		maxMovement = math.max(0, maxMovement - buffer)
+
+		-- Clamp the movement along the ledge
+		local clampedMovement =
+			math.clamp(currentAlongLedge + movementDot * moveSpeed * (1 / 60), -maxMovement, maxMovement)
+		local actualMovementDelta = clampedMovement - currentAlongLedge
+
+		-- Apply the clamped movement
+		finalNewPos = currentPos + rightVector * actualMovementDelta
+
+		-- Debug boundary checks
+		if Config.DebugLedgeHang and math.abs(actualMovementDelta - movementDot * moveSpeed * (1 / 60)) > 0.01 then
+			print(
+				string.format(
+					"[LedgeHang] Movement clamped along ledge - requested: %.2f, applied: %.2f, max range: ±%.2f",
+					movementDot * moveSpeed * (1 / 60),
+					actualMovementDelta,
+					maxMovement
+				)
+			)
+		end
+	end
 
 	-- Keep at consistent distance from wall and height
 	local halfHeight = (root.Size and root.Size.Y or 2) * 0.5
@@ -895,12 +987,12 @@ function LedgeHang.maintain(character, moveDirection)
 	local hangY = hangData.ledgeY - halfHeight - (Config.LedgeHangDropDistance or 0.8)
 
 	local wallPos = Vector3.new(
-		newPos.X + hangData.forwardDirection.X * hangDistance,
+		finalNewPos.X + hangData.forwardDirection.X * hangDistance,
 		hangData.ledgeY,
-		newPos.Z + hangData.forwardDirection.Z * hangDistance
+		finalNewPos.Z + hangData.forwardDirection.Z * hangDistance
 	)
 
-	newPos = Vector3.new(newPos.X, hangY, newPos.Z)
+	local newPos = Vector3.new(finalNewPos.X, hangY, finalNewPos.Z)
 
 	-- Update position (character is anchored, so we use CFrame directly)
 	-- Maintain proper orientation during horizontal movement
@@ -982,6 +1074,47 @@ function LedgeHang.tryMantleUp(character)
 	else
 		if Config.DebugLedgeHang then
 			print("[LedgeHang] Insufficient clearance for mantle up")
+		end
+
+		-- NEW: Try to chain to a higher ledge directly above
+		if Config.LedgeHangChainEnabled ~= false then
+			local chainUp = Config.LedgeHangChainMaxUpSearch or 6.0
+			local root, humanoid = getCharacterParts(character)
+			if root then
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = { character }
+				params.IgnoreWater = true
+				-- Cast straight up from current ledge x/z
+				local start = Vector3.new(root.Position.X, hangData.ledgeY + 0.1, root.Position.Z)
+				local upHit = workspace:Raycast(start, Vector3.new(0, chainUp, 0), params)
+				if upHit and upHit.Instance and upHit.Instance:IsA("BasePart") then
+					-- Validate alignment with current wall (normal close to forwardDirection)
+					local n = upHit.Normal
+					local dot = n:Dot(-hangData.forwardDirection) -- surface normal points opposite to forward
+					local okNormal = dot >= (Config.LedgeHangChainNormalDotMin or 0.8)
+					-- Validate horizontal offset small
+					local horizDelta =
+						Vector3.new(upHit.Position.X - root.Position.X, 0, upHit.Position.Z - root.Position.Z)
+					local okHoriz = (horizDelta.Magnitude <= (Config.LedgeHangChainMaxHorizontal or 1.5))
+
+					if okNormal and okHoriz then
+						if Config.DebugLedgeHang then
+							print(
+								string.format(
+									"[LedgeHang] Found chain ledge above: dot=%.2f horiz=%.2f",
+									dot,
+									horizDelta.Magnitude
+								)
+							)
+						end
+						-- Stop current hang and start a new one at the higher ledge top
+						local newTopY = upHit.Position.Y
+						LedgeHang.stop(character)
+						return LedgeHang.startHang(character, upHit, newTopY, hangData.forwardDirection)
+					end
+				end
+			end
 		end
 	end
 
