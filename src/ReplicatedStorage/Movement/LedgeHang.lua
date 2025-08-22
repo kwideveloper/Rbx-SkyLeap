@@ -1620,18 +1620,16 @@ function LedgeHang.tryDirectionalJump(character, direction)
 
 	LedgeHang.stop(character)
 
-	-- Restore jump animation after cleanup if it exists
-	if jumpAnimTrack and jumpAnimTrack.IsPlaying then
-		-- Use configured duration for LedgeHangUp, or default 0.3s for others
-		local preserveDuration = 0.3
-		if direction == "up" then
-			preserveDuration = Config.LedgeHangUpAnimationDuration or 0.4
-		end
+	-- Restore jump animation after cleanup if it exists - ONLY for UP direction
+	-- For lateral jumps (left/right), we want immediate transition to jump animation instead
+	if jumpAnimTrack and jumpAnimTrack.IsPlaying and direction == "up" then
+		-- Use configured duration for LedgeHangUp only
+		local preserveDuration = Config.LedgeHangUpAnimationDuration or 0.4
 
 		if Config.DebugLedgeHang then
 			print(
 				string.format(
-					"[LedgeHang] Preserving jump animation for %.2fs: %s",
+					"[LedgeHang] Preserving UP jump animation for %.2fs: %s",
 					preserveDuration,
 					jumpAnimTrack.Name or "No Name"
 				)
@@ -1643,7 +1641,7 @@ function LedgeHang.tryDirectionalJump(character, direction)
 				if Config.DebugLedgeHang then
 					print(
 						string.format(
-							"[LedgeHang] Stopping jump animation after delay: %s",
+							"[LedgeHang] Stopping UP jump animation after delay: %s",
 							jumpAnimTrack.Name or "No Name"
 						)
 					)
@@ -1651,18 +1649,18 @@ function LedgeHang.tryDirectionalJump(character, direction)
 				jumpAnimTrack:Stop(0.2) -- Fade out over 0.2 seconds
 			end
 		end)
-	elseif jumpAnimTrack then
+	elseif jumpAnimTrack and direction ~= "up" then
 		if Config.DebugLedgeHang then
 			print(
 				string.format(
-					"[LedgeHang] Jump animation track exists but not playing: %s",
-					jumpAnimTrack.Name or "No Name"
+					"[LedgeHang] Skipping animation preservation for %s direction (will use jump animation instead)",
+					direction
 				)
 			)
 		end
 	else
 		if Config.DebugLedgeHang then
-			print("[LedgeHang] No jump animation track to preserve")
+			print("[LedgeHang] No jump animation track to preserve or direction is not UP")
 		end
 	end
 
@@ -1796,6 +1794,44 @@ function LedgeHang.tryDirectionalJump(character, direction)
 	end
 
 	root.AssemblyLinearVelocity = finalVelocity
+
+	-- For lateral jumps (left/right), immediately start jump animation to replace ledge hang animation
+	if direction == "left" or direction == "right" then
+		task.defer(function()
+			pcall(function()
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					local animator = humanoid:FindFirstChildOfClass("Animator")
+					if animator then
+						-- Stop any remaining ledge hang animations immediately
+						if jumpAnimTrack and jumpAnimTrack.IsPlaying then
+							jumpAnimTrack:Stop(0.05) -- Quick fade out
+						end
+
+						-- Start jump animation immediately for lateral movements
+						local jumpAnim = Animations.get("Jump") or Animations.get("JumpStart")
+						if jumpAnim then
+							local jumpTrack = animator:LoadAnimation(jumpAnim)
+							if jumpTrack then
+								jumpTrack.Priority = Enum.AnimationPriority.Action
+								jumpTrack.Looped = (jumpAnim == Animations.get("Jump")) -- Loop if it's the main Jump animation
+								jumpTrack:Play(0.05, 1, 1.0)
+
+								if Config.DebugLedgeHang then
+									print(
+										string.format(
+											"[LedgeHang] Started jump animation for %s lateral jump",
+											direction
+										)
+									)
+								end
+							end
+						end
+					end
+				end
+			end)
+		end)
+	end
 
 	-- Apply multiple times aggressively to counteract velocity reduction
 	task.wait()
