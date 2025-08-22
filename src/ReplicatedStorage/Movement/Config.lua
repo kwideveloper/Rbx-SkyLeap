@@ -10,7 +10,7 @@ Config.SprintAccelSeconds = 0.60 -- 0.45 time to reach full sprint speed
 Config.SprintDecelSeconds = 0.25 -- 0.20 time to return to base speed (when releasing sprint)
 
 -- Stamina
-Config.StaminaMax = 4000 -- 200
+Config.StaminaMax = 200 -- 200
 Config.SprintDrainPerSecond = 20 -- 20
 Config.StaminaRegenPerSecond = 80 -- 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
@@ -443,6 +443,13 @@ Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
 -- Debug flags
 Config.DebugLaunchPad = false
 Config.DebugLandingRoll = false
+
+-- Powerups Configuration
+-- Default values for powerup effects when no attributes are specified
+Config.PowerupStaminaPercentDefault = 25 -- percentage of max stamina to restore
+Config.PowerupJumpCountDefault = 1 -- number of jumps to restore (only if player doesn't have double jump)
+Config.PowerupDashCountDefault = 1 -- number of dashes to restore (only if player doesn't have dash)
+Config.PowerupCooldownSecondsDefault = 2 -- default cooldown time in seconds for all powerups
 
 -- Speed Wind Lines Configuration (visual feedback when moving fast)
 -- Enable/disable the wind lines effect completely

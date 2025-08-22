@@ -23,6 +23,7 @@ local Style = require(ReplicatedStorage.Movement.Style)
 local Grapple = require(ReplicatedStorage.Movement.Grapple)
 local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
 local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
+local Powerups = require(ReplicatedStorage.Movement.Powerups)
 
 -- Helper function to check clearance above ledge - improved version
 local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
@@ -81,6 +82,7 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local StyleCommit = Remotes:WaitForChild("StyleCommit")
 local MaxComboReport = Remotes:WaitForChild("MaxComboReport")
 local PadTriggered = Remotes:WaitForChild("PadTriggered")
+local PowerupActivatedEvt = Remotes:WaitForChild("PowerupActivated")
 
 local player = Players.LocalPlayer
 
@@ -568,6 +570,36 @@ local function ensureClientState()
 	end
 	state.staminaValue = staminaValue
 
+	-- Max stamina value for powerup percentage calculations
+	local maxStaminaValue = folder:FindFirstChild("MaxStamina")
+	if not maxStaminaValue then
+		maxStaminaValue = Instance.new("NumberValue")
+		maxStaminaValue.Name = "MaxStamina"
+		maxStaminaValue.Value = Config.StaminaMax
+		maxStaminaValue.Parent = folder
+	end
+	state.maxStaminaValue = maxStaminaValue
+
+	-- Double jump charges for powerup restoration
+	local doubleJumpCharges = folder:FindFirstChild("DoubleJumpCharges")
+	if not doubleJumpCharges then
+		doubleJumpCharges = Instance.new("IntValue")
+		doubleJumpCharges.Name = "DoubleJumpCharges"
+		doubleJumpCharges.Value = Config.DoubleJumpMax or 1
+		doubleJumpCharges.Parent = folder
+	end
+	state.doubleJumpChargesValue = doubleJumpCharges
+
+	-- Air dash charges for powerup restoration
+	local airDashCharges = folder:FindFirstChild("AirDashCharges")
+	if not airDashCharges then
+		airDashCharges = Instance.new("IntValue")
+		airDashCharges.Name = "AirDashCharges"
+		airDashCharges.Value = Config.DashAirChargesMax or Config.DashAirChargesDefault or 1
+		airDashCharges.Parent = folder
+	end
+	state.airDashChargesValue = airDashCharges
+
 	local speedValue = folder:FindFirstChild("Speed")
 	if not speedValue then
 		speedValue = Instance.new("NumberValue")
@@ -804,6 +836,43 @@ local function ensureClientState()
 end
 
 ensureClientState()
+
+-- Initialize powerup system
+Powerups.init()
+
+-- Apply powerup effects to authoritative local state so HUD doesn't revert
+PowerupActivatedEvt.OnClientEvent:Connect(function(powerupTag, success, partName, quantity)
+	local q = tonumber(quantity)
+	if powerupTag == "AddStamina" then
+		local maxStam = (state.maxStaminaValue and state.maxStaminaValue.Value) or Config.StaminaMax
+		local pct = q or (Config.PowerupStaminaPercentDefault or 25)
+		local add = (pct / 100) * maxStam
+		state.stamina.current = math.min(maxStam, (state.stamina.current or 0) + add)
+		if state.staminaValue then
+			state.staminaValue.Value = state.stamina.current
+		end
+	elseif powerupTag == "AddJump" then
+		if (state.doubleJumpCharges or 0) <= 0 then
+			local maxDJ = Config.DoubleJumpMax or 1
+			local want = q or (Config.PowerupJumpCountDefault or 1)
+			state.doubleJumpCharges = math.min(maxDJ, want)
+			if state.doubleJumpChargesValue then
+				state.doubleJumpChargesValue.Value = state.doubleJumpCharges
+			end
+		end
+	elseif powerupTag == "AddAllSkills" then
+		-- full stamina and reset double jump; dash handled in Powerups.lua via Abilities
+		state.stamina.current = Config.StaminaMax
+		if state.staminaValue then
+			state.staminaValue.Value = state.stamina.current
+		end
+		local maxDJ = Config.DoubleJumpMax or 1
+		state.doubleJumpCharges = maxDJ
+		if state.doubleJumpChargesValue then
+			state.doubleJumpChargesValue.Value = maxDJ
+		end
+	end
+end)
 
 player.CharacterAdded:Connect(setupCharacter)
 if player.Character then
@@ -1502,6 +1571,8 @@ RunService.RenderStepped:Connect(function(dt)
 	if state.isLedgeHangingValue then
 		state.isLedgeHangingValue.Value = LedgeHang.isActive(character)
 	end
+
+	-- Note: Powerup system effects are automatically reflected in the local ClientState values
 
 	-- Publish combo timeout progress for HUD
 	if state.styleComboValue and state.styleComboTimeRemaining and state.styleComboTimeMax then
