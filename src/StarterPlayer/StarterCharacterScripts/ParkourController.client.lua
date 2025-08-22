@@ -2067,7 +2067,8 @@ end)
 RunService.RenderStepped:Connect(function()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
 		return
 	end
 	local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
@@ -2086,9 +2087,24 @@ RunService.RenderStepped:Connect(function()
 		)
 	end
 	if grounded and not inSpecial then
-		state._groundedSince = state._groundedSince or os.clock()
-		local dwell = Config.GroundedRefillDwellSeconds or 0.06
-		if not state._groundResetDone and (os.clock() - (state._groundedSince or 0)) >= dwell then
+		-- Track when we first touched ground and our landing velocity
+		if not state._groundedSince then
+			state._groundedSince = os.clock()
+			-- Capture velocity when we first touch ground to detect legitimate falls
+			local velocity = root.AssemblyLinearVelocity
+			state._landingVelocityY = velocity.Y
+		end
+
+		-- Determine appropriate dwell time based on landing conditions
+		local baseDwell = Config.GroundedRefillDwellSeconds or 0.01
+		local fastDwell = Config.GroundedRefillFastDwellSeconds or 0.01
+		local minFallSpeed = Config.GroundedRefillMinFallSpeed or 5
+
+		-- Use fast reset if we had significant downward velocity when landing (legitimate fall)
+		local hadSignificantFall = (state._landingVelocityY or 0) <= -minFallSpeed
+		local dwellTime = hadSignificantFall and fastDwell or baseDwell
+
+		if not state._groundResetDone and (os.clock() - (state._groundedSince or 0)) >= dwellTime then
 			local Abilities = require(ReplicatedStorage.Movement.Abilities)
 			if Abilities and Abilities.resetAirDashCharges then
 				Abilities.resetAirDashCharges(character)
@@ -2104,6 +2120,7 @@ RunService.RenderStepped:Connect(function()
 	else
 		state._groundedSince = nil
 		state._groundResetDone = false
+		state._landingVelocityY = nil
 	end
 end)
 

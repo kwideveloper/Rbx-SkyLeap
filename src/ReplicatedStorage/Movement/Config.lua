@@ -39,7 +39,9 @@ Config.DoubleJumpImpulse = 50 -- vertical speed applied on double jump
 -- Air dash charges (per airtime)
 Config.DashAirChargesDefault = 1
 Config.DashAirChargesMax = 1
-Config.GroundedRefillDwellSeconds = 0.06 -- time grounded before refilling dash/double jump
+Config.GroundedRefillDwellSeconds = 0.01 -- time grounded before refilling dash/double jump (reduced for fast gameplay)
+Config.GroundedRefillMinFallSpeed = 5 -- minimum downward velocity to qualify for fast reset (studs/s)
+Config.GroundedRefillFastDwellSeconds = 0.01 -- fast reset time for legitimate falls
 
 -- Slide
 Config.SlideDurationSeconds = 0.5
@@ -337,7 +339,7 @@ Config.LedgeHangRightAnimationDuration = 1 -- seconds for LedgeHangRight animati
 
 -- Ledge Hang IK (Inverse Kinematics) for hand positioning
 Config.LedgeHangIKEnabled = true -- enable/disable hand IK during ledge hang
-Config.LedgeHangIKWeight = 1 -- --1 IK weight (0.0 to 1.0, higher = stronger positioning)
+Config.LedgeHangIKWeight = 0.5 -- --1 IK weight (0.0 to 1.0, higher = stronger positioning)
 Config.LedgeHangIKHandOffset = 0.8 -- 0.6 -- distance between hands (studs)
 Config.LedgeHangIKHeightOffset = 1 -- 0.02 -- how much above ledge surface to place hands
 Config.LedgeHangIKBackOffset = 0.1 -- how far back from edge to place hands
