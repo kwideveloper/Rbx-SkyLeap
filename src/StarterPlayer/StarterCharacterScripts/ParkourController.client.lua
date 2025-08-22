@@ -24,6 +24,7 @@ local Grapple = require(ReplicatedStorage.Movement.Grapple)
 local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
 local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
 local Powerups = require(ReplicatedStorage.Movement.Powerups)
+local FX = require(ReplicatedStorage.Movement.FX)
 
 -- One-shot FX helper: plays ReplicatedStorage/FX/<name> once at character position
 local function playOneShotFx(character, fxName, customPosition)
@@ -418,6 +419,8 @@ local function setupCharacter(character)
 			-- Reset air dash charges once per airtime
 			-- No longer refilling dash/double jump on airtime; reset only on ground contact
 		elseif new == Enum.HumanoidStateType.Jumping then
+			-- Play jump FX
+			FX.playJump(character)
 			-- Play one-shot JumpStart, then transition to Jump loop (unless blocked)
 			local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 			animator.Parent = humanoid
@@ -515,6 +518,9 @@ local function setupCharacter(character)
 					)
 				end
 				if drop >= minRollDrop then
+					-- Play landing FX for high fall + roll
+					FX.playRoll(character)
+					FX.playLanding(character, true) -- hard landing
 					-- Play LandRoll animation if configured
 					local anim = Animations and Animations.get and Animations.get("LandRoll")
 					if anim then
@@ -530,7 +536,13 @@ local function setupCharacter(character)
 							track:Play(0.05, 1, 1.0)
 						end
 					end
+				else
+					-- Normal landing FX
+					FX.playLanding(character, false)
 				end
+			else
+				-- Normal landing FX (no fall)
+				FX.playLanding(character, false)
 			end
 			rollPending = false
 			state._peakAirY = nil
@@ -1030,9 +1042,14 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if (isVaulting and isVaulting.Value) or (isMantling and isMantling.Value) then
 				return
 			end
-			if Abilities.tryDash(character) then
+			local humanoid = getHumanoid(character)
+			local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+			local didDash = Abilities.tryDash(character)
+			if didDash then
 				state.stamina.current = math.max(0, state.stamina.current - Config.DashStaminaCost)
 				DashVfx.playFor(character, Config.DashVfxDuration)
+				-- Play FX based on dash type
+				FX.playDash(character, not grounded) -- true for air dash
 			end
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
@@ -1214,6 +1231,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				if didMantle then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.MantleStaminaCost or 0))
 					Style.addEvent(state.style, "Mantle", 1)
+					FX.play("Mantle", character)
 				end
 			end
 
@@ -1257,6 +1275,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				if WallJump.isWallSliding and WallJump.isWallSliding(character) then
 					if WallJump.tryJump(character) then
 						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+						FX.play("WallJump", character)
 					end
 				end
 			end
@@ -1264,6 +1283,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			-- Attempt vault if a low obstacle is in front
 			local didVault = Abilities.tryVault(character)
 			if didVault then
+				FX.play("Vault", character)
 				return
 			end
 			-- (Mantle is now automatic; Space remains reserved for walljump/vault)
@@ -1312,8 +1332,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 									end
 								end)
 							end
-							-- One-shot VFX for double jump
-							playOneShotFx(character, "DoubleJump")
+							-- One-shot VFX for double jump using new FX system
+							FX.playDoubleJump(character)
 							-- Spend resources
 							state.doubleJumpCharges = math.max(0, (state.doubleJumpCharges or 0) - 1)
 							state.stamina.current =
