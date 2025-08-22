@@ -1156,8 +1156,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		end
 	end
 	-- Handle ledge hang release
-	if input.KeyCode == Enum.KeyCode.S and LedgeHang.isActive(character) then
-		print("[ParkourController] S pressed alone during ledge hang - releasing")
+	if input.KeyCode == Enum.KeyCode.C and LedgeHang.isActive(character) then
+		print("[ParkourController] C pressed during ledge hang - releasing")
 		LedgeHang.stop(character, true) -- true = manual release
 		return
 	end

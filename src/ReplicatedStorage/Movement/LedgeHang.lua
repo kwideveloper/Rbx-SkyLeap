@@ -232,6 +232,100 @@ function LedgeHang.tryStart(character)
 	return LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 end
 
+-- Setup IK for hands positioning on ledge
+local function setupLedgeHandIK(character, hitRes, ledgeY)
+	-- Check if IK is enabled
+	if not Config.LedgeHangIKEnabled then
+		return nil, nil, nil, nil
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return nil, nil, nil, nil
+	end
+
+	-- Create target folder for ledge hand targets
+	local targetFolder = workspace:FindFirstChild("LedgeTargets") or Instance.new("Folder")
+	targetFolder.Name = "LedgeTargets"
+	targetFolder.Parent = workspace
+
+	-- Function to create target parts for IK
+	local function makeTarget(name, pos)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = Vector3.new(0.2, 0.2, 0.2)
+		p.Transparency = 1
+		p.CanCollide = false
+		p.Anchored = true
+		p.CFrame = CFrame.new(pos)
+		p.Parent = targetFolder
+		local a = Instance.new("Attachment")
+		a.Name = "Attach"
+		a.Parent = p
+		return p, a
+	end
+
+	-- Calculate hand positions on the ledge
+	local hitPos = hitRes.Position
+	local normal = hitRes.Normal
+	-- Calculate tangent for hand spacing (perpendicular to normal and up)
+	local tangent = Vector3.yAxis:Cross(normal)
+	if tangent.Magnitude < 0.05 then
+		tangent = Vector3.xAxis:Cross(normal)
+	end
+	tangent = tangent.Unit
+
+	-- Position hands using config values
+	local heightOffset = Config.LedgeHangIKHeightOffset or 0.05
+	local backOffset = Config.LedgeHangIKBackOffset or 0.1
+	local handOffset = Config.LedgeHangIKHandOffset or 0.6
+
+	local topYAdj = ledgeY + heightOffset
+	local center = Vector3.new(hitPos.X, topYAdj, hitPos.Z) - (normal * backOffset)
+	local leftPos = center - (tangent * handOffset)
+	local rightPos = center + (tangent * handOffset)
+
+	-- Create target parts
+	local leftPart, leftAttach = makeTarget("LedgeHandL", leftPos)
+	local rightPart, rightAttach = makeTarget("LedgeHandR", rightPos)
+
+	-- Setup IK controls
+	local function setupIK(side, chainRootName, endEffName, attach)
+		local ik = Instance.new("IKControl")
+		ik.Name = "IK_Ledge_" .. side
+		ik.Type = Enum.IKControlType.Position
+		ik.ChainRoot = character:FindFirstChild(chainRootName)
+		ik.EndEffector = character:FindFirstChild(endEffName)
+		ik.Target = attach
+		pcall(function()
+			ik.Priority = Enum.IKPriority.Body
+		end)
+		ik.Enabled = true
+		ik.Weight = Config.LedgeHangIKWeight or 1.0
+		ik.Parent = humanoid
+		return ik
+	end
+
+	local ikL = setupIK("L", "LeftUpperArm", "LeftHand", leftAttach)
+	local ikR = setupIK("R", "RightUpperArm", "RightHand", rightAttach)
+
+	if Config.DebugLedgeHang then
+		print(
+			string.format(
+				"[LedgeHang] IK Setup - Left: (%.2f,%.2f,%.2f), Right: (%.2f,%.2f,%.2f)",
+				leftPos.X,
+				leftPos.Y,
+				leftPos.Z,
+				rightPos.X,
+				rightPos.Y,
+				rightPos.Z
+			)
+		)
+	end
+
+	return ikL, ikR, leftPart, rightPart
+end
+
 -- Common hang start logic
 function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 	local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
@@ -264,6 +358,9 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		end
 	end
 
+	-- Setup IK for hands on ledge
+	local ikL, ikR, leftPart, rightPart = setupLedgeHandIK(character, hitRes, ledgeY)
+
 	-- Create hang state (use normalized forward direction for consistency)
 	local normalizedForwardDir = Vector3.new(forwardDir.X, 0, forwardDir.Z).Unit
 	local hangData = {
@@ -276,6 +373,10 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		originalCanCollide = originalCanCollide,
 		startTime = os.clock(),
 		ledgeInstance = hitRes.Instance, -- Store the ledge part for boundary checking
+		ikL = ikL, -- Store IK references for cleanup
+		ikR = ikR,
+		leftTargetPart = leftPart,
+		rightTargetPart = rightPart,
 	}
 
 	activeHangs[character] = hangData
@@ -456,7 +557,7 @@ function LedgeHang.stop(character, isManualRelease)
 	-- Proactively clear active state so maintain() won't run next frame
 	activeHangs[character] = nil
 
-	-- If this is a manual release (S key), set a longer cooldown to prevent immediate reattachment
+	-- If this is a manual release (C key), set a longer cooldown to prevent immediate reattachment
 	if isManualRelease then
 		pcall(function()
 			local rs = game:GetService("ReplicatedStorage")
@@ -543,6 +644,30 @@ function LedgeHang.stop(character, isManualRelease)
 				part.CanCollide = originalValue
 			end
 		end
+	end
+
+	-- Cleanup IK
+	if hangData.ikL then
+		pcall(function()
+			hangData.ikL.Enabled = false
+			hangData.ikL:Destroy()
+		end)
+	end
+	if hangData.ikR then
+		pcall(function()
+			hangData.ikR.Enabled = false
+			hangData.ikR:Destroy()
+		end)
+	end
+	if hangData.leftTargetPart then
+		pcall(function()
+			hangData.leftTargetPart:Destroy()
+		end)
+	end
+	if hangData.rightTargetPart then
+		pcall(function()
+			hangData.rightTargetPart:Destroy()
+		end)
 	end
 
 	-- Restore humanoid settings without changing state immediately
@@ -999,6 +1124,31 @@ function LedgeHang.maintain(character, moveDirection)
 	local properCFrame = CFrame.lookAt(newPos, newPos + hangData.forwardDirection)
 	root.CFrame = properCFrame
 	root.AssemblyLinearVelocity = Vector3.new()
+
+	-- Update IK hand positions only if character actually moved
+	if hangData.leftTargetPart and hangData.rightTargetPart and horizontalInput.Magnitude > 0.01 then
+		-- Calculate actual movement that occurred by comparing positions
+		local actualMovement = Vector3.new(newPos.X - currentPos.X, 0, newPos.Z - currentPos.Z)
+
+		-- Only move hand targets if character actually moved (not blocked by boundary)
+		if actualMovement.Magnitude > 0.001 then
+			hangData.leftTargetPart.Position = hangData.leftTargetPart.Position + actualMovement
+			hangData.rightTargetPart.Position = hangData.rightTargetPart.Position + actualMovement
+
+			if Config.DebugLedgeHang then
+				print(
+					string.format(
+						"[LedgeHang] Updated hand IK targets - actual movement: (%.2f,%.2f,%.2f)",
+						actualMovement.X,
+						actualMovement.Y,
+						actualMovement.Z
+					)
+				)
+			end
+		elseif Config.DebugLedgeHang and horizontalInput.Magnitude > 0.01 then
+			print("[LedgeHang] Hand IK not updated - character at boundary limit")
+		end
+	end
 
 	if Config.DebugLedgeHang and horizontalInput.Magnitude > 0.1 then
 		print(

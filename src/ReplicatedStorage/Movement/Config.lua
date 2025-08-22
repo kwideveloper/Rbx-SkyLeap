@@ -314,7 +314,7 @@ Config.LedgeHangMaxHeight = 4.0 -- max height above waist for hang
 Config.LedgeHangMinClearance = 5.0 -- min clearance above ledge required to mantle instead of hang (character height + headroom)
 Config.LedgeHangDistance = 1.5 -- 0.3-- horizontal distance from wall while hanging
 Config.LedgeHangDropDistance = 1.8 -- how far below ledge to hang
-Config.LedgeHangMoveSpeed = 20 -- horizontal movement speed while hanging
+Config.LedgeHangMoveSpeed = 15 -- horizontal movement speed while hanging
 -- Config.LedgeHangMaxDurationSeconds = 10 -- DISABLED: max time before auto-release (now only stamina controls duration)
 Config.LedgeHangStaminaCost = 5 -- initial stamina cost to start hanging
 Config.LedgeHangStaminaDrainPerSecond = 5 -- stamina cost per second while hanging
@@ -327,13 +327,20 @@ Config.LedgeHangJumpStaminaCost = 10 -- stamina cost for directional jumps
 Config.LedgeHangWallSeparationForce = 0 -- force to push away from wall during jumps
 
 -- Wall slide suppression after leaving ledge (manual release)
-Config.WallSlideSuppressAfterLedgeReleaseSeconds = 0.25 -- time to disable wallslide after pressing S to release
+Config.WallSlideSuppressAfterLedgeReleaseSeconds = 0.25 -- time to disable wallslide after pressing C to release
 
 -- Animation Duration Control
 Config.LedgeHangStartAnimationDuration = 0.5 -- seconds for LedgeHangStart animation to complete
 Config.LedgeHangUpAnimationDuration = 0.25 -- seconds for LedgeHangUp animation to complete
 Config.LedgeHangLeftAnimationDuration = 1 -- seconds for LedgeHangLeft animation to complete (optional)
 Config.LedgeHangRightAnimationDuration = 1 -- seconds for LedgeHangRight animation to complete (optional)
+
+-- Ledge Hang IK (Inverse Kinematics) for hand positioning
+Config.LedgeHangIKEnabled = true -- enable/disable hand IK during ledge hang
+Config.LedgeHangIKWeight = 1 -- --1 IK weight (0.0 to 1.0, higher = stronger positioning)
+Config.LedgeHangIKHandOffset = 0.8 -- 0.6 -- distance between hands (studs)
+Config.LedgeHangIKHeightOffset = 1 -- 0.02 -- how much above ledge surface to place hands
+Config.LedgeHangIKBackOffset = 0.1 -- how far back from edge to place hands
 -- Retarget authored vault (3 studs) to any obstacle height
 Config.VaultCanonicalHeightStuds = 3.0
 Config.VaultAlignBlendSeconds = 0.06
@@ -346,8 +353,6 @@ Config.LedgeTagName = "Ledge" -- CollectionService tag name
 Config.LedgeTagAutoHangRange = 7 -- horizontal half-extent (X/Z) for auto-start near tagged ledge
 Config.LedgeTagAutoVerticalRange = 7 -- vertical half-extent around the ledge top to allow auto-hang
 Config.LedgeTagFaceLateralMargin = 0.75 -- lateral slack on the orthogonal axis when selecting outward face
-Config.LedgeTagFaceMinDot = 0.4 -- require face normal dot(toPlayerDir) >= this to accept, avoids lateral faces
-Config.LedgeTagFaceRaycastBonus = 10 -- extra studs for face raycast depth
 
 -- Ledge-to-Ledge chaining (jump up to catch the next ledge above)
 Config.LedgeHangChainEnabled = true
