@@ -108,7 +108,7 @@ end
 local function colorForStaminaRatio(r)
 	-- Green (high) > Yellow (mid) > Orange (low) > Red (very low)
 	if r >= 0.7 then
-		return Color3.fromRGB(0, 200, 120)
+		return Color3.fromRGB(0, 85, 255)
 	elseif r >= 0.45 then
 		return Color3.fromRGB(235, 200, 60)
 	elseif r >= 0.25 then
@@ -150,9 +150,9 @@ local function setIconState(frame, enabled)
 	end
 	local defaultBg = frameDefaults[frame] or captureFrameDefaults(frame)
 	if enabled then
-		frame.BackgroundColor3 = defaultBg
+		frame.BackgroundTransparency = 0
 	else
-		frame.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+		frame.BackgroundTransparency = 0.7
 	end
 end
 
