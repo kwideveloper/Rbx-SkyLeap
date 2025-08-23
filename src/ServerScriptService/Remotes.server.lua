@@ -22,6 +22,16 @@ local function ensureRemoteEvent(parent, name)
 	return remote
 end
 
+local function ensureRemoteFunction(parent, name)
+	local remote = parent:FindFirstChild(name)
+	if not remote then
+		remote = Instance.new("RemoteFunction")
+		remote.Name = name
+		remote.Parent = parent
+	end
+	return remote
+end
+
 local remotesFolder = ensureFolder(ReplicatedStorage, "Remotes")
 ensureRemoteEvent(remotesFolder, "DashActivated")
 ensureRemoteEvent(remotesFolder, "MomentumUpdated")
@@ -32,3 +42,6 @@ ensureRemoteEvent(remotesFolder, "RopeAttach")
 ensureRemoteEvent(remotesFolder, "RopeRelease")
 ensureRemoteEvent(remotesFolder, "PowerupTouched")
 ensureRemoteEvent(remotesFolder, "PowerupActivated")
+-- Audio settings remotes
+ensureRemoteEvent(remotesFolder, "AudioSettingsLoaded")
+ensureRemoteEvent(remotesFolder, "SetAudioSettings")

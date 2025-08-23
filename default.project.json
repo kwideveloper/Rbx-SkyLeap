@@ -11,6 +11,10 @@
         "$path": "src/ServerScriptService"
     },
 
+    "ReplicatedFirst": {
+      "$path": "src/ReplicatedFirst"
+  },
+
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "$path": "src/StarterPlayer/StarterPlayerScripts"

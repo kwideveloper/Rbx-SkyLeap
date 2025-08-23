@@ -9,6 +9,8 @@ local PlayerProfile = require(ServerScriptService:WaitForChild("PlayerProfile"))
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local comboReport = remotes:WaitForChild("MaxComboReport")
 local styleCommit = remotes:WaitForChild("StyleCommit")
+local audioLoaded = remotes:WaitForChild("AudioSettingsLoaded")
+local setAudio = remotes:WaitForChild("SetAudioSettings")
 
 local sessionState = {}
 
@@ -35,6 +37,12 @@ local function onPlayerAdded(player)
 
 	-- Load persisted values into leaderstats
 	local p = PlayerProfile.load(player.UserId)
+	-- Send audio settings to client on join (defaults 0.5 if nil)
+	local settings = p.settings or {}
+	audioLoaded:FireClient(player, {
+		music = tonumber(settings.musicVolume) or 0.5,
+		sfx = tonumber(settings.sfxVolume) or 0.5,
+	})
 
 	local maxCombo = Instance.new("IntValue")
 	maxCombo.Name = "MaxCombo"
@@ -67,6 +75,41 @@ local function onPlayerAdded(player)
 		end
 	end)
 end
+-- Client requests to persist audio settings; only save if changed vs stored
+setAudio.OnServerEvent:Connect(function(player, payload)
+	if type(payload) ~= "table" then
+		return
+	end
+	local music = tonumber(payload.music)
+	local sfx = tonumber(payload.sfx)
+	if not music and not sfx then
+		return
+	end
+	local profile = PlayerProfile.load(player.UserId)
+	profile.settings = profile.settings
+		or {
+			cameraFov = profile.settings and profile.settings.cameraFov or nil,
+			uiScale = profile.settings and profile.settings.uiScale or nil,
+		}
+	local changed = false
+	if music ~= nil then
+		music = math.clamp(music, 0, 1)
+		if profile.settings.musicVolume ~= music then
+			profile.settings.musicVolume = music
+			changed = true
+		end
+	end
+	if sfx ~= nil then
+		sfx = math.clamp(sfx, 0, 1)
+		if profile.settings.sfxVolume ~= sfx then
+			profile.settings.sfxVolume = sfx
+			changed = true
+		end
+	end
+	if changed then
+		PlayerProfile.save(player.UserId)
+	end
+end)
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 for _, p in ipairs(Players:GetPlayers()) do
