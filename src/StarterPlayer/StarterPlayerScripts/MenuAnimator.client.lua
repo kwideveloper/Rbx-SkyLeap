@@ -21,6 +21,7 @@
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -65,6 +66,13 @@ local function getSettingsFrame()
 	return frame
 end
 
+local function isSettingsFrame(frame)
+	local ok = pcall(function()
+		return frame == getSettingsFrame()
+	end)
+	return ok and frame == getSettingsFrame() or false
+end
+
 local function tween(inst, props, info)
 	local t =
 		TweenService:Create(inst, info or TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
@@ -79,6 +87,9 @@ local state = {
 	currentFrame = nil, -- currently visible menu frame (single-active)
 	actionToken = 0,
 	fovActive = false,
+	musicDuckActive = false,
+	prevMusicGroupVolume = nil,
+	nsOpenCount = 0, -- non-settings menus open count
 }
 
 local frameToButton = {} -- map menu frame -> associated ImageButton
@@ -94,6 +105,117 @@ local function ensureUiScale(inst)
 		s.Parent = inst
 	end
 	return s
+end
+
+-- Music helpers ---------------------------------------------------------------
+local function getMusicGroup()
+	return SoundService:FindFirstChild("BackgroundMusic") or SoundService:FindFirstChild("Music")
+end
+
+local function getMusicTracksFolder()
+	local ps = player:FindFirstChild("PlayerScripts") or player:WaitForChild("PlayerScripts")
+	local soundsRoot = ps:FindFirstChild("Sounds") or ps:WaitForChild("Sounds")
+	return soundsRoot:FindFirstChild("BackgroundMusic") or soundsRoot:WaitForChild("BackgroundMusic")
+end
+
+local function ensureReverbOnTrack(track)
+	if not (track and track:IsA("Sound")) then
+		return
+	end
+	local eff = track:FindFirstChild("MenuReverb")
+	if not eff then
+		eff = Instance.new("ReverbSoundEffect")
+		eff.Name = "MenuReverb"
+		eff.Parent = track
+	end
+	-- Softer, shorter reverb (roughly half the previous intensity)
+	eff.Density = 0.3
+	eff.DecayTime = 0.9
+	eff.Diffusion = 0.4
+	eff.DryLevel = 0
+	-- Reduce wet mix further (more negative = quieter wet signal)
+	eff.WetLevel = -14
+	return eff
+end
+
+local function setMusicDuck(active)
+	local group = getMusicGroup()
+	local DUCK_DELTA = 0.2
+	local DUCK_TIME = 0.2
+	-- Volume ducking on group if available; else per track (tweened)
+	if active then
+		if not state.musicDuckActive then
+			-- Store prev group volume if exists and tween to ducked level
+			if group then
+				state.prevMusicGroupVolume = group.Volume
+				local target = math.max(0, (group.Volume or 0.5) - DUCK_DELTA)
+				TweenService:Create(
+					group,
+					TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Volume = target }
+				):Play()
+			else
+				-- Per track fallback (tween)
+				local folder = getMusicTracksFolder()
+				for _, s in ipairs(folder:GetChildren()) do
+					if s:IsA("Sound") then
+						local target = math.max(0, (s.Volume or 0.5) - DUCK_DELTA)
+						TweenService:Create(
+							s,
+							TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ Volume = target }
+						):Play()
+					end
+				end
+			end
+			-- Enable reverb on all tracks
+			local folder = getMusicTracksFolder()
+			for _, s in ipairs(folder:GetChildren()) do
+				if s:IsA("Sound") then
+					local eff = ensureReverbOnTrack(s)
+					if eff then
+						eff.Enabled = true
+					end
+				end
+			end
+			state.musicDuckActive = true
+		end
+	else
+		if state.musicDuckActive then
+			-- Restore group volume or per track (tween)
+			if group and state.prevMusicGroupVolume ~= nil then
+				TweenService:Create(
+					group,
+					TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Volume = state.prevMusicGroupVolume }
+				):Play()
+				state.prevMusicGroupVolume = nil
+			else
+				local folder = getMusicTracksFolder()
+				for _, s in ipairs(folder:GetChildren()) do
+					if s:IsA("Sound") then
+						local target = math.clamp((s.Volume or 0.5) + DUCK_DELTA, 0, 1)
+						TweenService:Create(
+							s,
+							TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ Volume = target }
+						):Play()
+					end
+				end
+			end
+			-- Disable reverb effects
+			local folder = getMusicTracksFolder()
+			for _, s in ipairs(folder:GetChildren()) do
+				if s:IsA("Sound") then
+					local eff = s:FindFirstChild("MenuReverb")
+					if eff then
+						eff.Enabled = false
+					end
+				end
+			end
+			state.musicDuckActive = false
+		end
+	end
 end
 
 -- Immediate click feedback: quick pop + rotate, then settle based on willOpen
@@ -182,11 +304,23 @@ local function applyGlobalOverlays(active, opts)
 			setFovOverrideActive(true, target)
 			state.fovActive = true
 		end
+		-- Music duck + reverb only if any non-settings menu is open
+		if state.nsOpenCount > 0 then
+			if not state.musicDuckActive then
+				setMusicDuck(true)
+			end
+		else
+			if state.musicDuckActive then
+				setMusicDuck(false)
+			end
+		end
 	else
 		-- Remove blur and release override
 		tween(blur, { Size = 0 }, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
 		setFovOverrideActive(false)
 		state.fovActive = false
+		-- Restore music
+		setMusicDuck(false)
 	end
 end
 
@@ -209,6 +343,9 @@ local function openFrame(frame, durationSec, opts)
 	end
 	state.openFrames[frame] = true
 	state.openCount += 1
+	if not isSettingsFrame(frame) then
+		state.nsOpenCount = (state.nsOpenCount or 0) + 1
+	end
 	if state.openCount == 1 and not opts.noOverlayChange then
 		applyGlobalOverlays(true, opts)
 	end
@@ -236,6 +373,14 @@ local function openFrame(frame, durationSec, opts)
 		buttonActiveOverride[btn] = true
 		setButtonActiveVisual(btn, true)
 	end
+	-- If overlays were already active (e.g., Settings open), ensure music duck is toggled according to nsOpenCount
+	if state.openCount > 0 then
+		if state.nsOpenCount > 0 and not state.musicDuckActive then
+			setMusicDuck(true)
+		elseif state.nsOpenCount == 0 and state.musicDuckActive then
+			setMusicDuck(false)
+		end
+	end
 end
 
 local function closeFrame(frame, durationSec, opts)
@@ -253,6 +398,10 @@ local function closeFrame(frame, durationSec, opts)
 			setFovOverrideActive(false)
 			state.fovActive = false
 		end
+	end
+	-- Track non-settings count
+	if not isSettingsFrame(frame) then
+		state.nsOpenCount = math.max(0, (state.nsOpenCount or 0) - 1)
 	end
 	state.openFrames[frame] = nil
 	state.openCount = math.max(0, state.openCount - 1)
@@ -274,6 +423,13 @@ local function closeFrame(frame, durationSec, opts)
 	local token = opts._token
 	if state.openCount == 0 and not opts.noOverlayChange and (not token or token == state.actionToken) then
 		applyGlobalOverlays(false, opts)
+	else
+		-- Overlays still active (e.g., Settings still open). Ensure music duck reflects nsOpenCount
+		if state.nsOpenCount == 0 and state.musicDuckActive then
+			setMusicDuck(false)
+		elseif state.nsOpenCount > 0 and not state.musicDuckActive then
+			setMusicDuck(true)
+		end
 	end
 end
 
