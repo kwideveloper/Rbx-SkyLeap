@@ -317,11 +317,24 @@ local function setup()
 		if not (camera and state.root and state.humanoid) then
 			return
 		end
+
+		-- Global FOV override (e.g., when menus are open) ---------------------------------
+		local cs = ensureClientStateFolder()
+		local fovOverrideActive = (cs:FindFirstChild("CameraFovOverrideActive") and cs.CameraFovOverrideActive.Value)
+		local fovOverrideValue = (cs:FindFirstChild("CameraFovOverrideValue") and cs.CameraFovOverrideValue.Value)
+		if fovOverrideActive and typeof(fovOverrideValue) == "number" then
+			local cur = camera.FieldOfView
+			local target = math.clamp(fovOverrideValue, 10, 120)
+			local smoothed = smoothTowards(cur, target, state.fovLerpRate, dt)
+			camera.FieldOfView = smoothed
+			-- Skip dynamic effects (shake/wind/FOV from speed) while override is active
+			return
+		end
 		local v = state.root.AssemblyLinearVelocity
 		local horizSpeed = Vector3.new(v.X, 0, v.Z).Magnitude
 		local fullSpeed = getClientSpeed() or v.Magnitude
 		local vy = v.Y
-		local cs = ensureClientStateFolder()
+		-- Client state flags for other effects
 		local isSprinting = (cs:FindFirstChild("IsSprinting") and cs.IsSprinting.Value) or false
 		local airborne = state.humanoid.FloorMaterial == Enum.Material.Air
 		local momentum = getClientMomentum()
