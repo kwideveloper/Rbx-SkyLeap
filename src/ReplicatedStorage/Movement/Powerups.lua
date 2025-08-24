@@ -2,6 +2,7 @@
 -- Handles powerup detection and communicates with server
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
+local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -17,9 +18,6 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local powerupTouched = remotes:WaitForChild("PowerupTouched")
 local powerupActivated = remotes:WaitForChild("PowerupActivated")
 
--- Local cooldown tracking for UI feedback (server is authoritative)
-local localPartCooldowns = {} -- [part] = lastUsedTime
-
 -- Valid powerup tags
 local POWERUP_TAGS = {
 	"AddStamina",
@@ -28,45 +26,21 @@ local POWERUP_TAGS = {
 	"AddAllSkills",
 }
 
--- Helper function to get attribute value with fallback to default
-local function getAttributeOrDefault(part, attributeName, defaultValue)
-	local value = part:GetAttribute(attributeName)
-	if value == nil then
-		return defaultValue
-	end
-	return value
-end
-
 -- Helper function to check if a part is on local cooldown (for UI feedback)
 local function isOnLocalCooldown(part)
-	local lastUsed = localPartCooldowns[part]
-	if not lastUsed then
-		return false
-	end
-
-	local cooldownTime = getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
-	local timeSinceUsed = os.clock() - lastUsed
-
-	return timeSinceUsed < cooldownTime
+	local cooldownTime = SharedUtils.getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
+	return SharedUtils.isOnCooldown(tostring(part), cooldownTime)
 end
 
 -- Helper function to set part on local cooldown (for UI feedback)
 local function setLocalCooldown(part)
-	localPartCooldowns[part] = os.clock()
+	SharedUtils.setCooldown(tostring(part))
 end
 
 -- Helper function to get remaining cooldown time (for UI feedback)
 function Powerups.getRemainingCooldown(part)
-	local lastUsed = localPartCooldowns[part]
-	if not lastUsed then
-		return 0
-	end
-
-	local cooldownTime = getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
-	local timeSinceUsed = os.clock() - lastUsed
-	local remaining = cooldownTime - timeSinceUsed
-
-	return math.max(0, remaining)
+	local cooldownTime = SharedUtils.getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
+	return SharedUtils.getRemainingCooldown(tostring(part), cooldownTime)
 end
 
 -- Handle powerup activation notification from server
@@ -156,21 +130,8 @@ local function onPartTouched(hit, part)
 		return
 	end
 
-	-- Get all tags for this part and check if any are powerup tags
-	local tags = CollectionService:GetTags(part)
-	local powerupTag = nil
-
-	for _, tag in ipairs(tags) do
-		for _, validTag in ipairs(POWERUP_TAGS) do
-			if tag == validTag then
-				powerupTag = tag
-				break
-			end
-		end
-		if powerupTag then
-			break
-		end
-	end
+	-- Get first valid powerup tag (optimized)
+	local powerupTag = SharedUtils.getFirstValidTag(part, POWERUP_TAGS)
 
 	if not powerupTag then
 		print("[POWERUP DEBUG] No valid powerup tag found")
@@ -220,7 +181,8 @@ end
 
 -- Clean up function (optional, for memory management)
 function Powerups.cleanup()
-	localPartCooldowns = {}
+	-- Clear SharedUtils cache for this module
+	SharedUtils.clearTagCache()
 end
 
 -- Debug function to check powerup status
@@ -233,13 +195,19 @@ function Powerups.debugPowerupStatus(part)
 	local quantity = part:GetAttribute("Quantity")
 	local customCooldown = part:GetAttribute("Cooldown")
 
-	print("=== Powerup Debug (Client) ===")
-	print("Part:", part.Name)
-	print("Tags:", table.concat(CollectionService:GetTags(part), ", "))
-	print("Quantity attribute:", quantity or "nil (using default)")
-	print("Cooldown attribute:", customCooldown or "nil (using global default)")
-	print("Local cooldown remaining:", cooldownRemaining, "seconds")
-	print("Is on local cooldown:", isOnLocalCooldown(part))
+	SharedUtils.debugPrint("POWERUPS", "=== Powerup Debug (Client) ===")
+	SharedUtils.debugPrint("POWERUPS", "Part: " .. part.Name)
+	SharedUtils.debugPrint("POWERUPS", "Tags: " .. table.concat(CollectionService:GetTags(part), ", "))
+	SharedUtils.debugPrint(
+		"POWERUPS",
+		"Quantity attribute: " .. (quantity and tostring(quantity) or "nil (using default)")
+	)
+	SharedUtils.debugPrint(
+		"POWERUPS",
+		"Cooldown attribute: " .. (customCooldown and tostring(customCooldown) or "nil (using global default)")
+	)
+	SharedUtils.debugPrint("POWERUPS", "Local cooldown remaining: " .. tostring(cooldownRemaining) .. " seconds")
+	SharedUtils.debugPrint("POWERUPS", "Is on local cooldown: " .. tostring(isOnLocalCooldown(part)))
 end
 
 -- Get client state for local player

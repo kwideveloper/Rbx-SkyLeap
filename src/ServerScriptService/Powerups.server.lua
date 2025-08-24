@@ -6,16 +6,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
--- Import movement config
+-- Import movement config and shared utilities
 local Config = require(ReplicatedStorage:WaitForChild("Movement"):WaitForChild("Config"))
+local SharedUtils = require(ReplicatedStorage:WaitForChild("SharedUtils"))
 
 -- Remote events
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local powerupTouched = remotes:WaitForChild("PowerupTouched")
 local powerupActivated = remotes:WaitForChild("PowerupActivated")
-
--- Cooldown tracking per part instance
-local partCooldowns = {} -- [part] = lastUsedTime
 
 -- Valid powerup tags
 local POWERUP_TAGS = {
@@ -25,31 +23,15 @@ local POWERUP_TAGS = {
 	"AddAllSkills",
 }
 
--- Helper function to get attribute value with fallback to default
-local function getAttributeOrDefault(part, attributeName, defaultValue)
-	local value = part:GetAttribute(attributeName)
-	if value == nil then
-		return defaultValue
-	end
-	return value
-end
-
 -- Helper function to check if a part is on cooldown
 local function isOnCooldown(part)
-	local lastUsed = partCooldowns[part]
-	if not lastUsed then
-		return false
-	end
-
-	local cooldownTime = getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
-	local timeSinceUsed = os.clock() - lastUsed
-
-	return timeSinceUsed < cooldownTime
+	local cooldownTime = SharedUtils.getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
+	return SharedUtils.isOnCooldown(tostring(part), cooldownTime)
 end
 
 -- Helper function to set part on cooldown
 local function setCooldown(part)
-	partCooldowns[part] = os.clock()
+	SharedUtils.setCooldown(tostring(part))
 end
 
 -- Get existing ClientState folder (created by ParkourController)
@@ -90,7 +72,7 @@ local function addStamina(player, part)
 	end
 
 	-- Get quantity from attribute or use default percentage
-	local percentage = getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
+	local percentage = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
 	print("[POWERUP SERVER DEBUG] Stamina percentage to add:", percentage)
 
 	-- Calculate stamina to add (percentage of max stamina)
@@ -130,7 +112,7 @@ local function addJump(player, part)
 	end
 
 	-- Get quantity from attribute or use default
-	local quantity = getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
+	local quantity = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
 	print("[POWERUP SERVER DEBUG] [JUMP] Quantity to add:", quantity)
 
 	-- Only add if player doesn't have double jump charges
@@ -165,7 +147,7 @@ local function addDash(player, part)
 	end
 
 	-- Get quantity from attribute or use default
-	local quantity = getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
+	local quantity = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
 	print("[POWERUP SERVER DEBUG] [DASH] Quantity to add:", quantity)
 
 	-- Check current dash availability
@@ -288,22 +270,9 @@ powerupTouched.OnServerEvent:Connect(function(player, part)
 		return
 	end
 
-	-- Get all tags for this part and check if any are powerup tags
-	local tags = CollectionService:GetTags(part)
-	print("[POWERUP SERVER DEBUG] Part tags:", table.concat(tags, ", "))
-	local powerupTag = nil
-
-	for _, tag in ipairs(tags) do
-		for _, validTag in ipairs(POWERUP_TAGS) do
-			if tag == validTag then
-				powerupTag = tag
-				break
-			end
-		end
-		if powerupTag then
-			break
-		end
-	end
+	-- Get first valid powerup tag (optimized)
+	local powerupTag = SharedUtils.getFirstValidTag(part, POWERUP_TAGS)
+	print("[POWERUP SERVER DEBUG] Part tags:", table.concat(CollectionService:GetTags(part), ", "))
 
 	if not powerupTag then
 		print("[POWERUP SERVER DEBUG] No valid powerup tag found")
@@ -322,11 +291,11 @@ powerupTouched.OnServerEvent:Connect(function(player, part)
 	-- Compute quantity to send to client for local application
 	local qty = 0
 	if powerupTag == "AddStamina" then
-		qty = getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
+		qty = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
 	elseif powerupTag == "AddJump" then
-		qty = getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
+		qty = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
 	elseif powerupTag == "AddDash" then
-		qty = getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
+		qty = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
 	end
 
 	-- Notify client with payload (include part position for FX)
@@ -379,11 +348,11 @@ local function onPartTouched(hit, part)
 	-- Compute quantity to send to client for local application
 	local qty2 = 0
 	if powerupTag == "AddStamina" then
-		qty2 = getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
+		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
 	elseif powerupTag == "AddJump" then
-		qty2 = getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
+		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
 	elseif powerupTag == "AddDash" then
-		qty2 = getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
+		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
 	end
 
 	-- Notify client with payload (include part position for FX)
