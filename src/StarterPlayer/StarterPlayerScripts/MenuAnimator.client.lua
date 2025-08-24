@@ -23,6 +23,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -342,7 +343,7 @@ local function openFrame(frame, durationSec, opts)
 		return
 	end
 	state.openFrames[frame] = true
-	state.openCount += 1
+	state.openCount = state.openCount + 1
 	if not isSettingsFrame(frame) then
 		state.nsOpenCount = (state.nsOpenCount or 0) + 1
 	end
@@ -424,11 +425,13 @@ local function closeFrame(frame, durationSec, opts)
 	if state.openCount == 0 and not opts.noOverlayChange and (not token or token == state.actionToken) then
 		applyGlobalOverlays(false, opts)
 	else
-		-- Overlays still active (e.g., Settings still open). Ensure music duck reflects nsOpenCount
-		if state.nsOpenCount == 0 and state.musicDuckActive then
-			setMusicDuck(false)
-		elseif state.nsOpenCount > 0 and not state.musicDuckActive then
-			setMusicDuck(true)
+		-- Overlays still active (e.g., Settings still open). Optionally suppress duck toggle during switch
+		if not opts._suppressDuck then
+			if state.nsOpenCount == 0 and state.musicDuckActive then
+				setMusicDuck(false)
+			elseif state.nsOpenCount > 0 and not state.musicDuckActive then
+				setMusicDuck(true)
+			end
 		end
 	end
 end
@@ -445,13 +448,17 @@ local function toggleFrame(frame, durationSec, opts)
 		-- Determine if there was already any open before switching
 		local hadOpen = state.openCount > 0
 		-- Close all other open frames quickly and keep overlays
+		local ignoreSet = opts.ignoreFrames or nil
 		for other in pairs(state.openFrames) do
 			if other ~= frame then
-				closeFrame(
-					other,
-					(opts and opts.switchCloseDuration) or 0.15,
-					{ animType = opts.animType or "bounce", noOverlayChange = true, _token = token }
-				)
+				if not (ignoreSet and ignoreSet[other]) then
+					closeFrame(other, (opts and opts.switchCloseDuration) or 0.15, {
+						animType = opts.animType or "bounce",
+						noOverlayChange = true,
+						_token = token,
+						_suppressDuck = true,
+					})
+				end
 			end
 		end
 		-- Open target, keep overlays if others were open (hadOpen)
@@ -485,120 +492,7 @@ end
 
 -- Expose simple input bindings: you can wire these to your UI buttons
 local function bindButtons()
-	local frame = getSettingsFrame()
-	-- If you have dedicated open/close buttons, hook them here; placeholder names:
-	local openBtn = frame:FindFirstChild("OpenButton")
-	local closeBtn = frame:FindFirstChild("CloseButton")
-	if openBtn and openBtn:IsA("GuiButton") then
-		openBtn.MouseButton1Click:Connect(toggleSettings)
-	end
-	if closeBtn and closeBtn:IsA("GuiButton") then
-		closeBtn.MouseButton1Click:Connect(function()
-			closeFrame(frame, 0.25, {})
-		end)
-	end
-	-- Also bind global UI button at PlayerGui/UIButtons/CanvasGroup/Config
-	task.spawn(function()
-		local pg = player:WaitForChild("PlayerGui")
-		local uiButtons = pg:FindFirstChild("UIButtons") or pg:WaitForChild("UIButtons", 5)
-		if uiButtons then
-			local canvas = uiButtons:FindFirstChild("CanvasGroup") or uiButtons:WaitForChild("CanvasGroup", 5)
-			if canvas then
-				-- Helper to get nested ImageButton inside a named container frame
-				local function findButton(containerName)
-					local container = canvas:FindFirstChild(containerName) or canvas:WaitForChild(containerName, 5)
-					if not container then
-						return nil
-					end
-					local btn = container:FindFirstChild("Button")
-					if btn and btn:IsA("ImageButton") then
-						return btn
-					end
-					-- fallback: find any ImageButton descendant
-					for _, d in ipairs(container:GetDescendants()) do
-						if d:IsA("ImageButton") then
-							return d
-						end
-					end
-					return nil
-				end
-
-				local configBtn = findButton("Config")
-				if configBtn then
-					-- Map settings frame to config button and hook
-					frameToButton[frame] = configBtn
-					buttonToFrame[configBtn] = frame
-					configBtn.MouseButton1Click:Connect(function()
-						local willOpen = not state.openFrames[frame]
-						-- Pre-apply active override for consistent leave behavior
-						if willOpen then
-							buttonActiveOverride[configBtn] = true
-						else
-							buttonActiveOverride[configBtn] = false
-						end
-						playClickFeedback(configBtn, willOpen)
-						toggleSettings()
-					end)
-				end
-				-- Quests button -> open PlayerGui.Quests.Frame
-				local questsBtn = findButton("Quests")
-				if questsBtn then
-					local questsGui = pg:FindFirstChild("Quests") or pg:WaitForChild("Quests", 5)
-					local questsFrame = questsGui
-						and (questsGui:FindFirstChild("Frame") or questsGui:WaitForChild("Frame", 5))
-					if questsFrame and questsFrame:IsA("GuiObject") then
-						frameToButton[questsFrame] = questsBtn
-						buttonToFrame[questsBtn] = questsFrame
-						-- Auto-bind CloseButton inside quests menu
-						local qb = questsFrame:FindFirstChild("CloseButton", true)
-						if qb and qb:IsA("GuiButton") then
-							qb.MouseButton1Click:Connect(function()
-								closeFrame(questsFrame, 0.25, {})
-							end)
-						end
-						questsBtn.MouseButton1Click:Connect(function()
-							local willOpen = not state.openFrames[questsFrame]
-							buttonActiveOverride[questsBtn] = willOpen
-							playClickFeedback(questsBtn, willOpen)
-							toggleFrame(
-								questsFrame,
-								0.35,
-								{ animType = "bounce", fovDelta = -15, blurSize = 18, switchCloseDuration = 0.15 }
-							)
-						end)
-					end
-				end
-				-- Shop button -> open PlayerGui.Shop.CanvasGroup
-				local shopBtn = findButton("Shop")
-				if shopBtn then
-					local shopGui = pg:FindFirstChild("Shop") or pg:WaitForChild("Shop", 5)
-					local shopFrame = shopGui
-						and (shopGui:FindFirstChild("CanvasGroup") or shopGui:WaitForChild("CanvasGroup", 5))
-					if shopFrame and shopFrame:IsA("GuiObject") then
-						frameToButton[shopFrame] = shopBtn
-						buttonToFrame[shopBtn] = shopFrame
-						-- Auto-bind CloseButton inside shop menu
-						local cb = shopFrame:FindFirstChild("CloseButton", true)
-						if cb and cb:IsA("GuiButton") then
-							cb.MouseButton1Click:Connect(function()
-								closeFrame(shopFrame, 0.25, {})
-							end)
-						end
-						shopBtn.MouseButton1Click:Connect(function()
-							local willOpen = not state.openFrames[shopFrame]
-							buttonActiveOverride[shopBtn] = willOpen
-							playClickFeedback(shopBtn, willOpen)
-							toggleFrame(
-								shopFrame,
-								0.35,
-								{ animType = "bounce", fovDelta = -15, blurSize = 18, switchCloseDuration = 0.15 }
-							)
-						end)
-					end
-				end
-			end
-		end
-	end)
+	-- Deprecated explicit bindings removed in favor of tag-based OpenMenu system.
 end
 
 -- Optional: expose to _G for quick hooking from other scripts
@@ -726,3 +620,73 @@ local function bindHoverAnimations()
 end
 
 task.defer(bindHoverAnimations)
+
+-- Generic binder for tagged menu buttons --------------------------------------
+local function bindOpenMenuButtons()
+	local bound = setmetatable({}, { __mode = "k" })
+
+	local function collectIgnores(button)
+		local set = {}
+		for _, child in ipairs(button:GetChildren()) do
+			if child:IsA("ObjectValue") and child.Name == "Ignore" then
+				local v = child.Value
+				if v and v:IsA("GuiObject") then
+					set[v] = true
+				end
+			end
+		end
+		return set
+	end
+
+	local function tryBind(btn)
+		if bound[btn] then
+			return
+		end
+		if not (btn and (btn:IsA("TextButton") or btn:IsA("ImageButton"))) then
+			return
+		end
+		-- Require ObjectValue child named "Open"
+		local openOv = btn:FindFirstChild("Open")
+		if not (openOv and openOv:IsA("ObjectValue") and openOv.Value and openOv.Value:IsA("GuiObject")) then
+			return
+		end
+		local target = openOv.Value
+		bound[btn] = true
+		-- Map for active visuals if ImageButton
+		if btn:IsA("ImageButton") then
+			frameToButton[target] = btn
+			buttonToFrame[btn] = target
+		end
+		btn.MouseButton1Click:Connect(function()
+			local ignoreSet = collectIgnores(btn)
+			local willOpen = not state.openFrames[target]
+			if btn:IsA("ImageButton") then
+				buttonActiveOverride[btn] = willOpen
+				playClickFeedback(btn, willOpen)
+			end
+			local opts = {
+				animType = "bounce",
+				fovDelta = -15,
+				blurSize = 18,
+				switchCloseDuration = 0.15,
+				ignoreFrames = ignoreSet,
+			}
+			toggleFrame(target, 0.35, opts)
+		end)
+	end
+
+	-- Bind existing tagged instances
+	for _, inst in ipairs(CollectionService:GetTagged("OpenMenu")) do
+		if inst:IsA("GuiButton") then
+			tryBind(inst)
+		end
+	end
+	-- Bind future ones
+	CollectionService:GetInstanceAddedSignal("OpenMenu"):Connect(function(inst)
+		if inst:IsA("GuiButton") then
+			tryBind(inst)
+		end
+	end)
+end
+
+task.defer(bindOpenMenuButtons)
