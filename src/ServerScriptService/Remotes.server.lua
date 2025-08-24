@@ -45,6 +45,13 @@ ensureRemoteEvent(remotesFolder, "PowerupActivated")
 -- Audio settings remotes
 ensureRemoteEvent(remotesFolder, "AudioSettingsLoaded")
 ensureRemoteEvent(remotesFolder, "SetAudioSettings")
+-- Playtime rewards remotes
+ensureRemoteFunction(remotesFolder, "PlaytimeRequest")
+ensureRemoteFunction(remotesFolder, "PlaytimeClaim")
+
+-- Debug remotes for Playtime Rewards
+ensureRemoteFunction(remotesFolder, "DebugResetPlaytime")
+ensureRemoteFunction(remotesFolder, "DebugUnlockNext")
 
 -- Currency remotes
 ensureRemoteEvent(remotesFolder, "CurrencyUpdated")

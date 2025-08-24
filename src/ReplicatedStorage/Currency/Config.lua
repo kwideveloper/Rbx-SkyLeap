@@ -19,14 +19,29 @@ Config.OutstandingBonusCoins = 200
 Config.CommitAwardCoinCap = 5000
 
 -- Client text formatting
-function Config.formatCoins(amount)
+local function formatNumberWithAbbreviation(amount)
 	amount = tonumber(amount) or 0
-	return tostring(amount)
+
+	if amount >= 1000000000 then
+		local truncated = math.floor(amount / 1000000000 * 10) / 10
+		return string.format("%.1fB", truncated):gsub("%.0", "")
+	elseif amount >= 1000000 then
+		local truncated = math.floor(amount / 1000000 * 10) / 10
+		return string.format("%.1fM", truncated):gsub("%.0", "")
+	elseif amount >= 1000 then
+		local truncated = math.floor(amount / 1000 * 10) / 10
+		return string.format("%.1fK", truncated):gsub("%.0", "")
+	else
+		return tostring(amount)
+	end
+end
+
+function Config.formatCoins(amount)
+	return formatNumberWithAbbreviation(amount)
 end
 
 function Config.formatDiamonds(amount)
-	amount = tonumber(amount) or 0
-	return tostring(amount)
+	return formatNumberWithAbbreviation(amount)
 end
 
 return Config

@@ -35,6 +35,11 @@ local function defaultProfile()
 			developerProducts = {},
 			gamePasses = {},
 		},
+		rewards = {
+			playtimeClaimed = {}, -- [index]=true for claimed rewards
+			lastPlaytimeDay = nil, -- YYYYMMDD string for daily reset
+			playtimeAccumulatedSeconds = 0, -- accumulated play seconds for the day
+		},
 		settings = {
 			cameraFov = nil,
 			uiScale = nil,
@@ -64,6 +69,10 @@ local function migrate(profile)
 	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
 	profile.purchases = profile.purchases or { developerProducts = {}, gamePasses = {} }
 	profile.settings = profile.settings or { cameraFov = nil, uiScale = nil }
+	profile.rewards = profile.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
+	profile.rewards.playtimeClaimed = profile.rewards.playtimeClaimed or {}
+	profile.rewards.lastPlaytimeDay = profile.rewards.lastPlaytimeDay or nil
+	profile.rewards.playtimeAccumulatedSeconds = tonumber(profile.rewards.playtimeAccumulatedSeconds) or 0
 	profile.meta = profile.meta or { createdAt = os.time(), updatedAt = os.time() }
 	return profile
 end
@@ -266,6 +275,42 @@ function PlayerProfile.trySpend(userId, currency, amount)
 		return true, balances.coins, balances.diamonds
 	end
 	return false, PlayerProfile.getBalances(userId)
+end
+
+-- Rewards helpers
+function PlayerProfile.isPlaytimeClaimed(userId, index)
+	index = tonumber(index)
+	if not index then
+		return false
+	end
+	local prof = PlayerProfile.load(userId)
+	local t = (prof.rewards and prof.rewards.playtimeClaimed) or {}
+	return t[index] == true
+end
+
+function PlayerProfile.markPlaytimeClaimed(userId, index)
+	index = tonumber(index)
+	if not index then
+		return false
+	end
+	local ok = false
+	pcall(function()
+		store:UpdateAsync(keyFor(userId), function(old)
+			old = migrate(old or defaultProfile())
+			old.rewards = old.rewards or { playtimeClaimed = {} }
+			old.rewards.playtimeClaimed = old.rewards.playtimeClaimed or {}
+			old.rewards.playtimeClaimed[index] = true
+			old.meta.updatedAt = os.time()
+			ok = true
+			return old
+		end)
+	end)
+	local cached = ACTIVE[userId]
+	if cached then
+		cached.rewards = cached.rewards or { playtimeClaimed = {} }
+		cached.rewards.playtimeClaimed[index] = true
+	end
+	return ok
 end
 
 return PlayerProfile

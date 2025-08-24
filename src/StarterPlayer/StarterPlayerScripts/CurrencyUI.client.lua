@@ -13,6 +13,7 @@ local CurrencyUpdated = Remotes:WaitForChild("CurrencyUpdated")
 local RequestBalances = Remotes:WaitForChild("RequestBalances")
 
 local CurrencyConfig = require(ReplicatedStorage:WaitForChild("Currency"):WaitForChild("Config"))
+local RewardAnimations = require(ReplicatedStorage:WaitForChild("Currency"):WaitForChild("RewardAnimations"))
 
 local state = {
 	coins = 0,
@@ -86,13 +87,39 @@ local function updateInstance(inst)
 	if not isTextObject(inst) then
 		return
 	end
-	if CollectionService:HasTag(inst, "Coin") then
-		inst.Text = CurrencyConfig.formatCoins(state.displayCoins)
-		bound[inst] = true
+
+	-- Check if there are active animations on this instance before updating
+	local hasActiveAnimations = false
+	local scaler = inst:FindFirstChild("_CoinBumpScale")
+	if scaler then
+		-- Check if there are any active tweens on the scaler or text color
+		local scaleTweens = TweenService:GetTweensAffectingInstance(scaler)
+		local colorTweens = TweenService:GetTweensAffectingInstance(inst)
+		if #scaleTweens > 0 or #colorTweens > 0 then
+			hasActiveAnimations = true
+		end
 	end
-	if CollectionService:HasTag(inst, "Diamond") then
-		inst.Text = CurrencyConfig.formatDiamonds(state.displayDiamonds)
-		bound[inst] = true
+
+	-- Only update text if no animations are running, or force update if needed
+	if not hasActiveAnimations then
+		if CollectionService:HasTag(inst, "Coin") then
+			inst.Text = CurrencyConfig.formatCoins(state.displayCoins)
+			bound[inst] = true
+		end
+		if CollectionService:HasTag(inst, "Diamond") then
+			inst.Text = CurrencyConfig.formatDiamonds(state.displayDiamonds)
+			bound[inst] = true
+		end
+	else
+		-- Store the pending update for after animations complete
+		if CollectionService:HasTag(inst, "Coin") then
+			inst:SetAttribute("_PendingCoinText", CurrencyConfig.formatCoins(state.displayCoins))
+			bound[inst] = true
+		end
+		if CollectionService:HasTag(inst, "Diamond") then
+			inst:SetAttribute("_PendingDiamondText", CurrencyConfig.formatDiamonds(state.displayDiamonds))
+			bound[inst] = true
+		end
 	end
 end
 
@@ -103,6 +130,36 @@ local function updateAll()
 		end
 	end
 end
+
+-- Fallback function to apply pending updates after a delay
+local function applyPendingUpdates()
+	for _, tag in ipairs({ "Coin", "Diamond" }) do
+		for _, inst in ipairs(CollectionService:GetTagged(tag)) do
+			if isTextObject(inst) then
+				local pendingCoinText = inst:GetAttribute("_PendingCoinText")
+				local pendingDiamondText = inst:GetAttribute("_PendingDiamondText")
+				if pendingCoinText then
+					inst.Text = pendingCoinText
+					inst:SetAttribute("_PendingCoinText", nil)
+				end
+				if pendingDiamondText then
+					inst.Text = pendingDiamondText
+					inst:SetAttribute("_PendingDiamondText", nil)
+				end
+			end
+		end
+	end
+end
+
+-- Listen for coin arrivals from RewardAnimations (after state and updateAll are defined)
+-- We'll access the event directly from the script since RewardAnimations is a module
+local RewardAnimationsScript = ReplicatedStorage:WaitForChild("Currency"):WaitForChild("RewardAnimations")
+local CoinArrived = RewardAnimationsScript:WaitForChild("CoinArrived")
+CoinArrived.Event:Connect(function(amount)
+	-- Increment displayCoins when coins actually arrive
+	state.displayCoins = (state.displayCoins or 0) + amount
+	updateAll()
+end)
 
 -- Hook into tag changes dynamically
 local function onInstanceAdded(inst)
@@ -154,13 +211,21 @@ CurrencyUpdated.OnClientEvent:Connect(function(payload)
 		state.diamonds = target
 		animateDiamondsTo(target)
 	end
-	if payload.AwardedCoins and (payload.AwardedCoins > 0) then
-		-- Visual feedback for awarded coins; increment as coins arrive
-		spawnCoinBurst(payload.AwardedCoins, coinsTarget)
-	else
-		-- No arrival animation; tween numbers directly
+	if payload.AwardedCoins and (payload.AwardedCoins > 0) and not payload.FromPlaytime then
+		-- Visual feedback for awarded coins using global system (skip if from playtime rewards)
+		RewardAnimations.spawnCoinBurst(payload.AwardedCoins)
+		-- Still animate numbers
 		if coinsTarget ~= nil then
 			animateCoinsTo(coinsTarget)
+		end
+	else
+		-- For playtime rewards, don't animate numbers immediately - let the flying coins handle it
+		if not payload.FromPlaytime and coinsTarget ~= nil then
+			animateCoinsTo(coinsTarget)
+		elseif payload.FromPlaytime then
+			-- For playtime rewards, just update the target silently without animation
+			-- The animation will happen when coins arrive
+			state.coins = coinsTarget
 		end
 	end
 	updateAll()
@@ -270,41 +335,7 @@ local function spawnCoinAt(parent, fromPos, toPos, baseSize, onArrive)
 	end)
 end
 
-local function bumpCoinLabel(targetInst)
-	if not (targetInst and targetInst:IsA("GuiObject")) then
-		return
-	end
-	local scaler = targetInst:FindFirstChild("_CoinBumpScale")
-	if not scaler then
-		scaler = Instance.new("UIScale")
-		scaler.Name = "_CoinBumpScale"
-		scaler.Scale = 1
-		scaler.Parent = targetInst
-	end
-	local tIn = TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local tOut = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(scaler, tIn, { Scale = 1.12 }):Play()
-	task.delay(tIn.Time + 0.01, function()
-		TweenService:Create(scaler, tOut, { Scale = 1.0 }):Play()
-	end)
-	-- Green flash for dopamine, then return to original
-	local isText = targetInst:IsA("TextLabel") or targetInst:IsA("TextButton") or targetInst:IsA("TextBox")
-	if isText then
-		baseTextColor[targetInst] = baseTextColor[targetInst] or targetInst.TextColor3
-		local orig = baseTextColor[targetInst]
-		local bright = Color3.fromRGB(120, 255, 150)
-		local flashIn = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local flashOut = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		local token = (colorToken[targetInst] or 0) + 1
-		colorToken[targetInst] = token
-		TweenService:Create(targetInst, flashIn, { TextColor3 = bright }):Play()
-		task.delay(flashIn.Time + 0.05, function()
-			if colorToken[targetInst] == token then
-				TweenService:Create(targetInst, flashOut, { TextColor3 = orig }):Play()
-			end
-		end)
-	end
-end
+-- Removed bumpCoinLabel - now using unified system in RewardAnimations
 
 function spawnCoinBurst(amount, finalTotal)
 	local parent, target, rect, targetInst = getCoinAnchor()
@@ -359,21 +390,12 @@ function spawnCoinBurst(amount, finalTotal)
 			playUiSfx("CoinArrive", 1.0)
 			state.displayCoins = (state.displayCoins or 0) + addThis
 			updateAll()
-			bumpCoinLabel(targetInst)
+			-- Visual animation is now handled by RewardAnimations system
 			arrived = arrived + 1
 			if arrived == count then
 				state.displayCoins = endTotal
 				updateAll()
-				-- Ensure final color is restored to the original base color
-				if
-					targetInst
-					and (targetInst:IsA("TextLabel") or targetInst:IsA("TextButton") or targetInst:IsA("TextBox"))
-				then
-					local base = baseTextColor and baseTextColor[targetInst]
-					if base then
-						targetInst.TextColor3 = base
-					end
-				end
+				-- Let individual color animations complete naturally without forcing reset
 				-- Fade and cleanup popup now that all coins have arrived
 				local endPos = UDim2.fromOffset(belowCenter.X.Offset, belowCenter.Y.Offset - 18)
 				if txt and txt.Parent then
@@ -399,7 +421,27 @@ local function ensureAnimValues()
 		nv.Value = state.displayCoins or 0
 		nv:GetPropertyChangedSignal("Value"):Connect(function()
 			state.displayCoins = math.floor(nv.Value + 0.5)
-			updateAll()
+			-- Use a more targeted update that respects animations
+			for _, tag in ipairs({ "Coin" }) do
+				for _, inst in ipairs(CollectionService:GetTagged(tag)) do
+					if isTextObject(inst) then
+						-- Only update if not currently animating
+						local scaler = inst:FindFirstChild("_CoinBumpScale")
+						local hasActiveAnimations = false
+						if scaler then
+							local scaleTweens = TweenService:GetTweensAffectingInstance(scaler)
+							local colorTweens = TweenService:GetTweensAffectingInstance(inst)
+							if #scaleTweens > 0 or #colorTweens > 0 then
+								hasActiveAnimations = true
+							end
+						end
+
+						if not hasActiveAnimations then
+							inst.Text = CurrencyConfig.formatCoins(state.displayCoins)
+						end
+					end
+				end
+			end
 		end)
 		state.coinAnim = nv
 	end
