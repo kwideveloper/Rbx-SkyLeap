@@ -201,6 +201,7 @@ CollectionService:AddTag(button, "OpenMenu")
 
 **Parts/Models for Enhanced Movement:**
 - `Ledge` (Tag) - Enables automatic ledge hang detection
+- `LedgeFace` (String) (Attribute) - The face to which the player will grab - Values: Front,Back,Left,Right
 - `Hookable` (Tag) - Allows grappling hook attachment
 - `HookIgnoreLOS` (Tag) - Ignores line-of-sight blocking for grappling hook
 

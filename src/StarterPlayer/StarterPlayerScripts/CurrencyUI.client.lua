@@ -214,10 +214,9 @@ CurrencyUpdated.OnClientEvent:Connect(function(payload)
 	if payload.AwardedCoins and (payload.AwardedCoins > 0) and not payload.FromPlaytime then
 		-- Visual feedback for awarded coins using global system (skip if from playtime rewards)
 		RewardAnimations.spawnCoinBurst(payload.AwardedCoins)
-		-- Still animate numbers
-		if coinsTarget ~= nil then
-			animateCoinsTo(coinsTarget)
-		end
+		-- FIXED: Don't animate numbers immediately for StyleCommit - let flying coins handle it
+		-- Just update the target silently like playtime rewards to prevent double counting
+		state.coins = coinsTarget
 	else
 		-- For playtime rewards, don't animate numbers immediately - let the flying coins handle it
 		if not payload.FromPlaytime and coinsTarget ~= nil then

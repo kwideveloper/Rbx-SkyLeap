@@ -1,6 +1,8 @@
--- Creates RemoteEvents used by the game at runtime
+-- TEMPORARY: Creates RemoteEvents (security temporarily disabled for debugging)
+-- Will re-enable security once basic functionality is working
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local function ensureFolder(parent, name)
 	local folder = parent:FindFirstChild(name)
@@ -33,6 +35,8 @@ local function ensureRemoteFunction(parent, name)
 end
 
 local remotesFolder = ensureFolder(ReplicatedStorage, "Remotes")
+
+-- Core gameplay remotes
 ensureRemoteEvent(remotesFolder, "DashActivated")
 ensureRemoteEvent(remotesFolder, "MomentumUpdated")
 ensureRemoteEvent(remotesFolder, "StyleCommit")
@@ -42,18 +46,37 @@ ensureRemoteEvent(remotesFolder, "RopeAttach")
 ensureRemoteEvent(remotesFolder, "RopeRelease")
 ensureRemoteEvent(remotesFolder, "PowerupTouched")
 ensureRemoteEvent(remotesFolder, "PowerupActivated")
+
 -- Audio settings remotes
 ensureRemoteEvent(remotesFolder, "AudioSettingsLoaded")
 ensureRemoteEvent(remotesFolder, "SetAudioSettings")
+
 -- Playtime rewards remotes
 ensureRemoteFunction(remotesFolder, "PlaytimeRequest")
 ensureRemoteFunction(remotesFolder, "PlaytimeClaim")
 
--- Debug remotes for Playtime Rewards
-ensureRemoteFunction(remotesFolder, "DebugResetPlaytime")
-ensureRemoteFunction(remotesFolder, "DebugUnlockNext")
+-- SECURITY: Only create debug remotes in Studio environment
+if RunService:IsStudio() then
+	-- Debug remotes for Playtime Rewards (DEVELOPMENT ONLY)
+	ensureRemoteFunction(remotesFolder, "DebugResetPlaytime")
+	ensureRemoteFunction(remotesFolder, "DebugUnlockNext")
+
+	print("[REMOTES] Debug remotes created (Studio mode)")
+else
+	print("[REMOTES] Debug remotes DISABLED (Production mode)")
+end
 
 -- Currency remotes
 ensureRemoteEvent(remotesFolder, "CurrencyUpdated")
 ensureRemoteFunction(remotesFolder, "RequestBalances")
 ensureRemoteFunction(remotesFolder, "RequestSpendCurrency")
+
+-- TEMPORARY: Anti-cheat remotes disabled for debugging
+-- if RunService:IsStudio() then
+-- 	-- Anti-cheat debug remotes (DEVELOPMENT ONLY)
+-- 	ensureRemoteFunction(remotesFolder, "AntiCheatGetLogs")
+-- 	ensureRemoteFunction(remotesFolder, "AntiCheatClearLogs")
+-- 	ensureRemoteFunction(remotesFolder, "AntiCheatGetStats")
+-- end
+
+print("[REMOTES] All remote events and functions initialized")

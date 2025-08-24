@@ -1,14 +1,15 @@
--- Server-side powerup system for SkyLeap
--- Handles powerup logic securely and prevents client-side exploitation
+-- SECURE VERSION: Server-side powerup system with enhanced validation
+-- Replaces Powerups.server.lua with security enhancements
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 
--- Import movement config and shared utilities
+-- Import movement config, shared utilities, and anti-cheat
 local Config = require(ReplicatedStorage:WaitForChild("Movement"):WaitForChild("Config"))
 local SharedUtils = require(ReplicatedStorage:WaitForChild("SharedUtils"))
+local AntiCheat = require(game:GetService("ServerScriptService"):WaitForChild("AntiCheat"))
 
 -- Remote events
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -22,6 +23,11 @@ local POWERUP_TAGS = {
 	"AddDash",
 	"AddAllSkills",
 }
+
+-- Enhanced security configuration
+local MAX_POWERUP_TOUCH_DISTANCE = 50 -- Maximum distance for valid touch
+local POWERUP_SPAM_PROTECTION = {} -- [player][part] = lastTouchTime
+local SPAM_PROTECTION_WINDOW = 0.5 -- 500ms between touches of same powerup
 
 -- Helper function to check if a part is on cooldown
 local function isOnCooldown(part)
@@ -48,24 +54,14 @@ end
 
 -- Add stamina to player
 local function addStamina(player, part)
-	local clientState = getClientState()
-	print("[POWERUP SERVER DEBUG] ClientState found:", clientState ~= nil)
-
-	if not clientState then
+	local cs = getClientState()
+	if not cs then
 		print("[POWERUP SERVER DEBUG] No ClientState found!")
 		return false
 	end
 
-	local staminaValue = clientState:FindFirstChild("Stamina")
-	local maxStaminaValue = clientState:FindFirstChild("MaxStamina")
-
-	print("[POWERUP SERVER DEBUG] Stamina value found:", staminaValue ~= nil)
-	print("[POWERUP SERVER DEBUG] Max stamina value found:", maxStaminaValue ~= nil)
-
-	if staminaValue then
-		print("[POWERUP SERVER DEBUG] Current stamina:", staminaValue.Value)
-	end
-
+	local staminaValue = cs:FindFirstChild("Stamina")
+	local maxStaminaValue = cs:FindFirstChild("MaxStamina")
 	if not staminaValue then
 		print("[POWERUP SERVER DEBUG] No stamina value found in ClientState!")
 		return false
@@ -78,34 +74,24 @@ local function addStamina(player, part)
 	-- Calculate stamina to add (percentage of max stamina)
 	local maxStamina = maxStaminaValue and maxStaminaValue.Value or Config.StaminaMax
 	local staminaToAdd = (percentage / 100) * maxStamina
-	print("[POWERUP SERVER DEBUG] Stamina to add:", staminaToAdd)
 
-	-- Add stamina without exceeding max
+	-- Add to current stamina, capped at max
 	local newStamina = math.min(maxStamina, staminaValue.Value + staminaToAdd)
 	staminaValue.Value = newStamina
 
-	print("[POWERUP SERVER DEBUG] New stamina value:", newStamina)
-
+	print("[POWERUP SERVER DEBUG] Stamina updated:", staminaValue.Value)
 	return true
 end
 
--- Add jump ability to player
+-- Add jump charges to player
 local function addJump(player, part)
-	local clientState = getClientState()
-	print("[POWERUP SERVER DEBUG] [JUMP] ClientState found:", clientState ~= nil)
-
-	if not clientState then
+	local cs = getClientState()
+	if not cs then
 		print("[POWERUP SERVER DEBUG] [JUMP] No ClientState found!")
 		return false
 	end
 
-	local doubleJumpCharges = clientState:FindFirstChild("DoubleJumpCharges")
-	print("[POWERUP SERVER DEBUG] [JUMP] DoubleJumpCharges found:", doubleJumpCharges ~= nil)
-
-	if doubleJumpCharges then
-		print("[POWERUP SERVER DEBUG] [JUMP] Current charges:", doubleJumpCharges.Value)
-	end
-
+	local doubleJumpCharges = cs:FindFirstChild("DoubleJumpCharges")
 	if not doubleJumpCharges then
 		print("[POWERUP SERVER DEBUG] [JUMP] No DoubleJumpCharges found in ClientState!")
 		return false
@@ -118,30 +104,33 @@ local function addJump(player, part)
 	-- Only add if player doesn't have double jump charges
 	if doubleJumpCharges.Value <= 0 then
 		doubleJumpCharges.Value = math.min(Config.DoubleJumpMax or 1, quantity)
-		print("[POWERUP SERVER DEBUG] [JUMP] Added jump charges, new value:", doubleJumpCharges.Value)
+		print("[POWERUP SERVER DEBUG] [JUMP] Jump charges granted:", doubleJumpCharges.Value)
 		return true
+	else
+		print("[POWERUP SERVER DEBUG] [JUMP] Player already has jump charges:", doubleJumpCharges.Value)
+		return false
 	end
-
-	print("[POWERUP SERVER DEBUG] [JUMP] Player already has jump charges, consuming powerup")
-	-- Consume powerup even if no effect was applied
-	return false
 end
 
--- Add dash ability to player
+-- Add dash charges to player
 local function addDash(player, part)
-	local character = player.Character
-	print("[POWERUP SERVER DEBUG] [DASH] Character found:", character ~= nil)
-
-	if not character then
-		print("[POWERUP SERVER DEBUG] [DASH] No character found!")
+	local cs = getClientState()
+	if not cs then
+		print("[POWERUP SERVER DEBUG] [DASH] No ClientState found!")
 		return false
 	end
 
-	-- Use existing Abilities module functions
-	local Abilities = require(ReplicatedStorage.Movement.Abilities)
-	print("[POWERUP SERVER DEBUG] [DASH] Abilities module loaded:", Abilities ~= nil)
+	-- Try to access Abilities through the Abilities module in ReplicatedStorage
+	local abilitiesModule = ReplicatedStorage:FindFirstChild("Movement")
+		and ReplicatedStorage.Movement:FindFirstChild("Abilities")
+	local Abilities = abilitiesModule and require(abilitiesModule) or nil
 
-	if not Abilities or not Abilities.addAirDashCharge or not Abilities.isDashAvailable then
+	if not Abilities then
+		print("[POWERUP SERVER DEBUG] [DASH] Abilities module not found!")
+		return false
+	end
+
+	if not (Abilities.isDashAvailable and Abilities.grantDash) then
 		print("[POWERUP SERVER DEBUG] [DASH] Abilities module functions not available!")
 		return false
 	end
@@ -151,97 +140,121 @@ local function addDash(player, part)
 	print("[POWERUP SERVER DEBUG] [DASH] Quantity to add:", quantity)
 
 	-- Check current dash availability
+	local character = player.Character
+	if not character then
+		return false
+	end
+
 	local isDashAvailable = Abilities.isDashAvailable(character)
 	print("[POWERUP SERVER DEBUG] [DASH] Is dash currently available:", isDashAvailable)
 
-	-- Only add if player doesn't have air dash charges available
+	-- Only grant if player doesn't have dash available
 	if not isDashAvailable then
-		print("[POWERUP SERVER DEBUG] [DASH] Adding dash charges...")
-		-- Reset charges first, then add the specified amount
-		Abilities.resetAirDashCharges(character)
-		for i = 2, quantity do -- Start from 2 since resetAirDashCharges already adds 1
-			Abilities.addAirDashCharge(character, 1)
-		end
-		print("[POWERUP SERVER DEBUG] [DASH] Dash charges added successfully")
+		Abilities.grantDash(character, quantity)
+		print("[POWERUP SERVER DEBUG] [DASH] Dash charges granted")
 		return true
+	else
+		print("[POWERUP SERVER DEBUG] [DASH] Player already has dash available")
+		return false
 	end
-
-	print("[POWERUP SERVER DEBUG] [DASH] Player already has dash available, consuming powerup")
-	-- Consume powerup even if no effect was applied
-	return false
 end
 
--- Restore all abilities like touching ground + full stamina
+-- Add all skills to player
 local function addAllSkills(player, part)
-	local character = player.Character
-	if not character then
-		return false
+	local success = true
+
+	-- Get quantities from attributes
+	local staminaAdd = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
+	local jumpAdd = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
+	local dashAdd = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
+
+	-- Add stamina
+	if not addStamina(player, part) then
+		success = false
 	end
 
-	local clientState = getClientState()
-	if not clientState then
-		return false
+	-- Add jump charges
+	if not addJump(player, part) then
+		-- For AddAllSkills, we still want to grant jump even if player has some
+		local cs = getClientState()
+		if cs then
+			local doubleJumpCharges = cs:FindFirstChild("DoubleJumpCharges")
+			if doubleJumpCharges then
+				doubleJumpCharges.Value = Config.DoubleJumpMax or 1
+				print("[POWERUP SERVER DEBUG] [ALL SKILLS] Jump charges set to max:", doubleJumpCharges.Value)
+			end
+		end
 	end
 
-	local staminaValue = clientState:FindFirstChild("Stamina")
-	local maxStaminaValue = clientState:FindFirstChild("MaxStamina")
-	local doubleJumpCharges = clientState:FindFirstChild("DoubleJumpCharges")
-
-	if not staminaValue then
-		return false
+	-- Add dash charges
+	if not addDash(player, part) then
+		-- For AddAllSkills, we still want to grant dash
+		local abilitiesModule = ReplicatedStorage:FindFirstChild("Movement")
+			and ReplicatedStorage.Movement:FindFirstChild("Abilities")
+		local Abilities = abilitiesModule and require(abilitiesModule) or nil
+		if Abilities and Abilities.grantDash and player.Character then
+			Abilities.grantDash(player.Character, dashAdd)
+			print("[POWERUP SERVER DEBUG] [ALL SKILLS] Dash granted")
+		end
 	end
 
-	-- Restore full stamina
-	local maxStamina = maxStaminaValue and maxStaminaValue.Value or Config.StaminaMax
-	staminaValue.Value = maxStamina
-
-	-- Restore double jump charges
-	if doubleJumpCharges then
-		doubleJumpCharges.Value = Config.DoubleJumpMax or 1
-	end
-
-	-- Restore air dash charges using existing functions
-	local Abilities = require(ReplicatedStorage.Movement.Abilities)
-	if Abilities and Abilities.resetAirDashCharges then
-		Abilities.resetAirDashCharges(character)
-	end
-
-	return true
+	return success
 end
 
--- Handle powerup effect based on tag
-local function handlePowerupEffect(player, part, tag)
-	if tag == "AddStamina" then
+-- Handle powerup effect
+local function handlePowerupEffect(player, part, powerupTag)
+	if powerupTag == "AddStamina" then
 		return addStamina(player, part)
-	elseif tag == "AddJump" then
+	elseif powerupTag == "AddJump" then
 		return addJump(player, part)
-	elseif tag == "AddDash" then
+	elseif powerupTag == "AddDash" then
 		return addDash(player, part)
-	elseif tag == "AddAllSkills" then
+	elseif powerupTag == "AddAllSkills" then
 		return addAllSkills(player, part)
 	end
-
 	return false
 end
 
--- Validate that player can actually touch the part (anti-exploit)
+-- ENHANCED: Touch validation with spam protection
 local function validateTouch(player, part)
+	-- Use AntiCheat system for rate limiting
+	if not AntiCheat.validatePowerupTouch(player, part) then
+		return false
+	end
+
 	local character = player.Character
-	if not character then
+	if not (character and character:FindFirstChild("HumanoidRootPart")) then
 		return false
 	end
 
-	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-	if not humanoidRootPart then
+	-- Individual powerup spam protection
+	local userId = player.UserId
+	if not POWERUP_SPAM_PROTECTION[userId] then
+		POWERUP_SPAM_PROTECTION[userId] = {}
+	end
+
+	local partKey = tostring(part)
+	local lastTouch = POWERUP_SPAM_PROTECTION[userId][partKey]
+	local now = os.clock()
+
+	if lastTouch and (now - lastTouch) < SPAM_PROTECTION_WINDOW then
+		print(string.format("[POWERUP SERVER DEBUG] Spam protection triggered for %s on %s", player.Name, part.Name))
 		return false
 	end
 
-	-- Check distance (basic exploit prevention)
-	local distance = (humanoidRootPart.Position - part.Position).Magnitude
-	local maxDistance = 50 -- Maximum reasonable touch distance
+	POWERUP_SPAM_PROTECTION[userId][partKey] = now
 
-	if distance > maxDistance then
-		warn("Player " .. player.Name .. " attempted to touch powerup from too far away: " .. distance)
+	-- Distance validation
+	local hrp = character.HumanoidRootPart
+	local distance = (hrp.Position - part.Position).Magnitude
+
+	if distance > MAX_POWERUP_TOUCH_DISTANCE then
+		AntiCheat.logSuspiciousActivity(player, "PowerupSpam", {
+			type = "InvalidDistance",
+			distance = distance,
+			maxAllowed = MAX_POWERUP_TOUCH_DISTANCE,
+			partName = part.Name,
+		})
 		return false
 	end
 
@@ -258,7 +271,7 @@ powerupTouched.OnServerEvent:Connect(function(player, part)
 		return
 	end
 
-	-- Validate touch distance
+	-- Enhanced touch validation
 	if not validateTouch(player, part) then
 		print("[POWERUP SERVER DEBUG] Touch validation failed")
 		return
@@ -303,90 +316,7 @@ powerupTouched.OnServerEvent:Connect(function(player, part)
 	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty, partPosition)
 end)
 
--- Handle when a character touches a powerup part (server-side detection as backup)
-local function onPartTouched(hit, part)
-	-- Check if the hit is a character part
-	local character = hit.Parent
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local player = Players:GetPlayerFromCharacter(character)
-
-	if not humanoid or not player then
-		return
-	end
-
-	-- Check if part is on cooldown
-	if isOnCooldown(part) then
-		return
-	end
-
-	-- Get all tags for this part and check if any are powerup tags
-	local tags = CollectionService:GetTags(part)
-	local powerupTag = nil
-
-	for _, tag in ipairs(tags) do
-		for _, validTag in ipairs(POWERUP_TAGS) do
-			if tag == validTag then
-				powerupTag = tag
-				break
-			end
-		end
-		if powerupTag then
-			break
-		end
-	end
-
-	if not powerupTag then
-		return
-	end
-
-	-- Apply powerup effect
-	local success = handlePowerupEffect(player, part, powerupTag)
-
-	-- Set cooldown regardless of success (powerup is consumed)
-	setCooldown(part)
-
-	-- Compute quantity to send to client for local application
-	local qty2 = 0
-	if powerupTag == "AddStamina" then
-		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
-	elseif powerupTag == "AddJump" then
-		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
-	elseif powerupTag == "AddDash" then
-		qty2 = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
-	end
-
-	-- Notify client with payload (include part position for FX)
-	local partPosition2 = part.Position
-	powerupActivated:FireClient(player, powerupTag, success, part.Name, qty2, partPosition2)
-end
-
--- Initialize powerup system
-local function initializePowerups()
-	-- Set up touched events for all existing powerup parts
-	for _, tag in ipairs(POWERUP_TAGS) do
-		local parts = CollectionService:GetTagged(tag)
-		for _, part in ipairs(parts) do
-			if part:IsA("BasePart") then
-				part.Touched:Connect(function(hit)
-					onPartTouched(hit, part)
-				end)
-			end
-		end
-
-		-- Set up events for newly tagged parts
-		CollectionService:GetInstanceAddedSignal(tag):Connect(function(part)
-			if part:IsA("BasePart") then
-				part.Touched:Connect(function(hit)
-					onPartTouched(hit, part)
-				end)
-			end
-		end)
-	end
-end
-
--- Note: ClientState cleanup is handled by ParkourController
-
--- Initialize the system
-initializePowerups()
-
-print("Powerup system initialized successfully!")
+-- Cleanup spam protection on player leave
+Players.PlayerRemoving:Connect(function(player)
+	POWERUP_SPAM_PROTECTION[player.UserId] = nil
+end)
