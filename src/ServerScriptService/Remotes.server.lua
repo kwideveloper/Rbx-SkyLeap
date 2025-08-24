@@ -45,3 +45,8 @@ ensureRemoteEvent(remotesFolder, "PowerupActivated")
 -- Audio settings remotes
 ensureRemoteEvent(remotesFolder, "AudioSettingsLoaded")
 ensureRemoteEvent(remotesFolder, "SetAudioSettings")
+
+-- Currency remotes
+ensureRemoteEvent(remotesFolder, "CurrencyUpdated")
+ensureRemoteFunction(remotesFolder, "RequestBalances")
+ensureRemoteFunction(remotesFolder, "RequestSpendCurrency")

@@ -7,6 +7,7 @@ local PlayerProfile = require(ServerScriptService:WaitForChild("PlayerProfile"))
 
 local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local styleCommit = remotes:WaitForChild("StyleCommit")
+-- Currency is handled in Currency.server.lua
 
 -- Mirror total style into default Roblox leaderstats as NumberValue "Style"
 local function loadStyleTotal(player)

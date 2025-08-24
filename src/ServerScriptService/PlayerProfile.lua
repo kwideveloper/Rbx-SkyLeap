@@ -18,6 +18,8 @@ local function defaultProfile()
 			styleTotal = 0,
 			maxCombo = 0,
 			timePlayedMinutes = 0,
+			coins = 0,
+			diamonds = 0,
 		},
 		progression = {
 			unlockedAbilities = {},
@@ -56,6 +58,8 @@ local function migrate(profile)
 	profile.stats.styleTotal = profile.stats.styleTotal or 0
 	profile.stats.maxCombo = profile.stats.maxCombo or 0
 	profile.stats.timePlayedMinutes = profile.stats.timePlayedMinutes or 0
+	profile.stats.coins = profile.stats.coins or 0
+	profile.stats.diamonds = profile.stats.diamonds or 0
 	profile.progression = profile.progression or { unlockedAbilities = {} }
 	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
 	profile.purchases = profile.purchases or { developerProducts = {}, gamePasses = {} }
@@ -171,6 +175,97 @@ function PlayerProfile.addStyleTotal(userId, amount)
 		cached.stats.styleTotal = newTotal
 	end
 	return newTotal
+end
+
+-- Currency helpers
+function PlayerProfile.getBalances(userId)
+	local prof = PlayerProfile.load(userId)
+	local coins = tonumber((prof.stats and prof.stats.coins) or 0) or 0
+	local diamonds = tonumber((prof.stats and prof.stats.diamonds) or 0) or 0
+	return coins, diamonds
+end
+
+function PlayerProfile.addCoins(userId, amount)
+	amount = math.floor(tonumber(amount) or 0)
+	if amount == 0 then
+		return PlayerProfile.getBalances(userId)
+	end
+	local newCoins = 0
+	pcall(function()
+		store:UpdateAsync(keyFor(userId), function(old)
+			old = migrate(old or defaultProfile())
+			old.stats.coins = math.max(0, math.floor((old.stats.coins or 0) + amount))
+			old.meta.updatedAt = os.time()
+			newCoins = old.stats.coins
+			return old
+		end)
+	end)
+	local cached = ACTIVE[userId]
+	if cached then
+		cached.stats.coins = newCoins
+	end
+	local _, diamonds = PlayerProfile.getBalances(userId)
+	return newCoins, diamonds
+end
+
+function PlayerProfile.addDiamonds(userId, amount)
+	amount = math.floor(tonumber(amount) or 0)
+	if amount == 0 then
+		return PlayerProfile.getBalances(userId)
+	end
+	local newDiamonds = 0
+	pcall(function()
+		store:UpdateAsync(keyFor(userId), function(old)
+			old = migrate(old or defaultProfile())
+			old.stats.diamonds = math.max(0, math.floor((old.stats.diamonds or 0) + amount))
+			old.meta.updatedAt = os.time()
+			newDiamonds = old.stats.diamonds
+			return old
+		end)
+	end)
+	local cached = ACTIVE[userId]
+	if cached then
+		cached.stats.diamonds = newDiamonds
+	end
+	local coins = select(1, PlayerProfile.getBalances(userId))
+	return coins, newDiamonds
+end
+
+function PlayerProfile.trySpend(userId, currency, amount)
+	currency = tostring(currency)
+	amount = math.floor(tonumber(amount) or 0)
+	if amount <= 0 then
+		return false, PlayerProfile.getBalances(userId)
+	end
+	local success = false
+	local balances = { coins = 0, diamonds = 0 }
+	pcall(function()
+		store:UpdateAsync(keyFor(userId), function(old)
+			old = migrate(old or defaultProfile())
+			local field = (currency == "Coins") and "coins" or (currency == "Diamonds") and "diamonds" or nil
+			if not field then
+				return old
+			end
+			local current = math.floor(old.stats[field] or 0)
+			if current >= amount then
+				old.stats[field] = current - amount
+				old.meta.updatedAt = os.time()
+				success = true
+				balances.coins = math.floor(old.stats.coins or 0)
+				balances.diamonds = math.floor(old.stats.diamonds or 0)
+			end
+			return old
+		end)
+	end)
+	if success then
+		local cached = ACTIVE[userId]
+		if cached then
+			cached.stats.coins = balances.coins
+			cached.stats.diamonds = balances.diamonds
+		end
+		return true, balances.coins, balances.diamonds
+	end
+	return false, PlayerProfile.getBalances(userId)
 end
 
 return PlayerProfile
