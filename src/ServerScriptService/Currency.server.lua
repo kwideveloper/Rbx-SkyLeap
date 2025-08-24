@@ -81,7 +81,7 @@ StyleCommit.OnServerEvent:Connect(function(player, amount)
 	if award > 0 then
 		local newCoins = select(1, PlayerProfile.addCoins(player.UserId, award))
 		refreshLeaderstats(player)
-		CurrencyUpdated:FireClient(player, { Coins = newCoins })
+		CurrencyUpdated:FireClient(player, { Coins = newCoins, AwardedCoins = award })
 	end
 end)
 
