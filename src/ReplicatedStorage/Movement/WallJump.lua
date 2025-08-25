@@ -16,9 +16,7 @@ local slideCooldownUntil = {} -- Cooldown to prevent immediate re-entering slide
 local cachedSlideTrackByHumanoid = setmetatable({}, { __mode = "k" }) -- weak keys: humanoid -> AnimationTrack
 
 -- Wallslide toggle system
-local wallslideDisabled = {} -- [character] = true if wallslide is manually disabled
-local wallslideDisabledUntilGrounded = {} -- [character] = true if should auto-enable when grounded
-local wallslideToggleTime = {} -- [character] = time when wallslide was manually disabled
+local wallslideDisabled = {} -- [character] = true if wallslide is temporarily disabled
 
 -- Configurable parameters for the wall slide
 local WALL_SLIDE_FALL_SPEED = Config.WallSlideFallSpeed -- Fall speed during the wall slide
@@ -604,39 +602,65 @@ function WallJump.toggleWallslide(character)
 		return false
 	end
 
-	-- Disable wallslide and stop current slide
+	-- Disable wallslide until touching ground
 	wallslideDisabled[character] = true
-	wallslideDisabledUntilGrounded[character] = true
-	wallslideToggleTime[character] = os.clock() -- Record when manually disabled
 	stopWallSlide(character)
 
-	print("[WallJump] Wallslide disabled for", character.Name, "- will re-enable when grounded")
+	-- Don't apply cooldown when manually disabled - we want immediate reactivation when appropriate
+	slideCooldownUntil[character] = nil
+
+	print("[WallJump] Wallslide disabled for", character.Name, "- will re-enable when touching ground")
 	return true
-end
-
-function WallJump.enableWallslide(character)
-	if not character then
-		return
-	end
-
-	wallslideDisabled[character] = nil
-	wallslideDisabledUntilGrounded[character] = nil
-	wallslideToggleTime[character] = nil
-	print("[WallJump] Wallslide re-enabled for", character.Name)
 end
 
 function WallJump.isWallslideDisabled(character)
 	return wallslideDisabled[character] == true
 end
 
--- Auto re-enable wallslide when appropriate
-function WallJump.updateAutoReEnable(character)
+function WallJump.tryManualReactivate(character)
+	if not character then
+		return false
+	end
+
+	-- Only allow if wallslide is currently disabled
+	if not wallslideDisabled[character] then
+		return false
+	end
+
+	-- Check if near a wall while airborne
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return false
+	end
+
+	-- Must be airborne
+	local isAirborne = humanoid.FloorMaterial == Enum.Material.Air
+	if not isAirborne then
+		return false
+	end
+
+	-- Check if near a wall suitable for wallslide
+	local hit = findNearbyWallForSlide(root)
+	if hit then
+		wallslideDisabled[character] = nil
+		-- Clear any existing cooldown to allow immediate wallslide
+		slideCooldownUntil[character] = nil
+		print("[WallJump] Wallslide manually reactivated for", character.Name, "- near wall during fall")
+		return true
+	end
+
+	return false
+end
+
+-- Auto re-enable when doing any parkour action
+function WallJump.updateWallslideState(character)
 	if not character then
 		return
 	end
 
 	-- Skip if wallslide is not disabled
-	if not wallslideDisabledUntilGrounded[character] then
+	if not wallslideDisabled[character] then
 		return
 	end
 
@@ -645,11 +669,86 @@ function WallJump.updateAutoReEnable(character)
 		return
 	end
 
-	-- Only re-enable when grounded (not when near wall to prevent immediate reactivation)
+	local shouldReactivate = false
+	local reason = ""
+
+	-- 1. Touching ground
 	local isGrounded = humanoid.FloorMaterial ~= Enum.Material.Air
 	if isGrounded then
-		WallJump.enableWallslide(character)
-		return
+		shouldReactivate = true
+		reason = "touched ground"
+	end
+
+	-- 2. WallRun active
+	local WallRun = require(script.Parent.WallRun)
+	if WallRun.isActive(character) then
+		shouldReactivate = true
+		reason = "started wallrun"
+	end
+
+	-- 3. Climbing active
+	local Climb = require(script.Parent.Climb)
+	if Climb.isActive(character) then
+		shouldReactivate = true
+		reason = "started climbing"
+	end
+
+	-- 4. LedgeHang active
+	local LedgeHang = require(script.Parent.LedgeHang)
+	if LedgeHang.isActive(character) then
+		shouldReactivate = true
+		reason = "started ledgehang"
+	end
+
+	-- 5. Zipline active
+	local Zipline = require(script.Parent.Zipline)
+	if Zipline.isActive(character) then
+		shouldReactivate = true
+		reason = "started zipline"
+	end
+
+	-- 6. Grapple active
+	local Grapple = require(script.Parent.Grapple)
+	if Grapple.isActive(character) then
+		shouldReactivate = true
+		reason = "started grapple"
+	end
+
+	-- 7. Jumping (any jump including walljump)
+	local humanoidState = humanoid:GetState()
+	if humanoidState == Enum.HumanoidStateType.Jumping then
+		shouldReactivate = true
+		reason = "jumped"
+	end
+
+	-- 8. Check for Mantling or Vaulting via ClientState
+	pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local cs = rs:FindFirstChild("ClientState")
+		if cs then
+			local isMantling = cs:FindFirstChild("IsMantling")
+			local isVaulting = cs:FindFirstChild("IsVaulting")
+			local isSliding = cs:FindFirstChild("IsSliding")
+
+			if isMantling and isMantling.Value then
+				shouldReactivate = true
+				reason = "started mantling"
+			elseif isVaulting and isVaulting.Value then
+				shouldReactivate = true
+				reason = "started vaulting"
+			elseif isSliding and isSliding.Value then
+				shouldReactivate = true
+				reason = "started sliding"
+			end
+		end
+	end)
+
+	-- Reactivate wallslide
+	if shouldReactivate then
+		wallslideDisabled[character] = nil
+		-- Clear any existing cooldown to allow immediate wallslide
+		slideCooldownUntil[character] = nil
+		print("[WallJump] Wallslide re-enabled for", character.Name, "- " .. reason)
 	end
 end
 

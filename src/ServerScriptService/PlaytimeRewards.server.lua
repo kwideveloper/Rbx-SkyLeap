@@ -117,28 +117,8 @@ Players.PlayerAdded:Connect(function(plr)
 	SESSIONS[plr] = { start = os.time() }
 end)
 
--- TEMPORARILY DISABLED: PlayerRemoving to prevent duplicate saves
--- The 30-second auto-save system already handles most playtime data
--- Small amounts of playtime may be lost on immediate disconnect, but this prevents DataStore warnings
---[[
-Players.PlayerRemoving:Connect(function(plr)
-	local s = SESSIONS[plr]
-	if s and s.start then
-		local delta = math.max(0, os.time() - s.start)
-		local prof = PlayerProfile.load(plr.UserId)
-		prof.rewards = prof.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
-		prof.rewards.playtimeAccumulatedSeconds = (tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0) + delta
-		
-		-- OPTIMIZED: Don't save here - PlayerData.server.lua will call PlayerProfile.release() which saves everything
-		print(string.format("[PlaytimeRewards] Updated playtime for %s on leave, delta: %d seconds", plr.Name, delta))
-	end
-	SESSIONS[plr] = nil
-end)
---]]
-
 -- Clean up sessions when players leave (but don't save data - handled by 30s auto-save)
 Players.PlayerRemoving:Connect(function(plr)
-	print(string.format("[PlaytimeRewards] Cleaning up session for %s (data saved by auto-save system)", plr.Name))
 	SESSIONS[plr] = nil
 end)
 

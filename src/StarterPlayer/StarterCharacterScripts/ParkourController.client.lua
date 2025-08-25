@@ -1060,13 +1060,26 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				return -- Don't process other C key functions
 			end
 
-			-- PRIORITY 2: Wallslide toggle (only works when currently wallsliding)
+			-- PRIORITY 2: Wallslide toggle/reactivation
 			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				-- Currently wallsliding - toggle OFF
 				local success = WallJump.toggleWallslide(character)
 				if success then
 					print("[ParkourController] Wallslide toggled off during slide")
 				end
 				return -- Don't process other C key functions
+			elseif WallJump.isWallslideDisabled and WallJump.isWallslideDisabled(character) then
+				-- Wallslide is disabled - try to reactivate manually during fall
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				local isAirborne = humanoid and (humanoid.FloorMaterial == Enum.Material.Air)
+				if isAirborne then
+					local success = WallJump.tryManualReactivate(character)
+					if success then
+						print("[ParkourController] Wallslide manually reactivated during fall")
+					end
+					return -- Only block other C key functions if we're airborne
+				end
+				-- If we're grounded, allow normal ground slide to continue
 			end
 
 			-- PRIORITY 3: Ground slide (existing functionality)
@@ -2012,10 +2025,10 @@ RunService.RenderStepped:Connect(function(dt)
 				WallJump.stopSlide(character)
 			end
 		end
-
-		-- Update wallslide auto re-enable logic
-		WallJump.updateAutoReEnable(character)
 	end
+
+	-- Update wallslide state (re-enable when touching ground) - MOVED OUTSIDE airborne condition
+	WallJump.updateWallslideState(character)
 
 	-- Apply Quake/CS-style air control after other airborne logic
 	local acUnlock = (

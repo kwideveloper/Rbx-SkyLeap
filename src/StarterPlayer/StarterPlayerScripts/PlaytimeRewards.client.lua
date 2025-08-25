@@ -234,14 +234,6 @@ local function ensureCountdownLoop()
 					-- FIXED: Check ANY non-completed reward that reaches 0 (not just Active ones)
 					if meta.state ~= "Claimable" and meta.state ~= "Completed" and remain <= 0 then
 						-- FIXED: Track state change for notification badge update
-						print(
-							string.format(
-								"[PlaytimeRewards] ⭐ Reward %d became claimable! (was %s)",
-								meta.index,
-								meta.state
-							)
-						)
-						print(string.format("[PlaytimeRewards] ⭐ Applying Claimable state and binding click handler"))
 						meta.state = "Claimable"
 						applyState(card, "Claimable", 0, meta.showButtonTime)
 						stateChanged = true -- Mark that we need to update notification badge
@@ -297,13 +289,6 @@ local function ensureCountdownLoop()
 					end
 				end
 			end
-			print(
-				string.format(
-					"[PlaytimeRewards] 🎯 Updating notification badge: %d claimable rewards",
-					claimableCount
-				)
-			)
-			print(string.format("[PlaytimeRewards] 🎯 All reward states: %s", table.concat(debugStates, ", ")))
 			updateNotificationBadge(claimableCount)
 		end
 	end)
@@ -318,7 +303,6 @@ render = function()
 	end
 	baseElapsed = tonumber(payload.elapsed) or 0
 	renderClock = os.clock()
-	print(string.format("[PlaytimeRewards] 🚀 Rendering rewards, elapsed time: %d seconds", baseElapsed))
 	local root, frame, scroll = getGui()
 	if not (frame or scroll) then
 		return
@@ -473,13 +457,9 @@ render = function()
 			)
 		end
 	end
-	print(
-		string.format("[PlaytimeRewards] 📋 Initial render complete. States: %s", table.concat(initialStates, ", "))
-	)
 
 	-- Update notification badge
 	updateNotificationBadge(claimableCount)
-	print(string.format("[PlaytimeRewards] 🔔 Notification badge updated: %d claimable", claimableCount))
 end
 
 -- Render on spawn and when the GUI appears
