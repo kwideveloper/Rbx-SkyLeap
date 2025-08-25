@@ -1051,9 +1051,25 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
 		state.sprintHeld = true
 	elseif input.KeyCode == Enum.KeyCode.C then
-		-- Ground slide: only while sprinting and not in conflicting states
 		local character = getCharacter()
 		if character then
+			-- PRIORITY 1: LedgeHang release (highest priority)
+			if LedgeHang.isActive(character) then
+				print("[ParkourController] C pressed during ledge hang - releasing")
+				LedgeHang.stop(character, true) -- true = manual release
+				return -- Don't process other C key functions
+			end
+
+			-- PRIORITY 2: Wallslide toggle (only works when currently wallsliding)
+			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				local success = WallJump.toggleWallslide(character)
+				if success then
+					print("[ParkourController] Wallslide toggled off during slide")
+				end
+				return -- Don't process other C key functions
+			end
+
+			-- PRIORITY 3: Ground slide (existing functionality)
 			if not (Zipline.isActive(character) or Climb.isActive(character) or WallRun.isActive(character)) then
 				if not (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
 					local Abilities = require(ReplicatedStorage.Movement.Abilities)
@@ -1385,12 +1401,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				end
 			end
 		end
-	end
-	-- Handle ledge hang release
-	if input.KeyCode == Enum.KeyCode.C and LedgeHang.isActive(character) then
-		print("[ParkourController] C pressed during ledge hang - releasing")
-		LedgeHang.stop(character, true) -- true = manual release
-		return
 	end
 
 	-- Track movement keys for climb independent of camera
@@ -2002,6 +2012,9 @@ RunService.RenderStepped:Connect(function(dt)
 				WallJump.stopSlide(character)
 			end
 		end
+
+		-- Update wallslide auto re-enable logic
+		WallJump.updateAutoReEnable(character)
 	end
 
 	-- Apply Quake/CS-style air control after other airborne logic

@@ -15,6 +15,11 @@ local stopWallSlide -- forward declaration
 local slideCooldownUntil = {} -- Cooldown to prevent immediate re-entering slide after jumping
 local cachedSlideTrackByHumanoid = setmetatable({}, { __mode = "k" }) -- weak keys: humanoid -> AnimationTrack
 
+-- Wallslide toggle system
+local wallslideDisabled = {} -- [character] = true if wallslide is manually disabled
+local wallslideDisabledUntilGrounded = {} -- [character] = true if should auto-enable when grounded
+local wallslideToggleTime = {} -- [character] = time when wallslide was manually disabled
+
 -- Configurable parameters for the wall slide
 local WALL_SLIDE_FALL_SPEED = Config.WallSlideFallSpeed -- Fall speed during the wall slide
 local WALL_STICK_VELOCITY = Config.WallSlideStickVelocity -- Force with which the character sticks to the wall
@@ -188,6 +193,11 @@ end
 local function shouldActivateWallSlide(character)
 	-- Just activate the wall slide if the character is in the air and near an appropriate wall
 	if not character then
+		return false
+	end
+
+	-- Check if wallslide is manually disabled
+	if wallslideDisabled[character] then
 		return false
 	end
 
@@ -581,6 +591,66 @@ function WallJump.tryJump(character)
 	slideCooldownUntil[character] = os.clock() + ((Config.WallJumpCooldownSeconds or 0.2) + 0.2)
 
 	return true
+end
+
+-- Wallslide toggle functions
+function WallJump.toggleWallslide(character)
+	if not character then
+		return false
+	end
+
+	-- Only allow toggle if currently wallsliding
+	if not activeWallSlides[character] then
+		return false
+	end
+
+	-- Disable wallslide and stop current slide
+	wallslideDisabled[character] = true
+	wallslideDisabledUntilGrounded[character] = true
+	wallslideToggleTime[character] = os.clock() -- Record when manually disabled
+	stopWallSlide(character)
+
+	print("[WallJump] Wallslide disabled for", character.Name, "- will re-enable when grounded")
+	return true
+end
+
+function WallJump.enableWallslide(character)
+	if not character then
+		return
+	end
+
+	wallslideDisabled[character] = nil
+	wallslideDisabledUntilGrounded[character] = nil
+	wallslideToggleTime[character] = nil
+	print("[WallJump] Wallslide re-enabled for", character.Name)
+end
+
+function WallJump.isWallslideDisabled(character)
+	return wallslideDisabled[character] == true
+end
+
+-- Auto re-enable wallslide when appropriate
+function WallJump.updateAutoReEnable(character)
+	if not character then
+		return
+	end
+
+	-- Skip if wallslide is not disabled
+	if not wallslideDisabledUntilGrounded[character] then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+
+	-- Only re-enable when grounded (not when near wall to prevent immediate reactivation)
+	local isGrounded = humanoid.FloorMaterial ~= Enum.Material.Air
+	if isGrounded then
+		WallJump.enableWallslide(character)
+		return
+	end
 end
 
 return WallJump
