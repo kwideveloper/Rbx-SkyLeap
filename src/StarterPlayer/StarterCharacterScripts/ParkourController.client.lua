@@ -378,7 +378,7 @@ local function setupCharacter(character)
 	-- Hook fall detection for landing roll
 	local humanoid = getHumanoid(character)
 	local lastAirY = nil
-	local minRollDrop = 20 -- studs; can be moved to Config later if needed
+	local minRollDrop = 30 -- studs; can be moved to Config later if needed
 	local rollPending = false
 	local jumpLoopTrack = nil
 	humanoid.StateChanged:Connect(function(old, new)
