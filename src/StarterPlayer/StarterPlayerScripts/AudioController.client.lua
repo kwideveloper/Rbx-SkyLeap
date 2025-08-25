@@ -277,6 +277,4 @@ task.spawn(function()
 		end
 	end
 end)
-
-print("[[AudioController]] FINISH")
 ------------ ? Sounds Controller ------------

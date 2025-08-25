@@ -70,7 +70,7 @@ function BunnyHop.resetStacks(character)
 end
 
 -- Call on Space pressed while grounded; applies boost if within timing window
-function BunnyHop.tryApplyOnJump(character, momentumState)
+function BunnyHop.tryApplyOnJump(character, momentumState, isSprinting)
 	local state = ensureState(character)
 	local root, humanoid = getParts(character)
 	if not root or not humanoid then
@@ -81,9 +81,16 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 		return 0
 	end
 
+	-- Check sprint requirement if enabled
+	local sprintRequired = Config.BunnyHopRequireSprint ~= false -- default true if not set
+	if sprintRequired and not isSprinting then
+		state.stacks = 0
+		return 0
+	end
+
 	local now = os.clock()
 	local withinWindow = state.landWindowActive
-		and ((now - (state.lastLandTick or 0)) <= (Config.BunnyHopWindowSeconds or 0.12))
+		and ((now - (state.lastLandTick or 0)) <= (Config.BunnyHopWindowSeconds or 0.18))
 	if not withinWindow then
 		-- Not a perfect hop: chain breaks
 		state.stacks = 0
@@ -153,11 +160,23 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 		end
 	end
 
-	-- Additive impulse along blended direction
+	-- Additive impulse along blended direction with sprint bonus and velocity preservation
 	local bonus = (Config.BunnyHopBaseBoost or 6) + (Config.BunnyHopPerStackBoost or 3) * (state.stacks - 1)
-	local maxAdd = math.max(0, Config.BunnyHopMaxAddPerHop or bonus)
-	local delta = blended * math.min(bonus, maxAdd)
+
+	-- Apply sprint bonus if sprinting (even when not required)
+	if isSprinting and Config.BunnyHopSprintBonus then
+		bonus = bonus * Config.BunnyHopSprintBonus
+	end
+
+	-- VELOCITY PRESERVATION: Scale bonus based on current speed to maintain momentum (BALANCED)
+	local currentSpeed = newHoriz.Magnitude
+	local speedScale = math.max(1.1, currentSpeed / 40) -- BALANCED: Gradual scaling that builds up nicely to cap
+	bonus = bonus * speedScale
+
+	-- REMOVED MAXADD LIMITATION: Let bunny hop add unlimited velocity per hop
+	local delta = blended * bonus
 	newHoriz = newHoriz + delta
+
 	-- Clamp total horizontal speed
 	local cap = (Config.BunnyHopTotalSpeedCap or Config.AirControlTotalSpeedCap or 999)
 	local nhMag = Vector3.new(newHoriz.X, 0, newHoriz.Z).Magnitude
@@ -166,23 +185,33 @@ function BunnyHop.tryApplyOnJump(character, momentumState)
 	end
 	root.AssemblyLinearVelocity = Vector3.new(newHoriz.X, vel.Y, newHoriz.Z)
 
-	-- Briefly lock horizontal to eliminate drift/drag before physics applies, for an instant redirection feel
-	local lockDur = math.max(0, Config.BunnyHopLockSeconds or 0)
+	-- Briefly lock horizontal to eliminate drift/drag (OPTIMIZED: much shorter duration)
+	local lockDur = math.max(0, Config.BunnyHopLockSeconds or 0.15)
 	if lockDur > 0 then
 		local startT = os.clock()
 		task.spawn(function()
 			while (os.clock() - startT) < lockDur do
 				local curV = root.AssemblyLinearVelocity
 				root.AssemblyLinearVelocity = Vector3.new(newHoriz.X, curV.Y, newHoriz.Z)
-				task.wait()
+				game:GetService("RunService").Heartbeat:Wait() -- More responsive than task.wait()
 			end
 		end)
 	end
 
-	-- Momentum bonus
+	-- Momentum bonus with sprint consideration and velocity scaling
 	if momentumState and Momentum.addBonus then
 		local mBonus = (Config.BunnyHopMomentumBonusBase or 4)
 			+ (Config.BunnyHopMomentumBonusPerStack or 2) * (state.stacks - 1)
+
+		-- Apply sprint bonus to momentum too
+		if isSprinting and Config.BunnyHopSprintBonus then
+			mBonus = mBonus * (Config.BunnyHopSprintBonus * 0.8) -- Slightly less for momentum
+		end
+
+		-- VELOCITY SCALING: Scale momentum bonus with current velocity for constant acceleration (BALANCED)
+		local velocityScale = math.max(1.1, currentSpeed / 35) -- BALANCED: Gradual momentum scaling for smooth progression
+		mBonus = mBonus * velocityScale
+
 		Momentum.addBonus(momentumState, mBonus)
 	end
 

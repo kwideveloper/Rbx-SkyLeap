@@ -2,12 +2,12 @@
 
 local Config = {}
 
--- Core humanoid speeds
-Config.BaseWalkSpeed = 25 -- 20
-Config.SprintWalkSpeed = 50 -- 30
+-- Core humanoid speeds - OPTIMIZED FOR HIGH VELOCITY BUNNY HOP
+Config.BaseWalkSpeed = 25 -- INCREASED: Better base speed for momentum building
+Config.SprintWalkSpeed = 50 -- INCREASED: Higher sprint speed to complement bunny hop
 -- Sprint acceleration ramp
-Config.SprintAccelSeconds = 0.60 -- 0.45 time to reach full sprint speed
-Config.SprintDecelSeconds = 0.25 -- 0.20 time to return to base speed (when releasing sprint)
+Config.SprintAccelSeconds = 0.50 -- REDUCED: Faster acceleration for better responsiveness
+Config.SprintDecelSeconds = 0.30 -- SLIGHTLY INCREASED: Smoother deceleration for better control
 
 -- Stamina
 Config.StaminaMax = 300 -- 200
@@ -15,12 +15,12 @@ Config.SprintDrainPerSecond = 20 -- 20
 Config.StaminaRegenPerSecond = 80 -- 40
 Config.SprintStartThreshold = 20 -- minimum stamina required to start sprinting
 
--- Momentum system
-Config.MomentumIncreaseFactor = 0.08
-Config.MomentumDecayPerSecond = 4
-Config.MomentumMax = 100
-Config.MomentumSuperJumpThreshold = 65
-Config.MomentumAirDashThreshold = 45
+-- Momentum system - OPTIMIZED FOR VELOCITY MAINTENANCE
+Config.MomentumIncreaseFactor = 0.12 -- INCREASED: Faster momentum buildup for bunny hop chains
+Config.MomentumDecayPerSecond = 2.5 -- REDUCED: Slower decay to maintain velocity longer
+Config.MomentumMax = 120 -- INCREASED: Higher momentum cap for sustained high speeds
+Config.MomentumSuperJumpThreshold = 60 -- REDUCED: Earlier access to super jump for chaining
+Config.MomentumAirDashThreshold = 40 -- REDUCED: Earlier access to air dash for better flow
 
 -- Dash
 Config.DashImpulse = 60
@@ -205,30 +205,33 @@ Config.CameraAlignHeadYawDeg = 60
 Config.CameraAlignHeadPitchDeg = 30
 Config.CameraAlignBodyYawDeg = 45
 
--- Bunny hop
-Config.BunnyHopWindowSeconds = 0.12 -- 0.12 time after landing to count as a perfect hop
-Config.BunnyHopMaxStacks = 3
-Config.BunnyHopBaseBoost = 2 -- base horizontal speed added on perfect hop
-Config.BunnyHopPerStackBoost = 2 -- extra per additional stack
-Config.BunnyHopMomentumBonusBase = 3 -- 7
-Config.BunnyHopMomentumBonusPerStack = 2 -- 5
-Config.BunnyHopDirectionCarry = 0 -- INSTA REDIRECT=0 | 0..1 how much to preserve current travel direction over input
-Config.BunnyHopOppositeCancel = 1 -- 0..1 how much to cancel backward component vs desired direction on hop
-Config.BunnyHopPerpDampOnFlip = 1 -- 0..1 how much to damp perpendicular component when flipping direction (only when opposite)
+-- Bunny hop (OPTIMIZED FOR HIGH VELOCITY GAINS)
+Config.BunnyHopWindowSeconds = 0.18 -- INCREASED: More forgiving timing window for better responsiveness
+Config.BunnyHopMaxStacks = 5 -- INCREASED: More stacking potential for longer chains
+Config.BunnyHopBaseBoost = 4 -- BALANCED: Good initial boost without being overwhelming
+Config.BunnyHopPerStackBoost = 3 -- BALANCED: Steady progression per stack for smooth acceleration to cap
+Config.BunnyHopMomentumBonusBase = 6 -- INCREASED: More momentum gain for sustained speed
+Config.BunnyHopMomentumBonusPerStack = 5 -- INCREASED: Better momentum scaling for velocity maintenance
+Config.BunnyHopDirectionCarry = 0.4 -- INCREASED: Preserve more lateral momentum for better flow
+Config.BunnyHopOppositeCancel = 0.6 -- REDUCED: Less cancellation to maintain more speed
+Config.BunnyHopPerpDampOnFlip = 0.5 -- REDUCED: Preserve even more perpendicular momentum
 -- Hard reorientation on hop: completely retarget horizontal velocity to desired direction, preserving magnitude
 Config.BunnyHopReorientHard = false
-Config.BunnyHopLockSeconds = 0.6 -- brief window to lock horizontal velocity to the reoriented vector
-Config.BunnyHopMaxAddPerHop = 5 -- studs/s maximum speed added in a single hop
-Config.BunnyHopTotalSpeedCap = 85 -- studs/s horizontal cap after applying hop (fallbacks to AirControlTotalSpeedCap)
+Config.BunnyHopLockSeconds = 0.1 -- REDUCED: Even shorter lock for maximum fluidity
+Config.BunnyHopMaxAddPerHop = 12 -- INCREASED: Much higher speed gain per hop for constant velocity buildup
+Config.BunnyHopTotalSpeedCap = 90 -- BALANCED: Sweet spot for exciting but controlled bunny hop gameplay
+-- NEW: Sprint requirement settings
+Config.BunnyHopRequireSprint = false -- Allow bunny hop without sprinting for casual use
+Config.BunnyHopSprintBonus = 1.3 -- BALANCED: Good sprint bonus without being too powerful
 
--- Air control (Quake/CS-style)
+-- Air control (Quake/CS-style) - OPTIMIZED FOR BUNNY HOP VELOCITY MAINTENANCE
 Config.AirControlEnabled = true
 Config.AirControlUseCameraFacing = true -- when no MoveDirection, use camera facing
-Config.AirControlAccelerate = 30 -- 60 acceleration rate along wish dir (per second)
-Config.AirStrafeAccelerate = 220 -- 90 extra accel when strafing (low dot with velocity)
-Config.AirControlMaxWishSpeed = 42 -- max speed contributed along wish dir
-Config.AirControlMaxAddPerTick = 18 -- safety cap per frame on speed added
-Config.AirControlTotalSpeedCap = 85 -- overall air speed cap (horizontal)
+Config.AirControlAccelerate = 40 -- INCREASED: Better acceleration for velocity maintenance
+Config.AirStrafeAccelerate = 180 -- BALANCED: Good strafe acceleration without being too aggressive
+Config.AirControlMaxWishSpeed = 45 -- BALANCED: Good speed contribution without overwhelming acceleration
+Config.AirControlMaxAddPerTick = 20 -- BALANCED: Reasonable safety cap for controlled acceleration
+Config.AirControlTotalSpeedCap = 90 -- BALANCED: Match bunny hop cap for consistent controlled gameplay
 
 -- LaunchPad (trampoline) defaults
 Config.LaunchPadUpSpeed = 80

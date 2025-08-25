@@ -8,6 +8,11 @@ local store = DataStoreService:GetDataStore(PROFILE_STORE_NAME)
 local PlayerProfile = {}
 
 local ACTIVE = {}
+local PENDING_CHANGES = {} -- Buffer changes before saving
+local LAST_SAVE = {} -- Track last save time per user
+local SAVE_INTERVAL = 30 -- Save every 30 seconds maximum
+local CRITICAL_SAVE_THRESHOLD = 5000 -- Auto-save if coins/diamonds change by this much
+local LOADING = {} -- Track profiles currently being loaded to prevent duplicate requests
 
 local function defaultProfile()
 	return {
@@ -81,109 +86,281 @@ local function keyFor(userId)
 	return "u:" .. tostring(userId)
 end
 
+-- OPTIMIZED: Use GetAsync for reads, prevent duplicate loads, only UpdateAsync when migration needed
 function PlayerProfile.load(userId)
+	userId = tostring(userId)
+
+	-- Return immediately if already loaded
 	if ACTIVE[userId] then
 		return ACTIVE[userId]
 	end
-	local loaded
-	local ok, err = pcall(function()
-		loaded = store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.meta.updatedAt = os.time()
-			return old
-		end)
-	end)
-	if not ok then
-		-- Fallback to defaults in-memory; will try save later
-		loaded = defaultProfile()
+
+	-- If already loading, wait for it to complete (prevents duplicate requests)
+	if LOADING[userId] then
+		local attempts = 0
+		while LOADING[userId] and attempts < 50 do -- Max 5 second wait
+			task.wait(0.1)
+			attempts = attempts + 1
+		end
+		-- Return the loaded profile or fallback
+		return ACTIVE[userId] or defaultProfile()
 	end
+
+	-- Mark as loading to prevent duplicate requests
+	LOADING[userId] = true
+
+	local loaded
+	local needsMigration = false
+
+	-- STEP 1: Try to load with GetAsync (read-only, no DataStore write request)
+	local ok, data = pcall(function()
+		return store:GetAsync(keyFor(userId))
+	end)
+
+	if ok and data then
+		-- Check if migration is needed
+		local migrated = migrate(data)
+		if migrated.version ~= data.version or not data.meta or not data.meta.updatedAt then
+			needsMigration = true
+			loaded = migrated
+		else
+			loaded = data
+		end
+	else
+		-- No data found or error, use defaults and mark for save
+		loaded = defaultProfile()
+		needsMigration = true
+	end
+
+	-- STEP 2: Only use UpdateAsync if migration is actually needed
+	if needsMigration then
+		print(string.format("[PlayerProfile] Migrating profile for user %s", userId))
+		local ok2, err = pcall(function()
+			loaded = store:UpdateAsync(keyFor(userId), function(old)
+				local migrated = migrate(old or defaultProfile())
+				migrated.meta.updatedAt = os.time()
+				return migrated
+			end)
+		end)
+		if not ok2 then
+			-- Fallback to in-memory profile
+			loaded = loaded or defaultProfile()
+			warn(string.format("[PlayerProfile] Migration failed for user %s: %s", userId, err))
+		end
+	end
+
 	ACTIVE[userId] = loaded
+	LAST_SAVE[userId] = os.time() -- Mark as "recently saved" to prevent immediate save
+	LOADING[userId] = nil -- Clear loading flag
+
 	return loaded
 end
 
-function PlayerProfile.save(userId)
+-- OPTIMIZED: Batched save system to reduce DataStore requests
+local function forceSave(userId)
+	userId = tostring(userId) -- Ensure userId is string
 	local data = ACTIVE[userId]
 	if not data then
-		return
+		warn(string.format("[PlayerProfile] forceSave failed: No active data for user %s", userId))
+		return false
 	end
+
+	-- ANTI-DUPLICATE: Prevent multiple saves within 1 second (throttle rapid saves)
+	local lastSave = LAST_SAVE[userId] or 0
+	local timeSinceLastSave = os.time() - lastSave
+	if timeSinceLastSave < 1 then
+		print(
+			string.format(
+				"[PlayerProfile] forceSave THROTTLED for user %s (last save %ds ago)",
+				userId,
+				timeSinceLastSave
+			)
+		)
+		return true -- Return success since data is already recent
+	end
+
 	data.meta.updatedAt = os.time()
-	pcall(function()
+	local success = false
+	local err = nil
+	local ok, errorMsg = pcall(function()
 		store:SetAsync(keyFor(userId), data)
+		LAST_SAVE[userId] = os.time()
+		PENDING_CHANGES[userId] = nil -- Clear pending changes after successful save
+		success = true
 	end)
+
+	if not ok then
+		err = errorMsg
+	end
+
+	if not success then
+		warn(string.format("[PlayerProfile] forceSave FAILED for user %s: %s", userId, tostring(err)))
+	else
+		print(string.format("[PlayerProfile] forceSave SUCCESS for user %s", userId))
+	end
+
+	return success
 end
 
+-- OPTIMIZED: Checks if user needs saving based on time or critical changes
+local function shouldSave(userId)
+	local lastSave = LAST_SAVE[userId] or 0
+	local timeSinceLastSave = os.time() - lastSave
+
+	-- Save if interval exceeded
+	if timeSinceLastSave >= SAVE_INTERVAL then
+		return true, "time_interval"
+	end
+
+	-- Save if critical changes pending
+	local pending = PENDING_CHANGES[userId]
+	if pending then
+		local coinChange = math.abs((pending.coins or 0))
+		local diamondChange = math.abs((pending.diamonds or 0))
+		if coinChange >= CRITICAL_SAVE_THRESHOLD or diamondChange >= CRITICAL_SAVE_THRESHOLD then
+			return true, "critical_changes"
+		end
+	end
+
+	return false, "no_need"
+end
+
+-- OPTIMIZED: Batch changes in memory, save periodically
+local function applyChanges(userId, changes)
+	local profile = ACTIVE[userId]
+	if not profile then
+		return false
+	end
+
+	-- Apply changes to in-memory profile
+	if changes.timePlayedMinutes then
+		profile.stats.timePlayedMinutes = (profile.stats.timePlayedMinutes or 0) + changes.timePlayedMinutes
+	end
+	if changes.coins then
+		profile.stats.coins = math.max(0, (profile.stats.coins or 0) + changes.coins)
+	end
+	if changes.diamonds then
+		profile.stats.diamonds = math.max(0, (profile.stats.diamonds or 0) + changes.diamonds)
+	end
+	if changes.styleTotal then
+		profile.stats.styleTotal = (profile.stats.styleTotal or 0) + changes.styleTotal
+	end
+	if changes.maxCombo then
+		profile.stats.maxCombo = math.max(profile.stats.maxCombo or 0, changes.maxCombo)
+	end
+	if changes.playtimeClaimed then
+		profile.rewards = profile.rewards or { playtimeClaimed = {} }
+		for index, value in pairs(changes.playtimeClaimed) do
+			profile.rewards.playtimeClaimed[index] = value
+		end
+	end
+
+	-- Track pending changes for batching
+	PENDING_CHANGES[userId] = PENDING_CHANGES[userId] or {}
+	local pending = PENDING_CHANGES[userId]
+	pending.coins = (pending.coins or 0) + (changes.coins or 0)
+	pending.diamonds = (pending.diamonds or 0) + (changes.diamonds or 0)
+
+	-- Check if we should save now
+	local shouldSaveNow, reason = shouldSave(userId)
+	if shouldSaveNow then
+		print(string.format("[PlayerProfile] Saving %s due to: %s", userId, reason))
+		return forceSave(userId)
+	end
+
+	return true
+end
+
+function PlayerProfile.save(userId)
+	return forceSave(userId)
+end
+
+-- OPTIMIZED: Coordinated save on player leave - consolidates all final changes
 function PlayerProfile.release(userId)
-	PlayerProfile.save(userId)
+	userId = tostring(userId)
+
+	print(string.format("[PlayerProfile] ==> RELEASE: Starting for user %s", userId))
+
+	-- Check if profile exists
+	if not ACTIVE[userId] then
+		print(string.format("[PlayerProfile] ==> RELEASE: No active profile for user %s, skipping", userId))
+		return false
+	end
+
+	-- Force save any pending changes before cleanup
+	print(string.format("[PlayerProfile] ==> RELEASE: Force saving final data for user %s", userId))
+	local success = forceSave(userId)
+	print(string.format("[PlayerProfile] ==> RELEASE: Final save result for user %s: %s", userId, tostring(success)))
+
+	-- Clean up all memory
 	ACTIVE[userId] = nil
+	LOADING[userId] = nil
+	PENDING_CHANGES[userId] = nil
+	LAST_SAVE[userId] = nil
+
+	print(string.format("[PlayerProfile] ==> RELEASE: Cleanup complete for user %s", userId))
+	return success
 end
 
-function PlayerProfile.addTimePlayed(userId, minutes)
+-- OPTIMIZED: Use batching system instead of individual UpdateAsync
+function PlayerProfile.addTimePlayed(userId, minutes, onLeave)
+	userId = tostring(userId)
 	minutes = tonumber(minutes) or 0
 	if minutes <= 0 then
 		return 0
 	end
-	local newTotal = 0
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.stats.timePlayedMinutes = (old.stats.timePlayedMinutes or 0) + minutes
-			old.meta.updatedAt = os.time()
-			newTotal = old.stats.timePlayedMinutes
-			return old
-		end)
-	end)
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.stats.timePlayedMinutes = newTotal
+
+	local profile = PlayerProfile.load(userId) -- Ensure profile is loaded
+
+	if onLeave then
+		-- When called on player leave, just update in memory - don't save
+		profile.stats.timePlayedMinutes = (profile.stats.timePlayedMinutes or 0) + minutes
+		print(string.format("[PlayerProfile] Updated timePlayed for user %s on leave: +%d minutes", userId, minutes))
+	else
+		-- Normal operation - use batching
+		applyChanges(userId, { timePlayedMinutes = minutes })
 	end
-	return newTotal
+
+	return profile.stats.timePlayedMinutes or 0
 end
 
-function PlayerProfile.setMaxComboIfHigher(userId, value)
+-- OPTIMIZED: Use batching system
+function PlayerProfile.setMaxComboIfHigher(userId, value, onLeave)
+	userId = tostring(userId)
 	value = tonumber(value) or 0
 	if value <= 0 then
 		return 0
 	end
-	local newMax = 0
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			if value > (old.stats.maxCombo or 0) then
-				old.stats.maxCombo = value
-				old.meta.updatedAt = os.time()
-			end
-			newMax = old.stats.maxCombo or 0
-			return old
-		end)
-	end)
-	-- Also reflect in cache if present
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.stats.maxCombo = math.max(cached.stats.maxCombo or 0, newMax)
+
+	local profile = PlayerProfile.load(userId)
+	local currentMax = profile.stats.maxCombo or 0
+
+	if value > currentMax then
+		if onLeave then
+			-- When called on player leave, just update in memory - don't save
+			profile.stats.maxCombo = value
+			print(string.format("[PlayerProfile] Updated maxCombo for user %s on leave: %d", userId, value))
+		else
+			-- Normal operation - use batching
+			applyChanges(userId, { maxCombo = value })
+		end
+		return value
 	end
-	return newMax
+
+	return currentMax
 end
 
+-- OPTIMIZED: Use batching system
 function PlayerProfile.addStyleTotal(userId, amount)
 	amount = tonumber(amount) or 0
 	if amount <= 0 then
 		return 0
 	end
-	local newTotal = 0
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.stats.styleTotal = (old.stats.styleTotal or 0) + amount
-			old.meta.updatedAt = os.time()
-			newTotal = old.stats.styleTotal
-			return old
-		end)
-	end)
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.stats.styleTotal = newTotal
-	end
-	return newTotal
+
+	local profile = PlayerProfile.load(userId)
+	applyChanges(userId, { styleTotal = amount })
+
+	return profile.stats.styleTotal or 0
 end
 
 -- Currency helpers
@@ -194,86 +371,91 @@ function PlayerProfile.getBalances(userId)
 	return coins, diamonds
 end
 
+-- OPTIMIZED: Force save for significant coin additions, batch small ones
 function PlayerProfile.addCoins(userId, amount)
+	userId = tostring(userId)
 	amount = math.floor(tonumber(amount) or 0)
 	if amount == 0 then
 		return PlayerProfile.getBalances(userId)
 	end
-	local newCoins = 0
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.stats.coins = math.max(0, math.floor((old.stats.coins or 0) + amount))
-			old.meta.updatedAt = os.time()
-			newCoins = old.stats.coins
-			return old
-		end)
-	end)
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.stats.coins = newCoins
+
+	local profile = PlayerProfile.load(userId)
+
+	-- CRITICAL: Force immediate save for significant amounts (rewards, purchases)
+	-- This prevents data loss and double-claiming
+	if amount >= 100 then -- Any reward amount or significant gain
+		-- Apply change directly to profile and force save
+		profile.stats.coins = math.max(0, (profile.stats.coins or 0) + amount)
+		local success = forceSave(userId)
+		print(
+			string.format(
+				"[PlayerProfile] CRITICAL: Added %d coins for user %s, save success: %s",
+				amount,
+				userId,
+				tostring(success)
+			)
+		)
+	else
+		-- Small amounts can use batching
+		applyChanges(userId, { coins = amount })
 	end
-	local _, diamonds = PlayerProfile.getBalances(userId)
-	return newCoins, diamonds
+
+	return PlayerProfile.getBalances(userId)
 end
 
+-- OPTIMIZED: Force save for significant diamond additions, batch small ones
 function PlayerProfile.addDiamonds(userId, amount)
+	userId = tostring(userId)
 	amount = math.floor(tonumber(amount) or 0)
 	if amount == 0 then
 		return PlayerProfile.getBalances(userId)
 	end
-	local newDiamonds = 0
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.stats.diamonds = math.max(0, math.floor((old.stats.diamonds or 0) + amount))
-			old.meta.updatedAt = os.time()
-			newDiamonds = old.stats.diamonds
-			return old
-		end)
-	end)
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.stats.diamonds = newDiamonds
-	end
-	local coins = select(1, PlayerProfile.getBalances(userId))
-	return coins, newDiamonds
+
+	local profile = PlayerProfile.load(userId)
+
+	-- CRITICAL: Force immediate save for any diamond additions (diamonds are precious)
+	-- Apply change directly to profile and force save
+	profile.stats.diamonds = math.max(0, (profile.stats.diamonds or 0) + amount)
+	local success = forceSave(userId)
+	print(
+		string.format(
+			"[PlayerProfile] CRITICAL: Added %d diamonds for user %s, save success: %s",
+			amount,
+			userId,
+			tostring(success)
+		)
+	)
+
+	return PlayerProfile.getBalances(userId)
 end
 
+-- OPTIMIZED: Use batching for spending but with validation
 function PlayerProfile.trySpend(userId, currency, amount)
 	currency = tostring(currency)
 	amount = math.floor(tonumber(amount) or 0)
 	if amount <= 0 then
 		return false, PlayerProfile.getBalances(userId)
 	end
-	local success = false
-	local balances = { coins = 0, diamonds = 0 }
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			local field = (currency == "Coins") and "coins" or (currency == "Diamonds") and "diamonds" or nil
-			if not field then
-				return old
-			end
-			local current = math.floor(old.stats[field] or 0)
-			if current >= amount then
-				old.stats[field] = current - amount
-				old.meta.updatedAt = os.time()
-				success = true
-				balances.coins = math.floor(old.stats.coins or 0)
-				balances.diamonds = math.floor(old.stats.diamonds or 0)
-			end
-			return old
-		end)
-	end)
-	if success then
-		local cached = ACTIVE[userId]
-		if cached then
-			cached.stats.coins = balances.coins
-			cached.stats.diamonds = balances.diamonds
-		end
-		return true, balances.coins, balances.diamonds
+
+	local profile = PlayerProfile.load(userId)
+	local field = (currency == "Coins") and "coins" or (currency == "Diamonds") and "diamonds" or nil
+	if not field then
+		return false, PlayerProfile.getBalances(userId)
 	end
+
+	local current = math.floor(profile.stats[field] or 0)
+	if current >= amount then
+		-- Apply negative amount (spending)
+		local changeObj = {}
+		changeObj[field] = -amount
+		applyChanges(userId, changeObj)
+
+		-- Force save for spending operations (critical)
+		forceSave(userId)
+
+		return true, PlayerProfile.getBalances(userId)
+	end
+
 	return false, PlayerProfile.getBalances(userId)
 end
 
@@ -288,29 +470,50 @@ function PlayerProfile.isPlaytimeClaimed(userId, index)
 	return t[index] == true
 end
 
+-- CRITICAL: Force immediate save for playtime claims to prevent double-claims
 function PlayerProfile.markPlaytimeClaimed(userId, index)
+	userId = tostring(userId)
 	index = tonumber(index)
 	if not index then
 		return false
 	end
-	local ok = false
-	pcall(function()
-		store:UpdateAsync(keyFor(userId), function(old)
-			old = migrate(old or defaultProfile())
-			old.rewards = old.rewards or { playtimeClaimed = {} }
-			old.rewards.playtimeClaimed = old.rewards.playtimeClaimed or {}
-			old.rewards.playtimeClaimed[index] = true
-			old.meta.updatedAt = os.time()
-			ok = true
-			return old
-		end)
-	end)
-	local cached = ACTIVE[userId]
-	if cached then
-		cached.rewards = cached.rewards or { playtimeClaimed = {} }
-		cached.rewards.playtimeClaimed[index] = true
-	end
-	return ok
+
+	local profile = PlayerProfile.load(userId)
+
+	-- Apply change directly to profile
+	profile.rewards = profile.rewards or { playtimeClaimed = {} }
+	profile.rewards.playtimeClaimed[index] = true
+
+	-- FORCE IMMEDIATE SAVE - this is critical for preventing double claims
+	local success = forceSave(userId)
+	print(
+		string.format(
+			"[PlayerProfile] CRITICAL: Marked playtime claim %d for user %s, save success: %s",
+			index,
+			userId,
+			tostring(success)
+		)
+	)
+
+	return success
 end
+
+-- OPTIMIZATION: Periodic auto-save system
+task.spawn(function()
+	while true do
+		task.wait(SAVE_INTERVAL)
+
+		for userId, _ in pairs(ACTIVE) do
+			local shouldSaveNow, reason = shouldSave(userId)
+			if shouldSaveNow then
+				print(string.format("[PlayerProfile] Auto-saving %s due to: %s", userId, reason))
+				forceSave(userId)
+			end
+		end
+	end
+end)
+
+-- REMOVED: PlayerRemoving cleanup - PlayerData.server.lua handles all cleanup via release()
+-- This prevents any race conditions or duplicate cleanup operations
 
 return PlayerProfile

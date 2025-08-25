@@ -7,7 +7,28 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local lbFolder = ReplicatedStorage:WaitForChild("Leaderboard")
+-- FIXED: Safe wait for Leaderboard folder with timeout
+local lbFolder
+local leaderboardTimeout = 5 -- seconds
+local success = false
+
+task.spawn(function()
+	local startTime = tick()
+	while (tick() - startTime) < leaderboardTimeout do
+		lbFolder = ReplicatedStorage:FindFirstChild("Leaderboard")
+		if lbFolder then
+			success = true
+			break
+		end
+		task.wait(0.1)
+	end
+	if not success then
+		warn("[LeaderboardUI] Leaderboard folder not found after timeout, creating placeholder")
+		lbFolder = Instance.new("Folder")
+		lbFolder.Name = "Leaderboard"
+		lbFolder.Parent = ReplicatedStorage
+	end
+end)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "Leaderboard"

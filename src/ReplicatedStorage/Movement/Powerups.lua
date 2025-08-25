@@ -159,19 +159,13 @@ local function onPartTouched(hit, part)
 		return
 	end
 
-	-- Debug: Print touch information
-	print("[POWERUP DEBUG] Touched part:", part.Name)
-	print("[POWERUP DEBUG] Part tags:", table.concat(CollectionService:GetTags(part), ", "))
-
 	-- Check if part is on server cooldown (real cooldown from previous use)
 	if isOnServerCooldown(part) then
-		print("[POWERUP DEBUG] Part is on server cooldown, ignoring")
 		return
 	end
 
 	-- Check if part is on touch debounce (prevent rapid multiple touches)
 	if isOnTouchDebounce(part) then
-		print("[POWERUP DEBUG] Part touch debounced, ignoring rapid touch")
 		return
 	end
 
@@ -179,11 +173,8 @@ local function onPartTouched(hit, part)
 	local powerupTag = SharedUtils.getFirstValidTag(part, POWERUP_TAGS)
 
 	if not powerupTag then
-		print("[POWERUP DEBUG] No valid powerup tag found")
 		return
 	end
-
-	print("[POWERUP DEBUG] Valid powerup found! Tag:", powerupTag)
 
 	-- Set short touch debounce to prevent rapid multiple touch events
 	setTouchDebounce(part)
@@ -194,16 +185,12 @@ end
 
 -- Initialize powerup system
 function Powerups.init()
-	print("[POWERUP DEBUG] Initializing powerup system...")
-
 	-- Set up touched events for all existing powerup parts
 	for _, tag in ipairs(POWERUP_TAGS) do
 		local parts = CollectionService:GetTagged(tag)
-		print("[POWERUP DEBUG] Found", #parts, "parts with tag", tag)
 
 		for _, part in ipairs(parts) do
 			if part:IsA("BasePart") then
-				print("[POWERUP DEBUG] Registering part:", part.Name, "with tag:", tag)
 				part.Touched:Connect(function(hit)
 					onPartTouched(hit, part)
 				end)
@@ -213,15 +200,12 @@ function Powerups.init()
 		-- Set up events for newly tagged parts
 		CollectionService:GetInstanceAddedSignal(tag):Connect(function(part)
 			if part:IsA("BasePart") then
-				print("[POWERUP DEBUG] New part tagged:", part.Name, "with tag:", tag)
 				part.Touched:Connect(function(hit)
 					onPartTouched(hit, part)
 				end)
 			end
 		end)
 	end
-
-	print("[POWERUP DEBUG] Powerup system initialization complete")
 end
 
 -- Clean up function (optional, for memory management)

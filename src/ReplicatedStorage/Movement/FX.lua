@@ -220,7 +220,6 @@ end
 function FX.play(fxName, character, customPosition, overrideScale)
 	local config = FX.Config[fxName]
 	if not config or not config.enabled then
-		print("[FX] FX not found or disabled:", fxName)
 		return
 	end
 

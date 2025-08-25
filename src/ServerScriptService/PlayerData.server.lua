@@ -15,6 +15,11 @@ local setAudio = remotes:WaitForChild("SetAudioSettings")
 local sessionState = {}
 
 local function onPlayerAdded(player)
+	-- OPTIMIZED: Load profile once and share across all systems
+	print(string.format("[PlayerData] Loading profile for %s (%d)", player.Name, player.UserId))
+	local p = PlayerProfile.load(player.UserId)
+	print(string.format("[PlayerData] Profile loaded for %s", player.Name))
+
 	local stats = Instance.new("Folder")
 	stats.Name = "leaderstats"
 	stats.Parent = player
@@ -32,11 +37,10 @@ local function onPlayerAdded(player)
 	-- Total Style points (accumulated across runs; volatile until DataStore is added)
 	local style = Instance.new("NumberValue")
 	style.Name = "Style"
-	style.Value = 0
+	style.Value = tonumber((p.stats and p.stats.styleTotal) or 0)
 	style.Parent = stats
 
-	-- Load persisted values into leaderstats
-	local p = PlayerProfile.load(player.UserId)
+	-- Load persisted values into leaderstats (profile already loaded above)
 	-- Send audio settings to client on join (defaults 0.5 if nil)
 	local settings = p.settings or {}
 	audioLoaded:FireClient(player, {
@@ -49,9 +53,18 @@ local function onPlayerAdded(player)
 	maxCombo.Value = tonumber((p.stats and p.stats.maxCombo) or 0)
 	maxCombo.Parent = stats
 
-	-- TimePlayed is tracked internally but not shown in leaderstats
+	-- Add Coins and Diamonds to leaderstats
+	local coins = Instance.new("IntValue")
+	coins.Name = "Coins"
+	coins.Value = tonumber((p.stats and p.stats.coins) or 0)
+	coins.Parent = stats
 
-	-- (MaxCombo/TimePlayed already set from PlayerProfile above)
+	local diamonds = Instance.new("IntValue")
+	diamonds.Name = "Diamonds"
+	diamonds.Value = tonumber((p.stats and p.stats.diamonds) or 0)
+	diamonds.Parent = stats
+
+	-- TimePlayed is tracked internally but not shown in leaderstats
 
 	-- Track session timing for 10-minute heartbeats and immediate leave update
 	sessionState[player] = {
@@ -117,6 +130,8 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
+	print(string.format("[PlayerData] ==> LEAVE: Player %s leaving, consolidating all final data", player.Name))
+
 	-- Stop heartbeat for this player
 	if sessionState[player] then
 		sessionState[player].alive = false
@@ -125,22 +140,32 @@ Players.PlayerRemoving:Connect(function(player)
 	if not stats then
 		return
 	end
-	-- Flush residual time since last checkpoint (in minutes)
+
+	-- CONSOLIDATED: Update all data in memory only (no individual saves)
+
+	-- 1. Flush residual heartbeat time since last checkpoint (in minutes)
 	if sessionState[player] and sessionState[player].lastCheckpoint then
 		local minutes = math.floor(math.max(0, os.time() - sessionState[player].lastCheckpoint) / 60)
 		if minutes > 0 then
-			PlayerProfile.addTimePlayed(player.UserId, minutes)
+			PlayerProfile.addTimePlayed(player.UserId, minutes, true) -- onLeave = true
 		end
 	end
-	-- Persist MaxCombo on leave as well (best effort), using buffered session max if available
+
+	-- 2. Persist MaxCombo on leave as well (best effort), using buffered session max if available
 	local mc = stats:FindFirstChild("MaxCombo")
 	local pending = sessionState[player] and sessionState[player].pendingMaxCombo or (mc and mc.Value) or 0
 	if pending and pending > 0 then
-		PlayerProfile.setMaxComboIfHigher(player.UserId, pending)
+		PlayerProfile.setMaxComboIfHigher(player.UserId, pending, true) -- onLeave = true
 	end
+
+	-- 3. Playtime rewards data is handled by the 30-second auto-save system
+	-- No need to manually update on leave to avoid duplicate saves
+
 	-- Cleanup
 	sessionState[player] = nil
-	-- Save and release profile
+
+	-- FINAL COORDINATED SAVE: This does the single save with all final data
+	print(string.format("[PlayerData] ==> LEAVE: Releasing profile for %s (final save)", player.Name))
 	PlayerProfile.release(player.UserId)
 end)
 

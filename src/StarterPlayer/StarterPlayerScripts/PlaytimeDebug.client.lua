@@ -171,5 +171,3 @@ testBtn.MouseButton1Click:Connect(function()
 		end)
 	end
 end)
-
-print("DEBUG: Playtime debug buttons loaded!")

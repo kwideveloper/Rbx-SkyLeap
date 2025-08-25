@@ -9,38 +9,30 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local styleCommit = remotes:WaitForChild("StyleCommit")
 -- Currency is handled in Currency.server.lua
 
--- Mirror total style into default Roblox leaderstats as NumberValue "Style"
-local function loadStyleTotal(player)
-	local p = PlayerProfile.load(player.UserId)
-	return tonumber((p.stats and p.stats.styleTotal) or 0)
+-- FIXED: Create Leaderboard folder that LeaderboardUI.client.lua expects
+local leaderboardFolder = ReplicatedStorage:FindFirstChild("Leaderboard")
+if not leaderboardFolder then
+	leaderboardFolder = Instance.new("Folder")
+	leaderboardFolder.Name = "Leaderboard"
+	leaderboardFolder.Parent = ReplicatedStorage
+	print("[Leaderboard] Created Leaderboard folder in ReplicatedStorage")
 end
 
-Players.PlayerAdded:Connect(function(player)
+-- OPTIMIZED: No longer loads profile here - PlayerData.server.lua handles all leaderstats setup
+-- This script now only handles style commits
+
+-- Helper function to get style total from already-loaded profile
+local function getStyleTotal(player)
+	-- Use already loaded profile (PlayerData.server.lua loads it first)
 	local stats = player:FindFirstChild("leaderstats")
-	if not stats then
-		stats = Instance.new("Folder")
-		stats.Name = "leaderstats"
-		stats.Parent = player
+	if stats then
+		local style = stats:FindFirstChild("Style")
+		return style and style.Value or 0
 	end
-	local style = stats:FindFirstChild("Style")
-	if not style then
-		style = Instance.new("NumberValue")
-		style.Name = "Style"
-		style.Value = 0
-		style.Parent = stats
-	end
-	local total = loadStyleTotal(player)
-	style.Value = total
-	-- Also ensure MaxCombo/TimePlayed are materialized from profile if PlayerData didn't run yet
-	local prof = PlayerProfile.load(player.UserId)
-	if not stats:FindFirstChild("MaxCombo") then
-		local mc = Instance.new("IntValue")
-		mc.Name = "MaxCombo"
-		mc.Value = tonumber((prof.stats and prof.stats.maxCombo) or 0)
-		mc.Parent = stats
-	end
-	-- TimePlayed is tracked internally but not shown in leaderstats
-end)
+	return 0
+end
+
+-- REMOVED: PlayerAdded connection - PlayerData.server.lua now handles all leaderstats creation
 
 -- No explicit save here; PlayerProfile.addStyleTotal already persists on commit
 

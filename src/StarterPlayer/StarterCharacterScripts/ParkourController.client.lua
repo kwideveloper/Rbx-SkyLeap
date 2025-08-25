@@ -1363,16 +1363,24 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					end
 				end
 			end
-			-- If grounded and sprinting, attempt bunny hop boost on perfect timing
-			if (not airborne) and state.stamina.isSprinting then
-				local stacks = BunnyHop.tryApplyOnJump(character, state.momentum)
-				if type(stacks) == "number" and stacks > 0 then
-					Style.addEvent(state.style, "BunnyHop", stacks)
-					if state.styleScoreValue then
-						state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
-					end
-					if state.styleComboValue then
-						state.styleComboValue.Value = state.style.combo or 0
+			-- OPTIMIZED: Bunny hop with flexible sprint requirement
+			if not airborne then
+				-- Check if bunny hop is allowed (with or without sprint based on config)
+				local canBunnyHop = true
+				if Config.BunnyHopRequireSprint ~= false then
+					canBunnyHop = state.stamina.isSprinting
+				end
+
+				if canBunnyHop then
+					local stacks = BunnyHop.tryApplyOnJump(character, state.momentum, state.stamina.isSprinting)
+					if type(stacks) == "number" and stacks > 0 then
+						Style.addEvent(state.style, "BunnyHop", stacks)
+						if state.styleScoreValue then
+							state.styleScoreValue.Value = math.floor(state.style.score + 0.5)
+						end
+						if state.styleComboValue then
+							state.styleComboValue.Value = state.style.combo or 0
+						end
 					end
 				end
 			end

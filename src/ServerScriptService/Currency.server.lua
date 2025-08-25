@@ -22,32 +22,20 @@ local MAX_STYLE_PER_COMMIT = 500 -- Maximum style points per single commit
 local MIN_COMMIT_INTERVAL = 2 -- Minimum seconds between commits
 local MAX_COMMITS_PER_MINUTE = 15 -- Maximum commits per minute per player
 
-local function ensureLeaderstats(player)
+-- OPTIMIZED: No longer creates leaderstats - PlayerData.server.lua handles all leaderstats setup
+local function refreshLeaderstats(player)
+	-- Use already created leaderstats from PlayerData.server.lua
 	local stats = player:FindFirstChild("leaderstats")
 	if not stats then
-		stats = Instance.new("Folder")
-		stats.Name = "leaderstats"
-		stats.Parent = player
+		warn(
+			string.format(
+				"[Currency] No leaderstats found for %s - PlayerData.server.lua should create these",
+				player.Name
+			)
+		)
+		return
 	end
-	local coins = stats:FindFirstChild("Coins")
-	if not coins then
-		coins = Instance.new("IntValue")
-		coins.Name = "Coins"
-		coins.Value = 0
-		coins.Parent = stats
-	end
-	local diamonds = stats:FindFirstChild("Diamonds")
-	if not diamonds then
-		diamonds = Instance.new("IntValue")
-		diamonds.Name = "Diamonds"
-		diamonds.Value = 0
-		diamonds.Parent = stats
-	end
-	return stats
-end
 
-local function refreshLeaderstats(player)
-	local stats = ensureLeaderstats(player)
 	local c, g = PlayerProfile.getBalances(player.UserId)
 	local ci = stats:FindFirstChild("Coins")
 	local gi = stats:FindFirstChild("Diamonds")
@@ -80,16 +68,8 @@ local function calculateStyleAward(amount)
 	return math.max(0, award)
 end
 
-Players.PlayerAdded:Connect(function(player)
-	print(string.format("[CURRENCY DEBUG] Player %s joined, loading profile...", player.Name))
-
-	-- Add debug to see what balances are loaded
-	local c, g = PlayerProfile.getBalances(player.UserId)
-	print(string.format("[CURRENCY DEBUG] Player %s balances - Coins: %d, Diamonds: %d", player.Name, c, g))
-
-	refreshLeaderstats(player)
-	print(string.format("[CURRENCY DEBUG] Player %s leaderstats created/updated", player.Name))
-end)
+-- OPTIMIZED: No longer refresh on PlayerAdded - PlayerData.server.lua handles initial setup
+-- refreshLeaderstats will be called by other functions when needed (e.g., StyleCommit, purchases)
 
 -- TEMPORARY: Award coins when style is committed (anti-cheat disabled)
 StyleCommit.OnServerEvent:Connect(function(player, amount)
@@ -106,25 +86,17 @@ StyleCommit.OnServerEvent:Connect(function(player, amount)
 
 	-- Calculate award using secure function
 	local award = calculateStyleAward(amount)
-	print(string.format("[CURRENCY DEBUG] Player: %s, StyleAmount: %d, Award: %d", player.Name, amount, award))
 
 	if award > 0 then
 		local newCoins = select(1, PlayerProfile.addCoins(player.UserId, award))
 		refreshLeaderstats(player)
 		CurrencyUpdated:FireClient(player, { Coins = newCoins, AwardedCoins = award })
-
-		-- Log for monitoring
-		print(string.format("[CURRENCY] %s earned %d coins from %d style points", player.Name, award, amount))
-	else
-		print(string.format("[CURRENCY DEBUG] No award calculated for %s (amount: %d)", player.Name, amount))
 	end
 end)
 
 -- Balance request
 RequestBalances.OnServerInvoke = function(player)
-	print(string.format("[CURRENCY DEBUG] Balance request from %s", player.Name))
 	local c, g = PlayerProfile.getBalances(player.UserId)
-	print(string.format("[CURRENCY DEBUG] Returning balances to %s - Coins: %d, Diamonds: %d", player.Name, c, g))
 	return { Coins = c, Diamonds = g }
 end
 

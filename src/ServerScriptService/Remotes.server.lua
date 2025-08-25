@@ -55,15 +55,16 @@ ensureRemoteEvent(remotesFolder, "SetAudioSettings")
 ensureRemoteFunction(remotesFolder, "PlaytimeRequest")
 ensureRemoteFunction(remotesFolder, "PlaytimeClaim")
 
+-- Currency system remotes
+ensureRemoteEvent(remotesFolder, "CurrencyUpdated")
+ensureRemoteFunction(remotesFolder, "RequestBalances")
+ensureRemoteFunction(remotesFolder, "RequestSpendCurrency")
+
 -- SECURITY: Only create debug remotes in Studio environment
 if RunService:IsStudio() then
 	-- Debug remotes for Playtime Rewards (DEVELOPMENT ONLY)
 	ensureRemoteFunction(remotesFolder, "DebugResetPlaytime")
 	ensureRemoteFunction(remotesFolder, "DebugUnlockNext")
-
-	print("[REMOTES] Debug remotes created (Studio mode)")
-else
-	print("[REMOTES] Debug remotes DISABLED (Production mode)")
 end
 
 -- Currency remotes
@@ -78,5 +79,3 @@ ensureRemoteFunction(remotesFolder, "RequestSpendCurrency")
 -- 	ensureRemoteFunction(remotesFolder, "AntiCheatClearLogs")
 -- 	ensureRemoteFunction(remotesFolder, "AntiCheatGetStats")
 -- end
-
-print("[REMOTES] All remote events and functions initialized")
