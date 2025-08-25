@@ -214,6 +214,8 @@ local function ensureCountdownLoop()
 			return
 		end
 		local curElapsed = baseElapsed + (os.clock() - renderClock)
+		local stateChanged = false -- Track if any reward became newly claimable
+
 		for card, meta in pairs(allCards) do
 			if type(meta) == "table" and card and card.Parent then
 				if not meta.claimed then
@@ -221,55 +223,88 @@ local function ensureCountdownLoop()
 					if meta.timeLabel then
 						meta.timeLabel.Text = formatTime(remain)
 					end
+
+					-- FIXED: Update button text for active/next rewards
 					if meta.state == "Active" and meta.isNext then
 						if meta.buttonLabel and meta.showButtonTime then
 							meta.buttonLabel.Text = formatTime(remain)
 						end
-						if remain <= 0 then
-							meta.state = "Claimable"
-							applyState(card, "Claimable", 0, meta.showButtonTime)
-							if meta.button and not meta._boundClaim then
-								meta._boundClaim = true
-								meta.button.MouseButton1Click:Connect(function()
-									-- Prevent button spam
-									if claimingButtons[meta.button] then
-										return
-									end
-									claimingButtons[meta.button] = true
+					end
 
-									-- Trigger animation immediately for instant feedback
-									RewardAnimations.spawnRewardBurst(
-										meta.rewardAmount,
-										meta.rewardType,
-										nil,
-										meta.button
-									)
+					-- FIXED: Check ANY non-completed reward that reaches 0 (not just Active ones)
+					if meta.state ~= "Claimable" and meta.state ~= "Completed" and remain <= 0 then
+						-- FIXED: Track state change for notification badge update
+						print(
+							string.format(
+								"[PlaytimeRewards] ⭐ Reward %d became claimable! (was %s)",
+								meta.index,
+								meta.state
+							)
+						)
+						print(string.format("[PlaytimeRewards] ⭐ Applying Claimable state and binding click handler"))
+						meta.state = "Claimable"
+						applyState(card, "Claimable", 0, meta.showButtonTime)
+						stateChanged = true -- Mark that we need to update notification badge
 
-									-- Immediate UI update for better responsiveness
-									applyState(card, "Completed", 0, meta.showButtonTime)
-									allCards[card] = nil
+						if meta.button and not meta._boundClaim then
+							meta._boundClaim = true
+							meta.button.MouseButton1Click:Connect(function()
+								-- Prevent button spam
+								if claimingButtons[meta.button] then
+									return
+								end
+								claimingButtons[meta.button] = true
 
-									local ok, res = pcall(function()
-										return RF_Claim:InvokeServer(meta.index)
-									end)
-									if ok and type(res) == "table" and res.ok then
-										-- Server confirmed success
-										-- Quick re-render
-										task.defer(render)
-									else
-										-- Revert UI if server failed (rare case)
-										print("WARNING: Server claim failed, should revert UI", res)
-									end
-									-- Re-enable button after a short delay
-									task.delay(1.0, function()
-										claimingButtons[meta.button] = nil
-									end)
+								-- Trigger animation immediately for instant feedback
+								RewardAnimations.spawnRewardBurst(meta.rewardAmount, meta.rewardType, nil, meta.button)
+
+								-- Immediate UI update for better responsiveness
+								applyState(card, "Completed", 0, meta.showButtonTime)
+								allCards[card] = nil
+
+								local ok, res = pcall(function()
+									return RF_Claim:InvokeServer(meta.index)
 								end)
-							end
+								if ok and type(res) == "table" and res.ok then
+									-- Server confirmed success
+									-- Quick re-render
+									task.defer(render)
+								else
+									-- Revert UI if server failed (rare case)
+									print("WARNING: Server claim failed, should revert UI", res)
+								end
+								-- Re-enable button after a short delay
+								task.delay(1.0, function()
+									claimingButtons[meta.button] = nil
+								end)
+							end)
 						end
 					end
 				end
 			end
+		end
+
+		-- FIXED: Update notification badge when any reward becomes newly claimable
+		if stateChanged then
+			-- Recalculate total claimable count
+			local claimableCount = 0
+			local debugStates = {}
+			for card, meta in pairs(allCards) do
+				if type(meta) == "table" then
+					table.insert(debugStates, string.format("Reward %d: %s", meta.index, meta.state))
+					if meta.state == "Claimable" and not meta.claimed then
+						claimableCount = claimableCount + 1
+					end
+				end
+			end
+			print(
+				string.format(
+					"[PlaytimeRewards] 🎯 Updating notification badge: %d claimable rewards",
+					claimableCount
+				)
+			)
+			print(string.format("[PlaytimeRewards] 🎯 All reward states: %s", table.concat(debugStates, ", ")))
+			updateNotificationBadge(claimableCount)
 		end
 	end)
 end
@@ -283,6 +318,7 @@ render = function()
 	end
 	baseElapsed = tonumber(payload.elapsed) or 0
 	renderClock = os.clock()
+	print(string.format("[PlaytimeRewards] 🚀 Rendering rewards, elapsed time: %d seconds", baseElapsed))
 	local root, frame, scroll = getGui()
 	if not (frame or scroll) then
 		return
@@ -422,8 +458,28 @@ render = function()
 	end
 	ensureCountdownLoop()
 
+	-- Log initial states for debugging
+	local initialStates = {}
+	for card, meta in pairs(allCards) do
+		if type(meta) == "table" then
+			table.insert(
+				initialStates,
+				string.format(
+					"Reward %d: %s (remaining: %ds)",
+					meta.index,
+					meta.state,
+					math.max(0, (meta.seconds or 0) - baseElapsed)
+				)
+			)
+		end
+	end
+	print(
+		string.format("[PlaytimeRewards] 📋 Initial render complete. States: %s", table.concat(initialStates, ", "))
+	)
+
 	-- Update notification badge
 	updateNotificationBadge(claimableCount)
+	print(string.format("[PlaytimeRewards] 🔔 Notification badge updated: %d claimable", claimableCount))
 end
 
 -- Render on spawn and when the GUI appears
