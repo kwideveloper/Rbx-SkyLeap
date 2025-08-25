@@ -23,7 +23,6 @@ local Style = require(ReplicatedStorage.Movement.Style)
 local Grapple = require(ReplicatedStorage.Movement.Grapple)
 local VerticalClimb = require(ReplicatedStorage.Movement.VerticalClimb)
 local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
-local Powerups = require(ReplicatedStorage.Movement.Powerups)
 local FX = require(ReplicatedStorage.Movement.FX)
 
 -- One-shot FX helper: plays ReplicatedStorage/FX/<name> once at character position
@@ -952,9 +951,6 @@ local function ensureClientState()
 end
 
 ensureClientState()
-
--- Initialize powerup system
-Powerups.init()
 
 -- Apply powerup effects to authoritative local state so HUD doesn't revert
 PowerupActivatedEvt.OnClientEvent:Connect(function(powerupTag, success, partName, quantity, partPosition)

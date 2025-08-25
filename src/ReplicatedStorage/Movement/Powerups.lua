@@ -1,6 +1,5 @@
 -- Powerups system for SkyLeap (Client-side)
 -- Handles powerup detection and communicates with server
-
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 local RunService = game:GetService("RunService")
@@ -26,14 +25,33 @@ local POWERUP_TAGS = {
 	"AddAllSkills",
 }
 
--- Helper function to check if a part is on local cooldown (for UI feedback)
-local function isOnLocalCooldown(part)
+-- Debouncing system to prevent multiple rapid touches of same powerup
+local touchDebounce = {}
+local DEBOUNCE_TIME = 0.1 -- Very short debounce to prevent rapid touch events
+
+-- Helper function to check if a part is on touch debounce
+local function isOnTouchDebounce(part)
+	local key = tostring(part)
+	local lastTouch = touchDebounce[key]
+	if not lastTouch then
+		return false
+	end
+	return (os.clock() - lastTouch) < DEBOUNCE_TIME
+end
+
+-- Helper function to set part on touch debounce
+local function setTouchDebounce(part)
+	touchDebounce[tostring(part)] = os.clock()
+end
+
+-- Helper function to check if a part is on server cooldown (for UI feedback)
+local function isOnServerCooldown(part)
 	local cooldownTime = SharedUtils.getAttributeOrDefault(part, "Cooldown", Config.PowerupCooldownSecondsDefault)
 	return SharedUtils.isOnCooldown(tostring(part), cooldownTime)
 end
 
--- Helper function to set part on local cooldown (for UI feedback)
-local function setLocalCooldown(part)
+-- Helper function to set server cooldown (called when server confirms activation)
+local function setServerCooldown(part)
 	SharedUtils.setCooldown(tostring(part))
 end
 
@@ -96,10 +114,31 @@ powerupActivated.OnClientEvent:Connect(function(powerupTag, success, partName, q
 			end
 		end
 	end
+
+	-- Now set the server cooldown since server confirmed the powerup was processed
+	-- Find the part by name in workspace (this is for UI feedback)
+	local function findPartByName(name)
+		for _, part in ipairs(workspace:GetDescendants()) do
+			if part:IsA("BasePart") and part.Name == name then
+				local hasValidTag = SharedUtils.getFirstValidTag(part, POWERUP_TAGS)
+				if hasValidTag then
+					return part
+				end
+			end
+		end
+		return nil
+	end
+
+	local part = findPartByName(partName)
+	if part then
+		setServerCooldown(part)
+	end
+
 	-- One-shot FX for powerup pickup using new FX system
 	if partPosition then
 		FX.playPowerupPickup(player.Character, partPosition)
 	end
+
 	if success then
 		print("Powerup activated:", powerupTag, "from", partName, "qty:", quantity)
 	else
@@ -124,9 +163,15 @@ local function onPartTouched(hit, part)
 	print("[POWERUP DEBUG] Touched part:", part.Name)
 	print("[POWERUP DEBUG] Part tags:", table.concat(CollectionService:GetTags(part), ", "))
 
-	-- Check if part is on local cooldown (for immediate feedback)
-	if isOnLocalCooldown(part) then
-		print("[POWERUP DEBUG] Part is on cooldown, ignoring")
+	-- Check if part is on server cooldown (real cooldown from previous use)
+	if isOnServerCooldown(part) then
+		print("[POWERUP DEBUG] Part is on server cooldown, ignoring")
+		return
+	end
+
+	-- Check if part is on touch debounce (prevent rapid multiple touches)
+	if isOnTouchDebounce(part) then
+		print("[POWERUP DEBUG] Part touch debounced, ignoring rapid touch")
 		return
 	end
 
@@ -140,8 +185,8 @@ local function onPartTouched(hit, part)
 
 	print("[POWERUP DEBUG] Valid powerup found! Tag:", powerupTag)
 
-	-- Set local cooldown for immediate feedback
-	setLocalCooldown(part)
+	-- Set short touch debounce to prevent rapid multiple touch events
+	setTouchDebounce(part)
 
 	-- Send touch request to server for validation and effect application
 	powerupTouched:FireServer(part)
@@ -206,8 +251,9 @@ function Powerups.debugPowerupStatus(part)
 		"POWERUPS",
 		"Cooldown attribute: " .. (customCooldown and tostring(customCooldown) or "nil (using global default)")
 	)
-	SharedUtils.debugPrint("POWERUPS", "Local cooldown remaining: " .. tostring(cooldownRemaining) .. " seconds")
-	SharedUtils.debugPrint("POWERUPS", "Is on local cooldown: " .. tostring(isOnLocalCooldown(part)))
+	SharedUtils.debugPrint("POWERUPS", "Server cooldown remaining: " .. tostring(cooldownRemaining) .. " seconds")
+	SharedUtils.debugPrint("POWERUPS", "Is on server cooldown: " .. tostring(isOnServerCooldown(part)))
+	SharedUtils.debugPrint("POWERUPS", "Is on touch debounce: " .. tostring(isOnTouchDebounce(part)))
 end
 
 -- Get client state for local player
