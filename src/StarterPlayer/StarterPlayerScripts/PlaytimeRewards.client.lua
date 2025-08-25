@@ -204,6 +204,65 @@ local function adjustCanvas(container)
 	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(apply)
 end
 
+local function getTimeUntilNextReset()
+	-- Calculate time until next reset at 23:59:59 PM using server time
+	-- We'll use the same logic as the server to stay in sync
+	local now = os.time()
+	local serverDate = os.date("*t", now) -- Use local time (server time)
+
+	-- Check if we're past 23:59:59 for today
+	local currentHour = serverDate.hour
+	local currentMin = serverDate.min
+	local currentSec = serverDate.sec
+
+	local resetTime
+	if currentHour == 23 and currentMin == 59 and currentSec >= 59 then
+		-- Past 23:59:59, reset is tomorrow at 23:59:59
+		resetTime = os.time({
+			year = serverDate.year,
+			month = serverDate.month,
+			day = serverDate.day + 1,
+			hour = 23,
+			min = 59,
+			sec = 59,
+		})
+	else
+		-- Before 23:59:59, reset is today at 23:59:59
+		resetTime = os.time({
+			year = serverDate.year,
+			month = serverDate.month,
+			day = serverDate.day,
+			hour = 23,
+			min = 59,
+			sec = 59,
+		})
+	end
+
+	return resetTime - now
+end
+
+local function updateResetTimer()
+	-- Find the ResetFrame and update its text
+	local root, frame = getGui()
+	if not frame then
+		return
+	end
+
+	local resetFrame = frame:FindFirstChild("ResetFrame")
+	if not resetFrame then
+		return
+	end
+
+	local resetLabel = resetFrame:FindFirstChild("Reset")
+	if not resetLabel then
+		return
+	end
+
+	local timeUntilReset = getTimeUntilNextReset()
+	local formattedTime = formatTime(timeUntilReset)
+	resetLabel.Text = string.format("Resets daily: %s Remaining", formattedTime)
+end
+
 local function ensureCountdownLoop()
 	if allCards._loop then
 		return
@@ -290,6 +349,16 @@ local function ensureCountdownLoop()
 				end
 			end
 			updateNotificationBadge(claimableCount)
+		end
+
+		-- Update reset timer every second (synchronized with reward countdowns)
+		-- Use the same time base as rewards for perfect synchronization
+		local curElapsed = baseElapsed + (os.clock() - renderClock)
+		local secondsSinceLastUpdate = math.floor(curElapsed - (allCards._lastResetUpdate or 0))
+
+		if not allCards._lastResetUpdate or secondsSinceLastUpdate >= 1 then
+			allCards._lastResetUpdate = curElapsed
+			updateResetTimer()
 		end
 	end)
 end
@@ -441,6 +510,9 @@ render = function()
 		adjustCanvas(frame)
 	end
 	ensureCountdownLoop()
+
+	-- Update reset timer immediately
+	updateResetTimer()
 
 	-- Log initial states for debugging
 	local initialStates = {}

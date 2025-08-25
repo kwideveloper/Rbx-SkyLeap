@@ -16,8 +16,25 @@ local SESSIONS = {}
 
 local function getElapsedFor(userId)
 	local p = PlayerProfile.load(userId)
-	local today = os.date("!*t")
-	local dayKey = string.format("%04d%02d%02d", today.year, today.month, today.day)
+	-- Use server time to prevent player manipulation of system clock
+	-- os.time() returns the server's current time, not the player's local time
+	local serverTime = os.time() -- Server time (cannot be manipulated by players)
+	local serverDate = os.date("*t", serverTime) -- Server local date
+
+	-- Check if we're past 11:59:59 PM (23:59:59) for the current server day
+	local currentHour = serverDate.hour
+	local currentMin = serverDate.min
+	local currentSec = serverDate.sec
+
+	local dayKey
+	if currentHour == 23 and currentMin == 59 and currentSec >= 59 then
+		-- Past 23:59:59, use next day
+		dayKey = string.format("%04d%02d%02d", serverDate.year, serverDate.month, serverDate.day + 1)
+	else
+		-- Before 23:59:59, use current day
+		dayKey = string.format("%04d%02d%02d", serverDate.year, serverDate.month, serverDate.day)
+	end
+
 	p.rewards = p.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
 	if p.rewards.lastPlaytimeDay ~= dayKey then
 		p.rewards.playtimeClaimed = {}

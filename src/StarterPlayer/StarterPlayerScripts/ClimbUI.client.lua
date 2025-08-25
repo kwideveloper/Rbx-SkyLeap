@@ -37,8 +37,6 @@ local function showUI(text)
 	currentlyShowing = text
 	textLabel.Text = text
 	interactionUI.Enabled = true
-
-	print("[ClimbUI] Showing:", text)
 end
 
 local function hideUI()
@@ -52,8 +50,6 @@ local function hideUI()
 
 	currentlyShowing = nil
 	interactionUI.Enabled = false
-
-	print("[ClimbUI] Hidden")
 end
 
 local function attachUIToCharacter(character)
@@ -64,7 +60,6 @@ local function attachUIToCharacter(character)
 	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
 	if humanoidRootPart then
 		interactionUI.Parent = humanoidRootPart
-		print("[ClimbUI] UI attached to character:", character.Name)
 	end
 end
 
@@ -114,18 +109,14 @@ local function setupUI()
 
 		-- Initially disabled
 		interactionUI.Enabled = false
-		print("[ClimbUI] UI cloned successfully")
 		return true
 	else
-		warn("[ClimbUI] Could not find UI template")
 		return false
 	end
 end
 
 -- Initialize when player spawns
 local function onCharacterAdded(character)
-	print("[ClimbUI] Character spawned, setting up UI...")
-
 	-- Wait for character to fully load
 	character:WaitForChild("HumanoidRootPart")
 
@@ -140,8 +131,6 @@ local function onCharacterAdded(character)
 
 	-- Attach UI to character
 	attachUIToCharacter(character)
-
-	print("[ClimbUI] UI ready for character:", character.Name)
 end
 
 -- Connect events
@@ -152,5 +141,3 @@ player.CharacterAdded:Connect(onCharacterAdded)
 
 -- Main update loop
 RunService.RenderStepped:Connect(updateUI)
-
-print("[ClimbUI] Client script loaded successfully")
