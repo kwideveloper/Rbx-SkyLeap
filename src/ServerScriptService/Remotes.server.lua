@@ -65,6 +65,7 @@ if RunService:IsStudio() then
 	-- Debug remotes for Playtime Rewards (DEVELOPMENT ONLY)
 	ensureRemoteFunction(remotesFolder, "DebugResetPlaytime")
 	ensureRemoteFunction(remotesFolder, "DebugUnlockNext")
+	ensureRemoteFunction(remotesFolder, "DebugGetPlaytimeStatus")
 end
 
 -- Currency remotes

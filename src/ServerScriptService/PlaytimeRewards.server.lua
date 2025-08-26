@@ -22,35 +22,48 @@ local function getElapsedFor(userId)
 	local serverDate = os.date("*t", serverTime) -- Server local date
 
 	-- Check if we're past 11:59:59 PM (23:59:59) for the current server day
+	-- Use a more robust check to avoid edge cases with server time precision
 	local currentHour = serverDate.hour
 	local currentMin = serverDate.min
 	local currentSec = serverDate.sec
 
 	local dayKey
-	if currentHour == 23 and currentMin == 59 and currentSec >= 59 then
-		-- Past 23:59:59, use next day
+	local isEndOfDay = (currentHour == 23 and currentMin == 59 and currentSec >= 55) -- Changed from 59 to 55 for safety margin
+
+	if isEndOfDay then
+		-- Past 23:59:55, use next day (giving 5 second buffer to avoid timing issues)
 		dayKey = string.format("%04d%02d%02d", serverDate.year, serverDate.month, serverDate.day + 1)
 	else
-		-- Before 23:59:59, use current day
+		-- Before 23:59:55, use current day
 		dayKey = string.format("%04d%02d%02d", serverDate.year, serverDate.month, serverDate.day)
 	end
 
 	p.rewards = p.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
-	if p.rewards.lastPlaytimeDay ~= dayKey then
+
+	local lastDay = p.rewards.lastPlaytimeDay
+	local accBeforeReset = tonumber(p.rewards.playtimeAccumulatedSeconds) or 0
+
+	if lastDay ~= dayKey then
 		p.rewards.playtimeClaimed = {}
 		p.rewards.lastPlaytimeDay = dayKey
 		p.rewards.playtimeAccumulatedSeconds = 0
 		PlayerProfile.save(userId)
 	end
+
 	local acc = tonumber(p.rewards.playtimeAccumulatedSeconds) or 0
 	local playing = 0
+
+	-- Find current session for this user (more robust search)
 	for plr, s in pairs(SESSIONS) do
-		if plr.UserId == userId and s.start then
-			playing = math.max(0, os.time() - s.start)
+		if plr and plr.UserId == userId and s and s.start then
+			local sessionTime = math.max(0, os.time() - s.start)
+			playing = sessionTime
 			break
 		end
 	end
-	return acc + playing
+
+	local total = acc + playing
+	return total
 end
 
 local function serializeFor(player)
@@ -65,6 +78,7 @@ local function serializeFor(player)
 			end
 		end
 	end
+
 	-- Determine the next unclaimed index (smallest time requirement that's not claimed)
 	local nextIndex = nil
 	local smallestTime = math.huge
@@ -77,8 +91,12 @@ local function serializeFor(player)
 			end
 		end
 	end
+
 	local list = {}
 	for i, entry in ipairs(RewardsConfig.Rewards or {}) do
+		local remaining = entry.seconds - elapsed
+		local isClaimable = not claimed[i] and elapsed >= entry.seconds
+
 		table.insert(list, {
 			index = i,
 			seconds = entry.seconds,
@@ -89,6 +107,7 @@ local function serializeFor(player)
 			next = (nextIndex == i),
 		})
 	end
+
 	return { elapsed = elapsed, rewards = list }
 end
 
@@ -131,11 +150,47 @@ RF_Claim.OnServerInvoke = function(player, index)
 end
 
 Players.PlayerAdded:Connect(function(plr)
-	SESSIONS[plr] = { start = os.time() }
+	local userId = plr.UserId
+	local currentTime = os.time()
+
+	-- Load current profile to check existing time and validate data integrity
+	local prof = PlayerProfile.load(userId)
+	local existingAccumulated = 0
+
+	if prof and prof.rewards then
+		existingAccumulated = tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0
+
+		-- Validate that the accumulated time is reasonable (not negative, not excessively high)
+		if existingAccumulated < 0 then
+			prof.rewards.playtimeAccumulatedSeconds = 0
+			PlayerProfile.save(userId)
+			existingAccumulated = 0
+		elseif existingAccumulated > 86400 then -- More than 24 hours in a single day
+			prof.rewards.playtimeAccumulatedSeconds = 86400
+			PlayerProfile.save(userId)
+			existingAccumulated = 86400
+		end
+	end
+
+	SESSIONS[plr] = { start = currentTime }
 end)
 
--- Clean up sessions when players leave (but don't save data - handled by 30s auto-save)
+-- Clean up sessions when players leave (save data immediately before cleanup)
 Players.PlayerRemoving:Connect(function(plr)
+	if SESSIONS[plr] and SESSIONS[plr].start then
+		local sessionStart = SESSIONS[plr].start
+		local currentTime = os.time()
+		local delta = math.max(0, currentTime - sessionStart)
+
+		local prof = PlayerProfile.load(plr.UserId)
+		prof.rewards = prof.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
+
+		local accumulatedBefore = tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0
+		local accumulatedAfter = accumulatedBefore + delta
+
+		prof.rewards.playtimeAccumulatedSeconds = accumulatedAfter
+		PlayerProfile.save(plr.UserId)
+	end
 	SESSIONS[plr] = nil
 end)
 
@@ -149,8 +204,11 @@ task.spawn(function()
 				local prof = PlayerProfile.load(plr.UserId)
 				prof.rewards = prof.rewards
 					or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
-				prof.rewards.playtimeAccumulatedSeconds = (tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0)
-					+ delta
+
+				local accumulatedBefore = tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0
+				local accumulatedAfter = accumulatedBefore + delta
+
+				prof.rewards.playtimeAccumulatedSeconds = accumulatedAfter
 				PlayerProfile.save(plr.UserId)
 			end
 		end
@@ -208,4 +266,61 @@ DebugUnlockNext.OnServerInvoke = function(player)
 		return { success = true, totalTime = newTime, unlockedCount = unlockedCount }
 	end
 	return { success = false, reason = "Profile not found" }
+end
+
+-- Debug function to check current playtime status
+local DebugGetStatus = Remotes:WaitForChild("DebugGetPlaytimeStatus")
+DebugGetStatus.OnServerInvoke = function(player)
+	local userId = player.UserId
+	local prof = PlayerProfile.load(userId)
+
+	local result = {
+		userId = userId,
+		playerName = player.Name,
+		serverTime = os.time(),
+		sessionInfo = "No active session",
+	}
+
+	-- Check if player has active session
+	for plr, s in pairs(SESSIONS) do
+		if plr.UserId == userId and s.start then
+			result.sessionInfo =
+				string.format("Active session started at %d (%d seconds ago)", s.start, os.time() - s.start)
+			break
+		end
+	end
+
+	-- Profile information
+	if prof and prof.rewards then
+		result.profileInfo = {
+			lastPlaytimeDay = prof.rewards.lastPlaytimeDay or "Never",
+			playtimeAccumulatedSeconds = tonumber(prof.rewards.playtimeAccumulatedSeconds) or 0,
+			claimedRewards = prof.rewards.playtimeClaimed or {},
+		}
+	else
+		result.profileInfo = "No profile data"
+	end
+
+	-- Calculate current elapsed time
+	local elapsed = getElapsedFor(userId)
+	result.calculatedElapsed = elapsed
+
+	-- Format times for readability
+	local function formatTime(seconds)
+		local h = math.floor(seconds / 3600)
+		local m = math.floor((seconds % 3600) / 60)
+		local s = seconds % 60
+		if h > 0 then
+			return string.format("%dh %dm %ds", h, m, s)
+		else
+			return string.format("%dm %ds", m, s)
+		end
+	end
+
+	result.formattedElapsed = formatTime(elapsed)
+	if result.profileInfo ~= "No profile data" then
+		result.formattedAccumulated = formatTime(result.profileInfo.playtimeAccumulatedSeconds)
+	end
+
+	return result
 end

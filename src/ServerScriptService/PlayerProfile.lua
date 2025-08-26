@@ -134,7 +134,6 @@ function PlayerProfile.load(userId)
 
 	-- STEP 2: Only use UpdateAsync if migration is actually needed
 	if needsMigration then
-		print(string.format("[PlayerProfile] Migrating profile for user %s", userId))
 		local ok2, err = pcall(function()
 			loaded = store:UpdateAsync(keyFor(userId), function(old)
 				local migrated = migrate(old or defaultProfile())
@@ -169,13 +168,6 @@ local function forceSave(userId)
 	local lastSave = LAST_SAVE[userId] or 0
 	local timeSinceLastSave = os.time() - lastSave
 	if timeSinceLastSave < 1 then
-		print(
-			string.format(
-				"[PlayerProfile] forceSave THROTTLED for user %s (last save %ds ago)",
-				userId,
-				timeSinceLastSave
-			)
-		)
 		return true -- Return success since data is already recent
 	end
 
@@ -195,8 +187,6 @@ local function forceSave(userId)
 
 	if not success then
 		warn(string.format("[PlayerProfile] forceSave FAILED for user %s: %s", userId, tostring(err)))
-	else
-		print(string.format("[PlayerProfile] forceSave SUCCESS for user %s", userId))
 	end
 
 	return success
@@ -264,7 +254,6 @@ local function applyChanges(userId, changes)
 	-- Check if we should save now
 	local shouldSaveNow, reason = shouldSave(userId)
 	if shouldSaveNow then
-		print(string.format("[PlayerProfile] Saving %s due to: %s", userId, reason))
 		return forceSave(userId)
 	end
 
@@ -279,18 +268,13 @@ end
 function PlayerProfile.release(userId)
 	userId = tostring(userId)
 
-	print(string.format("[PlayerProfile] ==> RELEASE: Starting for user %s", userId))
-
 	-- Check if profile exists
 	if not ACTIVE[userId] then
-		print(string.format("[PlayerProfile] ==> RELEASE: No active profile for user %s, skipping", userId))
 		return false
 	end
 
 	-- Force save any pending changes before cleanup
-	print(string.format("[PlayerProfile] ==> RELEASE: Force saving final data for user %s", userId))
 	local success = forceSave(userId)
-	print(string.format("[PlayerProfile] ==> RELEASE: Final save result for user %s: %s", userId, tostring(success)))
 
 	-- Clean up all memory
 	ACTIVE[userId] = nil
@@ -298,7 +282,6 @@ function PlayerProfile.release(userId)
 	PENDING_CHANGES[userId] = nil
 	LAST_SAVE[userId] = nil
 
-	print(string.format("[PlayerProfile] ==> RELEASE: Cleanup complete for user %s", userId))
 	return success
 end
 
@@ -315,7 +298,6 @@ function PlayerProfile.addTimePlayed(userId, minutes, onLeave)
 	if onLeave then
 		-- When called on player leave, just update in memory - don't save
 		profile.stats.timePlayedMinutes = (profile.stats.timePlayedMinutes or 0) + minutes
-		print(string.format("[PlayerProfile] Updated timePlayed for user %s on leave: +%d minutes", userId, minutes))
 	else
 		-- Normal operation - use batching
 		applyChanges(userId, { timePlayedMinutes = minutes })
@@ -339,7 +321,6 @@ function PlayerProfile.setMaxComboIfHigher(userId, value, onLeave)
 		if onLeave then
 			-- When called on player leave, just update in memory - don't save
 			profile.stats.maxCombo = value
-			print(string.format("[PlayerProfile] Updated maxCombo for user %s on leave: %d", userId, value))
 		else
 			-- Normal operation - use batching
 			applyChanges(userId, { maxCombo = value })
@@ -387,14 +368,6 @@ function PlayerProfile.addCoins(userId, amount)
 		-- Apply change directly to profile and force save
 		profile.stats.coins = math.max(0, (profile.stats.coins or 0) + amount)
 		local success = forceSave(userId)
-		print(
-			string.format(
-				"[PlayerProfile] CRITICAL: Added %d coins for user %s, save success: %s",
-				amount,
-				userId,
-				tostring(success)
-			)
-		)
 	else
 		-- Small amounts can use batching
 		applyChanges(userId, { coins = amount })
@@ -417,14 +390,6 @@ function PlayerProfile.addDiamonds(userId, amount)
 	-- Apply change directly to profile and force save
 	profile.stats.diamonds = math.max(0, (profile.stats.diamonds or 0) + amount)
 	local success = forceSave(userId)
-	print(
-		string.format(
-			"[PlayerProfile] CRITICAL: Added %d diamonds for user %s, save success: %s",
-			amount,
-			userId,
-			tostring(success)
-		)
-	)
 
 	return PlayerProfile.getBalances(userId)
 end
@@ -506,7 +471,6 @@ task.spawn(function()
 		for userId, _ in pairs(ACTIVE) do
 			local shouldSaveNow, reason = shouldSave(userId)
 			if shouldSaveNow then
-				print(string.format("[PlayerProfile] Auto-saving %s due to: %s", userId, reason))
 				forceSave(userId)
 			end
 		end
