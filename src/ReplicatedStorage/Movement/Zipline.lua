@@ -21,7 +21,7 @@ local function findNearestRope(rootPart)
 	-- Find all models called "Zipline" in the workspace
 	local ziplineModels = {}
 	for _, instance in ipairs(workspace:GetDescendants()) do
-		if instance:IsA("Model") and instance.Name == "Zipline" then
+		if instance.Name == "Zipline" then
 			table.insert(ziplineModels, instance)
 		end
 	end
