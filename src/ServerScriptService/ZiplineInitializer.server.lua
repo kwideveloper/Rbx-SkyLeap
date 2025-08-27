@@ -53,15 +53,6 @@ local function createRopeConstraint(ziplineObject)
 
 	-- Add to the root zipline object (where the tag is)
 	ropeConstraint.Parent = ziplineObject
-
-	print(
-		"ZiplineInitializer: Created RopeConstraint for",
-		ziplineObject:GetFullName(),
-		"between",
-		attachment0:GetFullName(),
-		"and",
-		attachment1:GetFullName()
-	)
 	return ropeConstraint
 end
 
@@ -72,9 +63,7 @@ local function initializeZipline(ziplineObject)
 	end
 
 	local ropeConstraint = createRopeConstraint(ziplineObject)
-	if ropeConstraint then
-		print("ZiplineInitializer: Successfully initialized zipline for", ziplineObject:GetFullName())
-	else
+	if not ropeConstraint then
 		warn("ZiplineInitializer: Failed to initialize zipline for", ziplineObject:GetFullName())
 	end
 end
@@ -93,7 +82,6 @@ local function onUntagged(instance)
 	local ropeConstraint = instance:FindFirstChildOfClass("RopeConstraint")
 	if ropeConstraint then
 		ropeConstraint:Destroy()
-		print("ZiplineInitializer: Cleaned up RopeConstraint for", instance:GetFullName())
 	end
 end
 
@@ -113,10 +101,6 @@ if Config.ZiplineAutoInitialize then
 
 	-- Initialize existing ziplines
 	initializeExistingZiplines()
-
-	print("ZiplineInitializer: System initialized and ready")
-else
-	print("ZiplineInitializer: Auto-initialization disabled by configuration")
 end
 
 return ZiplineInitializer

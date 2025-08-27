@@ -138,12 +138,6 @@ powerupActivated.OnClientEvent:Connect(function(powerupTag, success, partName, q
 	if partPosition then
 		FX.playPowerupPickup(player.Character, partPosition)
 	end
-
-	if success then
-		print("Powerup activated:", powerupTag, "from", partName, "qty:", quantity)
-	else
-		print("Powerup consumed (server no-op), applied locally:", powerupTag, "from", partName, "qty:", quantity)
-	end
 end)
 
 -- Handle when local player's character touches a powerup part

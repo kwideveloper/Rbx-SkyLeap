@@ -2,6 +2,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage.Movement.Config)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -13,6 +14,7 @@ local debugGui = Instance.new("ScreenGui")
 debugGui.Name = "PlaytimeDebug"
 debugGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 debugGui.Parent = playerGui
+debugGui.Enabled = Config.PlaytimeDebugUI
 
 -- Container frame
 local frame = Instance.new("Frame")

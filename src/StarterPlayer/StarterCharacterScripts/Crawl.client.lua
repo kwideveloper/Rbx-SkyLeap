@@ -140,12 +140,6 @@ local function exitCrawl()
 		state.conn = nil
 	end
 	if state.collisionPart and state.origCollisionSize then
-		print(
-			"[Crawl] Restoring CollisionPart size from "
-				.. tostring(state.collisionPart.Size)
-				.. " to "
-				.. tostring(state.origCollisionSize)
-		) -- Debug
 		state.collisionPart.Size = state.origCollisionSize
 	end
 	-- Restore joint offset if we adjusted it
@@ -242,11 +236,9 @@ local function enterCrawl(autoActivated)
 		if slideOriginalSize and slideOriginalSize.Value and autoActivated then
 			-- Use the original size from slide system
 			state.origCollisionSize = slideOriginalSize.Value
-			print("[Crawl] Using slide original size: " .. tostring(state.origCollisionSize)) -- Debug
 		elseif not state.origCollisionSize then
 			-- Use current size as fallback
 			state.origCollisionSize = state.collisionPart.Size
-			print("[Crawl] Using current size as original: " .. tostring(state.origCollisionSize)) -- Debug
 		end
 	end
 	if state.collisionPart and state.origCollisionSize then
@@ -299,9 +291,6 @@ local function enterCrawl(autoActivated)
 		if isSprintingValue and isSprintingValue.Value then
 			isSprintingValue.Value = false
 		end
-		if state.humanoid.WalkSpeed ~= targetSpeed then
-			print("[Crawl] Forcing walkspeed from " .. state.humanoid.WalkSpeed .. " to " .. targetSpeed)
-		end
 		state.humanoid.WalkSpeed = targetSpeed
 		-- Disable jumping while crawling
 		state.humanoid.JumpHeight = 0
@@ -313,7 +302,6 @@ local function enterCrawl(autoActivated)
 		end
 		-- If user requested exit, attempt auto-stand when there is clearance
 		if state.wantExit and hasStandClearance() then
-			print("[Crawl] Auto-exit detected - clearance available, exiting crawl") -- Debug
 			exitCrawl()
 		end
 	end)
@@ -370,7 +358,6 @@ local function setup()
 		if cs then
 			local shouldActivateCrawl = cs:FindFirstChild("ShouldActivateCrawl")
 			if shouldActivateCrawl and shouldActivateCrawl.Value and not state.isCrawling then
-				-- print("[Crawl] Auto-activation detected from slide system") -- Debug
 				shouldActivateCrawl.Value = false
 				enterCrawl(true) -- true = auto-activated
 			end

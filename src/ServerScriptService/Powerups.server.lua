@@ -43,12 +43,6 @@ end
 -- Get existing ClientState folder (created by ParkourController)
 local function getClientState()
 	local clientState = ReplicatedStorage:FindFirstChild("ClientState")
-	if clientState then
-		print("[POWERUP SERVER DEBUG] ClientState children:")
-		for _, child in ipairs(clientState:GetChildren()) do
-			print("[POWERUP SERVER DEBUG]   -", child.Name, ":", child.ClassName)
-		end
-	end
 	return clientState
 end
 
@@ -56,20 +50,17 @@ end
 local function addStamina(player, part)
 	local cs = getClientState()
 	if not cs then
-		print("[POWERUP SERVER DEBUG] No ClientState found!")
 		return false
 	end
 
 	local staminaValue = cs:FindFirstChild("Stamina")
 	local maxStaminaValue = cs:FindFirstChild("MaxStamina")
 	if not staminaValue then
-		print("[POWERUP SERVER DEBUG] No stamina value found in ClientState!")
 		return false
 	end
 
 	-- Get quantity from attribute or use default percentage
 	local percentage = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupStaminaPercentDefault)
-	print("[POWERUP SERVER DEBUG] Stamina percentage to add:", percentage)
 
 	-- Calculate stamina to add (percentage of max stamina)
 	local maxStamina = maxStaminaValue and maxStaminaValue.Value or Config.StaminaMax
@@ -78,8 +69,6 @@ local function addStamina(player, part)
 	-- Add to current stamina, capped at max
 	local newStamina = math.min(maxStamina, staminaValue.Value + staminaToAdd)
 	staminaValue.Value = newStamina
-
-	print("[POWERUP SERVER DEBUG] Stamina updated:", staminaValue.Value)
 	return true
 end
 
@@ -87,27 +76,22 @@ end
 local function addJump(player, part)
 	local cs = getClientState()
 	if not cs then
-		print("[POWERUP SERVER DEBUG] [JUMP] No ClientState found!")
 		return false
 	end
 
 	local doubleJumpCharges = cs:FindFirstChild("DoubleJumpCharges")
 	if not doubleJumpCharges then
-		print("[POWERUP SERVER DEBUG] [JUMP] No DoubleJumpCharges found in ClientState!")
 		return false
 	end
 
 	-- Get quantity from attribute or use default
 	local quantity = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupJumpCountDefault)
-	print("[POWERUP SERVER DEBUG] [JUMP] Quantity to add:", quantity)
 
 	-- Only add if player doesn't have double jump charges
 	if doubleJumpCharges.Value <= 0 then
 		doubleJumpCharges.Value = math.min(Config.DoubleJumpMax or 1, quantity)
-		print("[POWERUP SERVER DEBUG] [JUMP] Jump charges granted:", doubleJumpCharges.Value)
 		return true
 	else
-		print("[POWERUP SERVER DEBUG] [JUMP] Player already has jump charges:", doubleJumpCharges.Value)
 		return false
 	end
 end
@@ -116,7 +100,6 @@ end
 local function addDash(player, part)
 	local cs = getClientState()
 	if not cs then
-		print("[POWERUP SERVER DEBUG] [DASH] No ClientState found!")
 		return false
 	end
 
@@ -126,18 +109,15 @@ local function addDash(player, part)
 	local Abilities = abilitiesModule and require(abilitiesModule) or nil
 
 	if not Abilities then
-		print("[POWERUP SERVER DEBUG] [DASH] Abilities module not found!")
 		return false
 	end
 
 	if not (Abilities.isDashAvailable and Abilities.grantDash) then
-		print("[POWERUP SERVER DEBUG] [DASH] Abilities module functions not available!")
 		return false
 	end
 
 	-- Get quantity from attribute or use default
 	local quantity = SharedUtils.getAttributeOrDefault(part, "Quantity", Config.PowerupDashCountDefault)
-	print("[POWERUP SERVER DEBUG] [DASH] Quantity to add:", quantity)
 
 	-- Check current dash availability
 	local character = player.Character
@@ -146,15 +126,12 @@ local function addDash(player, part)
 	end
 
 	local isDashAvailable = Abilities.isDashAvailable(character)
-	print("[POWERUP SERVER DEBUG] [DASH] Is dash currently available:", isDashAvailable)
 
 	-- Only grant if player doesn't have dash available
 	if not isDashAvailable then
 		Abilities.grantDash(character, quantity)
-		print("[POWERUP SERVER DEBUG] [DASH] Dash charges granted")
 		return true
 	else
-		print("[POWERUP SERVER DEBUG] [DASH] Player already has dash available")
 		return false
 	end
 end
@@ -181,7 +158,6 @@ local function addAllSkills(player, part)
 			local doubleJumpCharges = cs:FindFirstChild("DoubleJumpCharges")
 			if doubleJumpCharges then
 				doubleJumpCharges.Value = Config.DoubleJumpMax or 1
-				print("[POWERUP SERVER DEBUG] [ALL SKILLS] Jump charges set to max:", doubleJumpCharges.Value)
 			end
 		end
 	end
@@ -194,7 +170,6 @@ local function addAllSkills(player, part)
 		local Abilities = abilitiesModule and require(abilitiesModule) or nil
 		if Abilities and Abilities.grantDash and player.Character then
 			Abilities.grantDash(player.Character, dashAdd)
-			print("[POWERUP SERVER DEBUG] [ALL SKILLS] Dash granted")
 		end
 	end
 
@@ -238,7 +213,6 @@ local function validateTouch(player, part)
 	local now = os.clock()
 
 	if lastTouch and (now - lastTouch) < SPAM_PROTECTION_WINDOW then
-		print(string.format("[POWERUP SERVER DEBUG] Spam protection triggered for %s on %s", player.Name, part.Name))
 		return false
 	end
 
@@ -263,40 +237,30 @@ end
 
 -- Handle powerup touch request from client
 powerupTouched.OnServerEvent:Connect(function(player, part)
-	print("[POWERUP SERVER DEBUG] Touch request from", player.Name, "for part:", part and part.Name or "NIL")
-
 	-- Validate the part exists and is a powerup
 	if not part or not part:IsA("BasePart") or not part.Parent then
-		print("[POWERUP SERVER DEBUG] Invalid part")
 		return
 	end
 
 	-- Enhanced touch validation
 	if not validateTouch(player, part) then
-		print("[POWERUP SERVER DEBUG] Touch validation failed")
 		return
 	end
 
 	-- Check if part is on cooldown
 	if isOnCooldown(part) then
-		print("[POWERUP SERVER DEBUG] Part is on cooldown")
 		return
 	end
 
 	-- Get first valid powerup tag (optimized)
 	local powerupTag = SharedUtils.getFirstValidTag(part, POWERUP_TAGS)
-	print("[POWERUP SERVER DEBUG] Part tags:", table.concat(CollectionService:GetTags(part), ", "))
 
 	if not powerupTag then
-		print("[POWERUP SERVER DEBUG] No valid powerup tag found")
 		return
 	end
 
-	print("[POWERUP SERVER DEBUG] Processing powerup:", powerupTag)
-
 	-- Apply powerup effect
 	local success = handlePowerupEffect(player, part, powerupTag)
-	print("[POWERUP SERVER DEBUG] Effect success:", success)
 
 	-- Set cooldown regardless of success (powerup is consumed)
 	setCooldown(part)

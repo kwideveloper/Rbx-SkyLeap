@@ -4,6 +4,7 @@ local Config = {}
 
 Config.LoadingScreenEnabled = false
 Config.LoadingScreenDuration = 4
+Config.PlaytimeDebugUI = false
 
 -- Core humanoid speeds - OPTIMIZED FOR HIGH VELOCITY BUNNY HOP
 Config.BaseWalkSpeed = 25 -- INCREASED: Better base speed for momentum building
@@ -320,7 +321,7 @@ Config.VaultUpMax = 26
 
 -- Ledge Hanging (when mantle fails due to insufficient clearance)
 Config.LedgeHangEnabled = true
-Config.DebugLedgeHang = true
+Config.DebugLedgeHang = false
 Config.MantleLedgeHangCooldown = 0.25 -- seconds to wait after successful mantle before allowing ledge hang
 Config.LedgeHangCooldown = 3.0 -- seconds to wait after ledge hang before allowing another hang
 Config.LedgeHangDetectionDistance = 3.5 -- max distance to detect ledge

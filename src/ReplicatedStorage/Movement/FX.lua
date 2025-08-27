@@ -229,7 +229,7 @@ function FX.play(fxName, character, customPosition, overrideScale)
 	for _, part in ipairs(pathParts) do
 		fxFolder = fxFolder:FindFirstChild(part)
 		if not fxFolder then
-			print("[FX] Path not found:", config.path, "at part:", part)
+			-- print("[FX] Path not found:", config.path, "at part:", part)
 			return
 		end
 	end

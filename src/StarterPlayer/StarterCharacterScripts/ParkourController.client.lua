@@ -1827,7 +1827,6 @@ RunService.RenderStepped:Connect(function(dt)
 
 		-- Auto-release if no stamina
 		if state.stamina.current <= 0 then
-			print("[DEBUG] Stamina depleted, stopping ledge hang and setting cooldown")
 			LedgeHang.stop(character, true) -- true = manual release (same as C key)
 			-- Set a temporary cooldown to prevent immediate re-hang due to stamina depletion
 			state._staminaDepletedHangCooldown = os.clock() + (Config.LedgeHangStaminaDepletionCooldown or 2.0)
@@ -1960,8 +1959,6 @@ RunService.RenderStepped:Connect(function(dt)
 					and not (state._staminaDepletedHangCooldown and os.clock() < state._staminaDepletedHangCooldown)
 				then
 					ok = LedgeHang.tryStartFromMantleData(character, fakeHit, nearestTopY)
-				else
-					print("[DEBUG] Skipping tagged ledge hang - insufficient stamina or on cooldown")
 				end
 				if Config.DebugLedgeHang then
 					print(

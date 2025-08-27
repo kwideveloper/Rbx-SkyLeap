@@ -15,7 +15,6 @@ if not leaderboardFolder then
 	leaderboardFolder = Instance.new("Folder")
 	leaderboardFolder.Name = "Leaderboard"
 	leaderboardFolder.Parent = ReplicatedStorage
-	print("[Leaderboard] Created Leaderboard folder in ReplicatedStorage")
 end
 
 -- OPTIMIZED: No longer loads profile here - PlayerData.server.lua handles all leaderstats setup

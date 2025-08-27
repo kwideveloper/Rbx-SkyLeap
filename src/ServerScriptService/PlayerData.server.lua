@@ -16,9 +16,7 @@ local sessionState = {}
 
 local function onPlayerAdded(player)
 	-- OPTIMIZED: Load profile once and share across all systems
-	print(string.format("[PlayerData] Loading profile for %s (%d)", player.Name, player.UserId))
 	local p = PlayerProfile.load(player.UserId)
-	print(string.format("[PlayerData] Profile loaded for %s", player.Name))
 
 	local stats = Instance.new("Folder")
 	stats.Name = "leaderstats"
@@ -130,8 +128,6 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
-	print(string.format("[PlayerData] ==> LEAVE: Player %s leaving, consolidating all final data", player.Name))
-
 	-- Stop heartbeat for this player
 	if sessionState[player] then
 		sessionState[player].alive = false
@@ -165,7 +161,6 @@ Players.PlayerRemoving:Connect(function(player)
 	sessionState[player] = nil
 
 	-- FINAL COORDINATED SAVE: This does the single save with all final data
-	print(string.format("[PlayerData] ==> LEAVE: Releasing profile for %s (final save)", player.Name))
 	PlayerProfile.release(player.UserId)
 end)
 

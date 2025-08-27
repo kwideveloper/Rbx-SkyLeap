@@ -11,11 +11,8 @@ local player = Players.LocalPlayer
 local function onCharacterAdded(character)
 	-- Wait a moment to ensure all systems are loaded
 	task.wait(0.1)
-
 	-- Initialize powerup system
 	Powerups.init()
-
-	print("[PowerupInitializer] Powerup system initialized for", character.Name)
 end
 
 -- Connect to character spawning
