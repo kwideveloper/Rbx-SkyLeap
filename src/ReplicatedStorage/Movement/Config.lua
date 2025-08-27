@@ -2,12 +2,18 @@
 
 local Config = {}
 
+Config.LoadingScreenEnabled = false
+Config.LoadingScreenDuration = 4
+
 -- Core humanoid speeds - OPTIMIZED FOR HIGH VELOCITY BUNNY HOP
 Config.BaseWalkSpeed = 25 -- INCREASED: Better base speed for momentum building
 Config.SprintWalkSpeed = 50 -- INCREASED: Higher sprint speed to complement bunny hop
 -- Sprint acceleration ramp
 Config.SprintAccelSeconds = 0.50 -- REDUCED: Faster acceleration for better responsiveness
 Config.SprintDecelSeconds = 0.30 -- SLIGHTLY INCREASED: Smoother deceleration for better control
+
+-- Landing roll
+Config.MinRollDrop = 25
 
 -- Stamina
 Config.StaminaMax = 300 -- 200
