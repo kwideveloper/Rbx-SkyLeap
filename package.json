@@ -1,0 +1,18 @@
+{
+  "name": "sky-leap",
+  "version": "1.0.0",
+  "description": "SkyLeap - Parkour game for Roblox",
+  "scripts": {
+    "files": "node tools/create-meta-files.js",
+    "rojo:serve": "rojo serve",
+    "rojo:build": "rojo build",
+    "rojo:status": "rojo status"
+  },
+  "keywords": ["roblox", "rojo", "parkour", "game"],
+  "author": "SkyLeap Team",
+  "license": "MIT",
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
