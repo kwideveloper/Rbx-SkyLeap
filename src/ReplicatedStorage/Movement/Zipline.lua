@@ -1,6 +1,7 @@
 -- Zipline module: ride along RopeConstraint between two attachments
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
+local CollectionService = game:GetService("CollectionService")
 
 local Zipline = {}
 
@@ -13,55 +14,54 @@ local function getCharacterParts(character)
 	return root, humanoid
 end
 
--- Find the closest rope setup near the character. We look for any model named "Zipline"
+-- Find the closest rope setup near the character. We look for any object tagged with the configured zipline tag
 -- that contains a RopeConstraint with two attachments.
 local function findNearestRope(rootPart)
 	local closest, closestDistSq = nil, math.huge
 
-	-- Find all models called "Zipline" in the workspace
-	local ziplineModels = {}
-	for _, instance in ipairs(workspace:GetDescendants()) do
-		if instance.Name == "Zipline" then
-			table.insert(ziplineModels, instance)
-		end
-	end
+	-- Find all objects tagged with the configured zipline tag
+	local tagName = Config.ZiplineTagName or "Zipline"
+	local ziplineObjects = CollectionService:GetTagged(tagName)
 
-	if #ziplineModels == 0 then
+	if #ziplineObjects == 0 then
 		return nil
 	end
 
-	-- Look for ROPECONSTRAINTS within each Zipline model
-	for _, model in ipairs(ziplineModels) do
-		for _, constraint in ipairs(model:GetDescendants()) do
-			if constraint:IsA("RopeConstraint") then
-				local a0 = constraint.Attachment0
-				local a1 = constraint.Attachment1
-				if a0 and a1 and a0.Parent and a1.Parent then
-					local p0 = a0.WorldPosition
-					local p1 = a1.WorldPosition
-					-- Measure distance to the rope segment
-					local p = rootPart.Position
-					local ap = p - p0
-					local ab = p1 - p0
-					local t = 0
-					local abLenSq = ab:Dot(ab)
-					if abLenSq > 0 then
-						t = math.clamp(ap:Dot(ab) / abLenSq, 0, 1)
-					end
-					local closestPoint = p0 + ab * t
-					local distSq = (p - closestPoint).Magnitude ^ 2
-					if distSq < closestDistSq then
-						closestDistSq = distSq
-						closest = {
-							rope = constraint,
-							model = model, -- Store reference to the model to access attributes
-							a0 = a0,
-							a1 = a1,
-							p0 = p0,
-							p1 = p1,
-							t = t,
-							closestPoint = closestPoint,
-						}
+	-- Look for ROPECONSTRAINTS within each tagged object
+	for _, ziplineObject in ipairs(ziplineObjects) do
+		if ziplineObject:IsDescendantOf(workspace) then
+			for _, constraint in ipairs(ziplineObject:GetDescendants()) do
+				if constraint:IsA("RopeConstraint") then
+					constraint.Visible = true
+					local a0 = constraint.Attachment0
+					local a1 = constraint.Attachment1
+					if a0 and a1 and a0.Parent and a1.Parent then
+						local p0 = a0.WorldPosition
+						local p1 = a1.WorldPosition
+						-- Measure distance to the rope segment
+						local p = rootPart.Position
+						local ap = p - p0
+						local ab = p1 - p0
+						local t = 0
+						local abLenSq = ab:Dot(ab)
+						if abLenSq > 0 then
+							t = math.clamp(ap:Dot(ab) / abLenSq, 0, 1)
+						end
+						local closestPoint = p0 + ab * t
+						local distSq = (p - closestPoint).Magnitude ^ 2
+						if distSq < closestDistSq then
+							closestDistSq = distSq
+							closest = {
+								rope = constraint,
+								model = ziplineObject, -- Store reference to the tagged object to access attributes
+								a0 = a0,
+								a1 = a1,
+								p0 = p0,
+								p1 = p1,
+								t = t,
+								closestPoint = closestPoint,
+							}
+						end
 					end
 				end
 			end

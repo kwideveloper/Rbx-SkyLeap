@@ -202,6 +202,9 @@ Config.ZiplineSpeed = 45
 Config.ZiplineDetectionDistance = 7
 Config.ZiplineStickVelocity = 6
 Config.ZiplineEndDetachDistance = 2
+-- Zipline Tag System
+Config.ZiplineTagName = "Zipline" -- Tag name used to identify zipline objects
+Config.ZiplineAutoInitialize = true -- Whether to automatically create RopeConstraints for tagged objects
 
 -- Camera alignment (body yaw + head tracking)
 Config.CameraAlignEnabled = false
