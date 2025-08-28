@@ -151,11 +151,50 @@ CollectionService:AddTag(part, "AddStamina")
 - `ZiplineDetectionDistance` (number) - Maximum distance to detect zipline proximity. Default: 7
 - `ZiplineHeadOffset` (number) - Default vertical offset to hang below the line. Default: 5
 
+## 8. Hook Highlight Configuration
+
+**System Configuration (in Movement/HookHighlightConfig.lua):**
+- **Colors:** Customizable fill and outline colors for normal and cooldown states
+- **Properties:** Transparency, depth mode, and animation settings
+- **Performance:** Culling distance, batch updates, and maximum highlight count
+- **Effects:** Glow and pulse effects (optional)
+- **Detection:** Range, line of sight requirements, and priority system
+
+**Example Setup:**
+```lua
+-- Change to yellow color scheme
+local colors = HookHighlightConfig.getColorScheme("ALTERNATIVE_1")
+-- Enable pulse effect
+HookHighlightConfig.Effects.PULSE_ENABLED = true
+-- Adjust performance settings
+HookHighlightConfig.Performance.CULLING_DISTANCE = 150
+```
+
+## 9. Hook Cooldown Labels Configuration
+
+**Hook Cooldown Labels System:**
+- **Template**: Uses BillboardGui from ReplicatedStorage/UI/Hook/BillboardGui
+- **Animation**: Bounce-in effect (0.4s), smooth fade-out (0.3s)
+- **Range**: Only shows for hooks within Config.HookAutoRange (default: 90 studs)
+- **Formatting**: Smart time display (seconds, minutes, "Ready!")
+- **Performance**: Updates every 0.1 seconds to avoid constant text changes
+- **Auto-cleanup**: Removes labels when hooks are destroyed or out of range
+
+**Configuration Options:**
+- **Config.HookCooldownLabels** (bool): Enable/disable the entire system
+- **Config.HookAutoRange** (number): Maximum distance to show labels
+- **Config.HookTag** (string): Tag to identify hookable objects (default: "Hookable")
+
+**Customization:**
+- Modify the BillboardGui template in ReplicatedStorage/UI/Hook/BillboardGui
+- Adjust animation timing in HookCooldownLabels.client.lua
+- Change text formatting in the formatTimeRemaining function
+
 ---
 
 # UI Tags & Components
 
-## 8. Currency Display Tags
+## 10. Currency Display Tags
 
 **UI Elements (TextLabel/TextButton):**
 - `Coin` (Tag)  - Automatically displays and updates player's coin balance
@@ -169,7 +208,7 @@ CollectionService:AddTag(part, "AddStamina")
 
 ---
 
-## 9. Menu System Tags
+## 11. Menu System Tags
 
 **Interactive UI Elements (TextButton/ImageButton):**
 - `OpenMenu` (Tag) - Makes button automatically open/close associated menu frame
@@ -203,13 +242,28 @@ CollectionService:AddTag(button, "OpenMenu")
 
 ---
 
-## 10. Special Movement Tags
+## 12. Special Movement Tags
 
 **Parts/Models for Enhanced Movement:**
 - `Ledge` (Tag) - Enables automatic ledge hang detection
 - `LedgeFace` (String) (Attribute) - The face to which the player will grab - Values: Front,Back,Left,Right
 - `Hookable` (Tag) - Allows grappling hook attachment
 - `HookIgnoreLOS` (Tag) - Ignores line-of-sight blocking for grappling hook
+
+**Hook Highlight System:**
+- Automatically highlights the nearest hookable object when in range
+- Highlight color changes based on cooldown state (cyan when ready, red when on cooldown)
+- Configurable colors, transparency, and visual effects
+- Performance optimized with culling and batch updates
+
+**Hook Cooldown Labels:**
+- Automatically displays remaining cooldown time above hooks when they're on cooldown
+- Uses the BillboardGui template from ReplicatedStorage/UI/Hook/BillboardGui
+- Animates in with bounce effect when cooldown starts
+- Animates out with smooth transition when cooldown ends
+- Shows formatted time (e.g., "5.5s", "1m 30s", "Ready!")
+- Only visible for hooks within range (Config.HookAutoRange)
+- Automatically clones and manages labels for all hookable objects
 
 ---
 
@@ -277,6 +331,49 @@ attachment1.Parent = ziplineModel -- Can be anywhere in the hierarchy
 -- The RopeConstraint will be created automatically in the root "Ziplinexd" model
 -- with Visible = true, linking the two attachments found
 ```
+
+## Testing the Hook Cooldown Labels System
+
+**How to Test:**
+1. **Ensure BillboardGui Template Exists:**
+   - Verify that ReplicatedStorage/UI/Hook/BillboardGui exists
+   - The template should contain a TextLabel for displaying cooldown text
+
+2. **Hook Setup:**
+   - Create BaseParts with the "Hookable" tag
+   - Position them within range of the player (Config.HookAutoRange = 90 studs)
+
+3. **Expected Behavior:**
+   - When a hook is used, it goes on cooldown (Config.HookCooldownSeconds = 5.5s)
+   - A cooldown label appears above the hook with bounce animation
+   - Text shows remaining time (e.g., "5.5s", "4.2s", "Ready!")
+   - Label animates out smoothly when cooldown ends
+   - Labels only appear for hooks within range
+
+**Example Setup:**
+```lua
+-- Create a hookable object
+local hookPart = Instance.new("Part")
+hookPart.Name = "HookPoint"
+hookPart.Position = Vector3.new(0, 10, 0)
+hookPart.Size = Vector3.new(2, 2, 2)
+hookPart.Parent = workspace
+
+-- Add the Hookable tag
+CollectionService:AddTag(hookPart, "Hookable")
+
+-- The HookCooldownLabels system will automatically:
+-- - Create a label when the hook is in range
+-- - Show cooldown time when the hook is used
+-- - Animate the label in/out with bounce effects
+-- - Clean up when the hook is destroyed or out of range
+```
+
+**Troubleshooting:**
+- Check that Config.HookCooldownLabels = true in Movement/Config.lua
+- Verify the BillboardGui template exists in ReplicatedStorage/UI/Hook/
+- Ensure hooks have the "Hookable" tag
+- Check that hooks are within Config.HookAutoRange distance
 
 ---
 
