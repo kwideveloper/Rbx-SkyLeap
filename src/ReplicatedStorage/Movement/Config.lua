@@ -178,14 +178,33 @@ Config.WallSlideDetectionDistance = 4 -- 4
 Config.WallSlideGroundProximityStuds = 5 -- distance from feet to ground to exit slide
 Config.WallSlideDrainPerSecond = Config.SprintDrainPerSecond * 0.5
 
--- Climb
-Config.ClimbDetectionDistance = 4
-Config.ClimbSpeed = 12
-Config.ClimbStickVelocity = 3
-Config.ClimbStaminaDrainPerSecond = 8
--- Minimum stamina required to start climbing
-Config.ClimbMinStamina = 10
-Config.DebugClimb = false
+-- Climb system
+Config.ClimbEnabled = true
+Config.ClimbDetectionDistance = 3.5 -- how far to detect climbable walls
+Config.ClimbSpeed = 8 -- studs/s movement speed while climbing
+Config.ClimbStickVelocity = 8 -- how strongly to stick to the wall
+Config.ClimbMinStamina = 10 -- minimum stamina required to start climbing
+Config.ClimbStaminaDrainPerSecond = 15 -- stamina drain rate while climbing
+Config.ClimbMaxStamina = 100 -- maximum stamina for climbing
+Config.DebugClimb = true -- enable debug prints for climb system
+
+-- Climb-Mantle Integration
+Config.ClimbMantleIntegrationEnabled = true -- enable automatic climb state cleanup when mantle is executed
+Config.ClimbLedgeEdgeDetectionDistance = 0.3 -- distance threshold to detect when climbing near a ledge edge (much more restrictive)
+Config.ClimbLedgeEdgeHeightRange = { 0, 3 } -- height range (relative to player) to consider for ledge edge detection
+Config.ClimbLedgeEdgeDetectionEnabled = true -- enable ledge edge detection during climb (set to false to completely disable)
+Config.ClimbLedgeEdgeDetectionCompletelyDisabled = false -- set to true to completely bypass all ledge edge detection
+Config.ClimbAutoDisableForMantle = true -- automatically disable climb when player is at correct distance for mantle
+Config.ClimbLedgeEdgeMovementLimit = 0.3 -- limit upward movement when near ledge edge to prevent auto-mantle
+Config.ClimbLedgeEdgeRestrictiveDistance = 0.2 -- very restrictive distance to avoid interfering with normal mantle detection
+Config.ClimbLedgeEdgeMovementLimitEnabled = true -- enable limiting upward movement when near ledge edge
+Config.ClimbLedgeEdgeMovementLimitThreshold = 0.15 -- distance threshold to start limiting movement (very restrictive)
+Config.ClimbGroundProximityCheck = true -- enable checking if player is too close to ground during climb
+Config.ClimbMinGroundDistance = 2.0 -- minimum distance from ground to allow climbing
+Config.ClimbGroundMovementLimit = 0.2 -- limit downward movement when too close to ground
+Config.ClimbGroundNormalThreshold = 0.7 -- threshold for considering a surface as ground (dot product with up vector)
+Config.ClimbGroundExcludeClimbingWall = true -- exclude the climbing wall from ground detection
+Config.ClimbGroundCheckOnlyWhenDescending = true -- only check ground proximity when moving downward (more efficient)
 
 -- Climb animation speeds (in seconds per animation cycle)
 Config.ClimbAnimationSpeed = {
@@ -327,7 +346,7 @@ Config.VaultPreserveSpeed = true -- preserve current horizontal speed if higher 
 Config.VaultCooldownSeconds = 0.6
 -- Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Lazy", "Vault_Kong", "Vault_Dash", "Vault_TwoHanded" }
 Config.VaultAnimationKeys = { "Vault_Speed" }
-Config.DebugVault = false
+Config.DebugVault = true
 -- Dynamic vault clearance: how many studs above obstacle top we aim to pass
 Config.VaultClearanceStuds = 1.5
 -- Heights (fractions of root height) to probe obstacle front for estimating top
@@ -406,6 +425,7 @@ Config.MantleDetectionDistance = 4 -- 4.5 -- forward ray distance to detect a le
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
 Config.MantleMinAboveWaist = 0 -- 0
 Config.MantleMaxAboveWaist = 10
+Config.MantleAboveWaistWhileClimbing = 6
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character
 Config.MantleUpClearance = 1.5 -- 1.5 -- extra vertical clearance above top to ensure space
 Config.MantleDurationSeconds = 0.35 -- 0.22 -- baseline; may be overridden by preserve-speed
@@ -529,5 +549,8 @@ Config.SpeedWindLinesWaveAmplitudeX = 1.0 -- horizontal wave strength
 Config.SpeedWindLinesWaveAmplitudeY = 1.5 -- vertical wave strength
 Config.SpeedWindLinesWaveAmplitudeZ = 0.8 -- depth wave strength
 Config.SpeedWindLinesWaveSpeed = 0.15 -- how fast the wave motion changes
+
+Config.DashAllowedDuringClimb = false -- prevent dash execution while climbing
+Config.DebugDash = false -- enable debug prints for dash system
 
 return Config

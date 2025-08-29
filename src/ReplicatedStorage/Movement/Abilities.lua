@@ -166,6 +166,16 @@ function Abilities.tryDash(character)
 		return false
 	end
 
+	-- Prevent dash during climb
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local isClimbing = cs and cs:FindFirstChild("IsClimbing")
+	if not Config.DashAllowedDuringClimb and isClimbing and isClimbing.Value then
+		if Config.DebugDash then
+			print("[Dash] Blocked during climb - IsClimbing:", isClimbing.Value)
+		end
+		return false
+	end
+
 	lastDashTick = now
 
 	-- Only allow dash while airborne
@@ -1016,6 +1026,11 @@ function Abilities.tryMantle(character)
 	end
 
 	lastMantleTick = now
+
+	-- Log successful mantle execution
+	if Config.DebugMantle then
+		print("[Mantle] Starting mantle execution for character:", character.Name)
+	end
 	-- Publish mantling flag (for UI/gating) at start
 	pcall(function()
 		local rs = game:GetService("ReplicatedStorage")
@@ -1474,6 +1489,11 @@ function Abilities.tryMantle(character)
 				flag.Value = false
 			end
 		end)
+
+		-- Log successful mantle completion
+		if Config.DebugMantle then
+			print("[Mantle] Mantle execution completed successfully for character:", character.Name)
+		end
 	end)
 
 	-- Hard failsafe: ensure cleanup runs even if animations/events are interrupted
@@ -1497,7 +1517,82 @@ function Abilities.tryMantle(character)
 				flag.Value = false
 			end
 		end)
+
+		-- Log failsafe cleanup completion
+		if Config.DebugMantle then
+			print("[Mantle] Failsafe cleanup completed for character:", character.Name)
+		end
 	end)
+
+	-- CRITICAL: If player is currently climbing, stop the climb state immediately
+	-- This ensures clean transition from climb to mantle without conflicts
+	if Config.ClimbMantleIntegrationEnabled then
+		local Climb = require(game:GetService("ReplicatedStorage").Movement.Climb)
+		if Climb and Climb.isActive and Climb.isActive(character) then
+			if Config.DebugMantle then
+				print("[Mantle] Stopping climb state before mantle execution")
+			end
+			Climb.stop(character)
+
+			-- Also cleanup any climb animations that might be running
+			pcall(function()
+				local rs = game:GetService("ReplicatedStorage")
+				local cs = rs:FindFirstChild("ClientState")
+				local isClimbingVal = cs and cs:FindFirstChild("IsClimbing")
+				if isClimbingVal then
+					isClimbingVal.Value = false
+				end
+			end)
+
+			-- Force cleanup of any climb-related animations
+			pcall(function()
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					local animator = humanoid:FindFirstChildOfClass("Animator")
+					if animator then
+						-- Stop any climb animations that might be running
+						local stoppedCount = 0
+						for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+							if track.Animation and track.Animation.AnimationId then
+								local animId = tostring(track.Animation.AnimationId)
+								if
+									string.find(animId, "Climb")
+									or string.find(animId, "climb")
+									or string.find(animId, "Climbing")
+									or string.find(animId, "climbing")
+									or string.find(animId, "Wall")
+									or string.find(animId, "wall")
+								then
+									track:Stop(0.05)
+									stoppedCount = stoppedCount + 1
+									if Config.DebugMantle then
+										print("[Mantle] Stopped climb animation:", animId)
+									end
+								end
+							end
+						end
+
+						-- Force stop all animations if no specific ones were found
+						if stoppedCount == 0 then
+							for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+								track:Stop(0.05)
+								if Config.DebugMantle then
+									print(
+										"[Mantle] Force stopped animation:",
+										track.Animation and track.Animation.Name or "Unknown"
+									)
+								end
+							end
+						end
+
+						if Config.DebugMantle then
+							print("[Mantle] Animation cleanup completed - stopped", stoppedCount, "animations")
+						end
+					end
+				end
+			end)
+		end
+	end
 
 	return true
 end
