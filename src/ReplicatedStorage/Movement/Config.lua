@@ -186,7 +186,13 @@ Config.ClimbStickVelocity = 8 -- how strongly to stick to the wall
 Config.ClimbMinStamina = 10 -- minimum stamina required to start climbing
 Config.ClimbStaminaDrainPerSecond = 15 -- stamina drain rate while climbing
 Config.ClimbMaxStamina = 100 -- maximum stamina for climbing
-Config.DebugClimb = true -- enable debug prints for climb system
+Config.DebugClimb = false -- enable debug prints for climb system
+Config.ClimbForceGroundDetection = true -- force ground detection even when not moving (for testing auto-disable)
+Config.ClimbGroundDetectionRaycastDistance = 5.0 -- distance to cast ray downward for ground detection
+Config.ClimbFeetOffsetMultiplier = 0.5 -- multiplier for calculating feet position from character center (0.5 = half height)
+Config.ClimbUseHumanoidHipHeight = true -- use Humanoid's HipHeight for more accurate feet position calculation
+Config.ClimbGroundDetectionAggressive = true -- enable more aggressive ground detection for testing
+Config.ClimbAlwaysCheckGround = true -- always check ground proximity regardless of input direction
 
 -- Climb-Mantle Integration
 Config.ClimbMantleIntegrationEnabled = true -- enable automatic climb state cleanup when mantle is executed
@@ -199,8 +205,20 @@ Config.ClimbLedgeEdgeMovementLimit = 0.3 -- limit upward movement when near ledg
 Config.ClimbLedgeEdgeRestrictiveDistance = 0.2 -- very restrictive distance to avoid interfering with normal mantle detection
 Config.ClimbLedgeEdgeMovementLimitEnabled = true -- enable limiting upward movement when near ledge edge
 Config.ClimbLedgeEdgeMovementLimitThreshold = 0.15 -- distance threshold to start limiting movement (very restrictive)
+
 Config.ClimbGroundProximityCheck = true -- enable checking if player is too close to ground during climb
 Config.ClimbMinGroundDistance = 2.0 -- minimum distance from ground to allow climbing
+Config.ClimbAutoGroundAdjust = true -- automatically adjust player position when starting climb from ground
+Config.ClimbAutoGroundAdjustHeight = 2.5 -- height above ground to position player when auto-adjusting
+Config.ClimbAutoGroundAdjustAlways = true -- if true, always auto-adjust when on ground, regardless of distance to wall
+Config.ClimbAutoDisableImmediateAfterAdjust = false -- if true, auto-disable works immediately after auto-adjustment
+Config.ClimbSpaceExecutesWallJump = true -- if true, Space during climb executes walljump directly instead of climb hop
+Config.ClimbWallJumpStaminaCost = 0 -- stamina cost for walljump when executed from climb (0 = no cost)
+Config.ClimbWallJumpDelay = 0.1 -- delay in seconds between walljump execution and climb deactivation
+Config.ClimbWallJumpImmediate = true -- if true, walljump executes immediately without delay
+Config.ClimbAutoDisableAtGround = true -- automatically disable climb when player is 1.5 studs from ground
+Config.ClimbAutoDisableGroundThreshold = 3.5 -- distance from ground to auto-disable climb (increased from 1.5)
+Config.ClimbAutoDisableOnlyWhenDescending = false -- if true, only auto-disable when manually descending (v < 0)
 Config.ClimbGroundMovementLimit = 0.2 -- limit downward movement when too close to ground
 Config.ClimbGroundNormalThreshold = 0.7 -- threshold for considering a surface as ground (dot product with up vector)
 Config.ClimbGroundExcludeClimbingWall = true -- exclude the climbing wall from ground detection
@@ -346,7 +364,7 @@ Config.VaultPreserveSpeed = true -- preserve current horizontal speed if higher 
 Config.VaultCooldownSeconds = 0.6
 -- Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Lazy", "Vault_Kong", "Vault_Dash", "Vault_TwoHanded" }
 Config.VaultAnimationKeys = { "Vault_Speed" }
-Config.DebugVault = true
+Config.DebugVault = false
 -- Dynamic vault clearance: how many studs above obstacle top we aim to pass
 Config.VaultClearanceStuds = 1.5
 -- Heights (fractions of root height) to probe obstacle front for estimating top

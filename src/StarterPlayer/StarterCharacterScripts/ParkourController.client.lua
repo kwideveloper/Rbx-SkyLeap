@@ -2084,9 +2084,6 @@ RunService.RenderStepped:Connect(function(dt)
 		local ok = Climb.maintain(character, move)
 		-- Drain stamina every frame while active (even without movement)
 		state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * dt)
-		if Config.DebugClimb then
-			print(string.format("[Climb] active=%s stamina=%.1f", tostring(ok), state.stamina.current))
-		end
 		if state.stamina.current <= 0 then
 			state.stamina.current = 0
 			Climb.stop(character)
