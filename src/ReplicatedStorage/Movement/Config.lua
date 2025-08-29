@@ -187,6 +187,24 @@ Config.ClimbStaminaDrainPerSecond = 8
 Config.ClimbMinStamina = 10
 Config.DebugClimb = false
 
+-- Climb animation speeds (in seconds per animation cycle)
+Config.ClimbAnimationSpeed = {
+	ClimbUp = 0.5, -- Duration for upward climbing animation
+	ClimbDown = 1.0, -- Duration for downward climbing animation
+	ClimbLeft = 1.0, -- Duration for left climbing animation
+	ClimbRight = 1.0, -- Duration for right climbing animation
+	ClimbIdle = 2.0, -- Duration for idle climbing animation
+	Default = 1.0, -- Default duration for ClimbLoop if not configured
+}
+
+-- Air animation speeds (in seconds per animation cycle)
+Config.AirAnimationSpeed = {
+	Jump = 1.0, -- Duration for jump animation
+	Fall = 1.0, -- Duration for fall animation
+	Rise = 1.0, -- Duration for rise animation
+	Default = 1.0, -- Default duration for air animations
+}
+
 -- Raycast
 Config.RaycastIgnoreWater = true
 -- Surface verticality filter (dot with world up): allow only near-vertical walls for wall mechanics

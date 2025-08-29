@@ -20,6 +20,8 @@ local Animations = {
 	-- Jump / Air
 	JumpStart = "rbxassetid://104518933369704", -- custom jump start animation
 	Jump = "rbxassetid://134519357945550",
+	Fall = "rbxassetid://128424180385734", -- optional fall animation (when falling without jumping)
+	Rise = "", -- optional rise animation (when going up after jump or on launch pads)
 	LandRoll = "rbxassetid://138804567004011", -- landing roll after high fall
 	DoubleJump = "", -- optional; fallback to Jump if empty
 
@@ -52,6 +54,12 @@ local Animations = {
 	ClimbStart = "",
 	ClimbLoop = "",
 	ClimbEnd = "",
+	-- Custom climb directional animations
+	ClimbUp = "rbxassetid://82912869497397", -- upward climbing animation
+	ClimbDown = "", -- downward climbing animation
+	ClimbLeft = "", -- climbing left animation
+	ClimbRight = "", -- climbing right animation
+	ClimbIdle = "", -- idle climbing animation (when not moving)
 
 	-- Crawl / Prone (hold Z)
 	Crawl = "rbxassetid://75303378392203",
@@ -95,6 +103,127 @@ function Animations.getAll()
 		end
 	end
 	return list
+end
+
+-- Returns the appropriate climb animation based on movement direction
+function Animations.getClimbAnimation(moveDirection)
+	if not moveDirection or moveDirection.Magnitude < 0.01 then
+		-- Idle climbing
+		local idleAnim = Animations.get("ClimbIdle")
+		if idleAnim then
+			return idleAnim
+		end
+		-- Fallback to ClimbLoop if ClimbIdle not configured
+		return Animations.get("ClimbLoop")
+	end
+
+	-- Determine dominant direction
+	local absX = math.abs(moveDirection.X)
+	local absY = math.abs(moveDirection.Y)
+	local absZ = math.abs(moveDirection.Z)
+
+	if absY > absX and absY > absZ then
+		-- Vertical movement dominant
+		if moveDirection.Y > 0 then
+			local upAnim = Animations.get("ClimbUp")
+			if upAnim then
+				return upAnim
+			end
+		else
+			local downAnim = Animations.get("ClimbDown")
+			if downAnim then
+				return downAnim
+			end
+		end
+	elseif absX > absZ then
+		-- Horizontal X movement dominant
+		if moveDirection.X > 0 then
+			local rightAnim = Animations.get("ClimbRight")
+			if rightAnim then
+				return rightAnim
+			end
+		else
+			local leftAnim = Animations.get("ClimbLeft")
+			if leftAnim then
+				return leftAnim
+			end
+		end
+	else
+		-- Horizontal Z movement dominant (forward/back)
+		-- For now, use the general ClimbLoop for forward/back movement
+		return Animations.get("ClimbLoop")
+	end
+
+	-- Fallback to general ClimbLoop
+	return Animations.get("ClimbLoop")
+end
+
+-- Returns the appropriate climb animation and its configured speed
+function Animations.getClimbAnimationWithSpeed(moveDirection)
+	local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
+	local anim = Animations.getClimbAnimation(moveDirection)
+	local speed = 1.0
+
+	if not anim then
+		return nil, 1.0
+	end
+
+	-- Determine animation type and get corresponding speed
+	if not moveDirection or moveDirection.Magnitude < 0.01 then
+		-- Idle climbing
+		local idleAnim = Animations.get("ClimbIdle")
+		if idleAnim and idleAnim == anim then
+			speed = Config.ClimbAnimationSpeed.ClimbIdle or Config.ClimbAnimationSpeed.Default
+		else
+			speed = Config.ClimbAnimationSpeed.Default
+		end
+	else
+		-- Determine dominant direction
+		local absX = math.abs(moveDirection.X)
+		local absY = math.abs(moveDirection.Y)
+		local absZ = math.abs(moveDirection.Z)
+
+		if absY > absX and absY > absZ then
+			-- Vertical movement dominant
+			if moveDirection.Y > 0 then
+				local upAnim = Animations.get("ClimbUp")
+				if upAnim and upAnim == anim then
+					speed = Config.ClimbAnimationSpeed.ClimbUp or Config.ClimbAnimationSpeed.Default
+				else
+					speed = Config.ClimbAnimationSpeed.Default
+				end
+			else
+				local downAnim = Animations.get("ClimbDown")
+				if downAnim and downAnim == anim then
+					speed = Config.ClimbAnimationSpeed.ClimbDown or Config.ClimbAnimationSpeed.Default
+				else
+					speed = Config.ClimbAnimationSpeed.Default
+				end
+			end
+		elseif absX > absZ then
+			-- Horizontal X movement dominant
+			if moveDirection.X > 0 then
+				local rightAnim = Animations.get("ClimbRight")
+				if rightAnim and rightAnim == anim then
+					speed = Config.ClimbAnimationSpeed.ClimbRight or Config.ClimbAnimationSpeed.Default
+				else
+					speed = Config.ClimbAnimationSpeed.Default
+				end
+			else
+				local leftAnim = Animations.get("ClimbLeft")
+				if leftAnim and leftAnim == anim then
+					speed = Config.ClimbAnimationSpeed.ClimbLeft or Config.ClimbAnimationSpeed.Default
+				else
+					speed = Config.ClimbAnimationSpeed.Default
+				end
+			end
+		else
+			-- Horizontal Z movement dominant or default
+			speed = Config.ClimbAnimationSpeed.Default
+		end
+	end
+
+	return anim, speed
 end
 
 -- Preload all configured animations (client or server)

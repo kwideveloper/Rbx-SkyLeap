@@ -221,6 +221,14 @@ local state = {
 	_groundResetDone = false,
 	_lastMantleTime = 0,
 	_lastLedgeHangTime = 0,
+	-- Climb animation state
+	climbAnimationTrack = nil,
+	lastClimbDirection = Vector3.new(0, 0, 0),
+	climbAnimationStartTime = 0,
+	-- Air animation state
+	airAnimationTrack = nil,
+	lastAirState = "neutral",
+	airAnimationStartTime = 0,
 }
 
 local function setProxyWorldY(proxy, targetY)
@@ -403,8 +411,11 @@ local function setupCharacter(character)
 				if jumpLoopTrack then
 					jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
 					jumpLoopTrack.Looped = true
+					-- Use consistent animation speed from config
+					local jumpSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+					local playbackSpeed = 1.0 / jumpSpeed
 					if not jumpLoopTrack.IsPlaying then
-						jumpLoopTrack:Play(0.05, 1, 1.0)
+						jumpLoopTrack:Play(0.05, 1, playbackSpeed)
 					end
 				end
 			end
@@ -474,8 +485,11 @@ local function setupCharacter(character)
 						if jumpLoopTrack then
 							jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
 							jumpLoopTrack.Looped = true
+							-- Use consistent animation speed from config
+							local jumpSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+							local playbackSpeed = 1.0 / jumpSpeed
 							if not jumpLoopTrack.IsPlaying then
-								jumpLoopTrack:Play(0.05, 1, 1.0)
+								jumpLoopTrack:Play(0.05, 1, playbackSpeed)
 							end
 						end
 					end
@@ -490,68 +504,96 @@ local function setupCharacter(character)
 					if jumpLoopTrack then
 						jumpLoopTrack.Priority = Enum.AnimationPriority.Movement
 						jumpLoopTrack.Looped = true
+						-- Use consistent animation speed from config
+						local jumpSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+						local playbackSpeed = 1.0 / jumpSpeed
 						if not jumpLoopTrack.IsPlaying then
-							jumpLoopTrack:Play(0.05, 1, 1.0)
+							jumpLoopTrack:Play(0.05, 1, playbackSpeed)
 						end
 					end
 				end
 			end
 		elseif new == Enum.HumanoidStateType.Landed or new == Enum.HumanoidStateType.Running then
-			-- Mark grounded time; actual reset is handled by dwell check in RenderStepped
-			state._groundedSince = os.clock()
-			state._groundResetDone = false
-			local root = character:FindFirstChild("HumanoidRootPart")
-			if rollPending and root and lastAirY then
-				local peakY = state._peakAirY or lastAirY
-				local drop = math.max(0, (peakY - root.Position.Y))
-				local cfgDbg = require(ReplicatedStorage.Movement.Config).DebugLandingRoll
-				if cfgDbg then
-					print(
-						string.format(
-							"[LandingRoll] peakY=%.2f y=%.2f drop=%.2f threshold=%d",
-							peakY,
-							root.Position.Y,
-							drop,
-							20
+			-- Check if player is connecting to a parkour action instead of actually landing
+			local isConnectingToParkour = (
+				Climb.isActive(character)
+				or WallRun.isActive(character)
+				or Zipline.isActive(character)
+				or VerticalClimb.isActive(character)
+				or LedgeHang.isActive(character)
+				or (WallJump.isWallSliding and WallJump.isWallSliding(character))
+			)
+
+			-- Only process landing if not connecting to parkour action
+			if not isConnectingToParkour then
+				-- Mark grounded time; actual reset is handled by dwell check in RenderStepped
+				state._groundedSince = os.clock()
+				state._groundResetDone = false
+				local root = character:FindFirstChild("HumanoidRootPart")
+				if rollPending and root and lastAirY then
+					local peakY = state._peakAirY or lastAirY
+					local drop = math.max(0, (peakY - root.Position.Y))
+					local cfgDbg = require(ReplicatedStorage.Movement.Config).DebugLandingRoll
+					if cfgDbg then
+						print(
+							string.format(
+								"[LandingRoll] peakY=%.2f y=%.2f drop=%.2f threshold=%d",
+								peakY,
+								root.Position.Y,
+								drop,
+								20
+							)
 						)
-					)
-				end
-				if drop >= minRollDrop then
-					-- Play landing FX for high fall + roll
-					FX.playRoll(character)
-					FX.playLanding(character, true) -- hard landing
-					-- Play LandRoll animation if configured
-					local anim = Animations and Animations.get and Animations.get("LandRoll")
-					if anim then
-						local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
-						animator.Parent = humanoid
-						local track
-						pcall(function()
-							track = animator:LoadAnimation(anim)
-						end)
-						if track then
-							track.Priority = Enum.AnimationPriority.Action
-							track.Looped = false
-							track:Play(0.05, 1, 1.0)
+					end
+					if drop >= minRollDrop then
+						-- Play landing FX for high fall + roll
+						FX.playRoll(character)
+						FX.playLanding(character, true) -- hard landing
+						-- Play LandRoll animation if configured
+						local anim = Animations and Animations.get and Animations.get("LandRoll")
+						if anim then
+							local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+							animator.Parent = humanoid
+							local track
+							pcall(function()
+								track = animator:LoadAnimation(anim)
+							end)
+							if track then
+								track.Priority = Enum.AnimationPriority.Action
+								track.Looped = false
+								track:Play(0.05, 1, 1.0)
+							end
 						end
+					else
+						-- Normal landing FX
+						FX.playLanding(character, false)
 					end
 				else
-					-- Normal landing FX
+					-- Normal landing FX (no fall)
 					FX.playLanding(character, false)
 				end
+				rollPending = false
+				state._peakAirY = nil
+				lastAirY = nil
+				-- Stop jump loop on landing/running
+				if jumpLoopTrack then
+					pcall(function()
+						jumpLoopTrack:Stop(0.1)
+					end)
+					jumpLoopTrack = nil
+				end
 			else
-				-- Normal landing FX (no fall)
-				FX.playLanding(character, false)
-			end
-			rollPending = false
-			state._peakAirY = nil
-			lastAirY = nil
-			-- Stop jump loop on landing/running
-			if jumpLoopTrack then
-				pcall(function()
-					jumpLoopTrack:Stop(0.1)
-				end)
-				jumpLoopTrack = nil
+				-- Player connected to parkour action, reset pending states without landing
+				rollPending = false
+				state._peakAirY = nil
+				lastAirY = nil
+				-- Still stop jump loop when connecting to parkour
+				if jumpLoopTrack then
+					pcall(function()
+						jumpLoopTrack:Stop(0.1)
+					end)
+					jumpLoopTrack = nil
+				end
 			end
 		end
 	end)
@@ -668,6 +710,265 @@ local function setupCharacter(character)
 
 	-- Audio managed by AudioManager.client.lua
 end
+
+-- Handles air state animations (jump, fall, rise) based on vertical velocity
+local function updateAirAnimation(character)
+	local humanoid = getHumanoid(character)
+	if not humanoid then
+		return
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+
+	-- Stop air animations when not airborne or when grounded
+	if
+		humanoid.FloorMaterial ~= Enum.Material.Air
+		or humanoid:GetState() == Enum.HumanoidStateType.Running
+		or humanoid:GetState() == Enum.HumanoidStateType.Landed
+	then
+		-- Stop any playing air animation
+		if state.airAnimationTrack and state.airAnimationTrack.IsPlaying then
+			pcall(function()
+				state.airAnimationTrack:Stop(0.1)
+			end)
+		end
+		state.airAnimationTrack = nil
+		state.lastAirState = "neutral"
+		state.airAnimationStartTime = 0
+		return
+	end
+
+	local velocity = root.AssemblyLinearVelocity
+	local verticalSpeed = velocity.Y
+
+	-- Determine air state with more precise thresholds
+	local isRising = verticalSpeed > 1 -- Going up
+	local isFalling = verticalSpeed < -1 -- Going down
+	local isNeutral = verticalSpeed >= -1 and verticalSpeed <= 1 -- Floating/neutral
+
+	-- Get appropriate animation
+	local airAnim = nil
+	local animationSpeed = 1.0
+	local currentState = "neutral"
+
+	if isRising then
+		currentState = "rising"
+		-- Use Rise animation if available, otherwise use Jump
+		local riseAnim = Animations.get("Rise")
+		if riseAnim then
+			airAnim = riseAnim
+			animationSpeed = Config.AirAnimationSpeed.Rise or Config.AirAnimationSpeed.Default
+		else
+			airAnim = Animations.get("Jump")
+			animationSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+		end
+	elseif isFalling then
+		currentState = "falling"
+		-- Use Fall animation if available, otherwise use Jump
+		local fallAnim = Animations.get("Fall")
+		if fallAnim then
+			airAnim = fallAnim
+			animationSpeed = Config.AirAnimationSpeed.Fall or Config.AirAnimationSpeed.Default
+		else
+			airAnim = Animations.get("Jump")
+			animationSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+		end
+	else
+		currentState = "neutral"
+		-- Neutral/float state - use Jump animation
+		airAnim = Animations.get("Jump")
+		animationSpeed = Config.AirAnimationSpeed.Jump or Config.AirAnimationSpeed.Default
+	end
+
+	-- Check if we need to change animation
+	local needsChange = false
+	if not state.airAnimationTrack then
+		needsChange = true
+	elseif not state.airAnimationTrack.IsPlaying then
+		needsChange = true
+	elseif state.lastAirState ~= currentState then
+		needsChange = true
+	end
+
+	-- Force change if we've been in the same state for too long (fallback)
+	if not needsChange and state.airAnimationTrack then
+		local timeInState = os.clock() - (state.airAnimationStartTime or 0)
+		if timeInState > 5.0 then -- 5 seconds max in same animation
+			needsChange = true
+		end
+	end
+
+	if needsChange and airAnim then
+		-- Stop current air animation if it exists
+		if state.airAnimationTrack and state.airAnimationTrack.IsPlaying then
+			pcall(function()
+				state.airAnimationTrack:Stop(0.1)
+			end)
+		end
+
+		-- Stop conflicting animations (run/walk, etc.)
+		local playingTracks = animator:GetPlayingAnimationTracks()
+		for _, track in ipairs(playingTracks) do
+			-- Stop animations with lower priority that might conflict
+			if track.Priority.Value < Enum.AnimationPriority.Action.Value then
+				if not (state.climbAnimationTrack and track == state.climbAnimationTrack) then
+					pcall(function()
+						track:Stop(0.1)
+					end)
+				end
+			end
+		end
+
+		-- Play the new air animation
+		local track
+		pcall(function()
+			track = animator:LoadAnimation(airAnim)
+		end)
+
+		if track then
+			track.Priority = Enum.AnimationPriority.Action
+			track.Looped = true
+			local playbackSpeed = 1.0 / animationSpeed
+			track:Play(0.1, 1, playbackSpeed)
+			state.airAnimationTrack = track
+			state.lastAirState = currentState
+			state.airAnimationStartTime = os.clock()
+		end
+	end
+end
+
+-- Handles climb animation switching based on movement direction
+local function updateClimbAnimation(character, moveDirection)
+	local humanoid = getHumanoid(character)
+	if not humanoid then
+		return
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	-- Stop current climb animation if direction changed significantly
+	local directionChanged = (moveDirection - state.lastClimbDirection).Magnitude > 0.1
+
+	if state.climbAnimationTrack and (directionChanged or not Climb.isActive(character)) then
+		pcall(function()
+			state.climbAnimationTrack:Stop(0.1)
+		end)
+		state.climbAnimationTrack = nil
+	end
+
+	-- Don't play new animation if climbing stopped
+	if not Climb.isActive(character) then
+		state.lastClimbDirection = Vector3.new(0, 0, 0)
+		return
+	end
+
+	-- Get appropriate animation for current direction with speed
+	local climbAnim, animationSpeed = Animations.getClimbAnimationWithSpeed(moveDirection)
+	if not climbAnim then
+		-- Fallback to default climb loop
+		climbAnim = Animations.get("ClimbLoop")
+		if climbAnim then
+			local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
+			animationSpeed = Config.ClimbAnimationSpeed.Default
+		end
+	end
+
+	if not climbAnim then
+		return
+	end
+
+	-- Only change animation if it's different or direction changed significantly
+	if not state.climbAnimationTrack or directionChanged then
+		pcall(function()
+			local track = animator:LoadAnimation(climbAnim)
+			track.Priority = Enum.AnimationPriority.Action
+			track.Looped = true
+			-- Use the configured animation speed to control playback rate
+			-- Speed = 1.0 means normal speed, higher values make it faster, lower values slower
+			local playbackSpeed = 1.0 / animationSpeed
+			track:Play(0.1, 1, playbackSpeed)
+			state.climbAnimationTrack = track
+			state.climbAnimationStartTime = os.clock()
+		end)
+	end
+
+	state.lastClimbDirection = moveDirection
+end
+
+-- Cleanup climb animation when climbing stops
+local function cleanupClimbAnimation(character)
+	if state.climbAnimationTrack then
+		pcall(function()
+			state.climbAnimationTrack:Stop(0.1)
+		end)
+		state.climbAnimationTrack = nil
+	end
+	state.lastClimbDirection = Vector3.new(0, 0, 0)
+	state.climbAnimationStartTime = 0
+end
+
+-- Stop conflicting animations when entering specific movement states
+local function stopConflictingAnimations(character, newState)
+	local humanoid = getHumanoid(character)
+	if not humanoid then
+		return
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	-- Stop jump/fall animations when entering climbing, wallrun, zipline, wall sliding, ledge hanging, or vertical climbing
+	if
+		newState == "climbing"
+		or newState == "wallrun"
+		or newState == "zipline"
+		or newState == "wallslide"
+		or newState == "ledgehang"
+		or newState == "verticalclimb"
+	then
+		-- Stop all playing animation tracks that might conflict
+		local playingTracks = animator:GetPlayingAnimationTracks()
+		for _, track in ipairs(playingTracks) do
+			-- Stop jump/fall animations that have lower priority than action animations
+			-- Also stop any animation that might be interfering with the new state
+			if track.Priority.Value <= Enum.AnimationPriority.Movement.Value then
+				-- Check if this track is not our climbing or air animation
+				if
+					not (state.climbAnimationTrack and track == state.climbAnimationTrack)
+					and not (state.airAnimationTrack and track == state.airAnimationTrack)
+				then
+					pcall(function()
+						track:Stop(0.05)
+					end)
+				end
+			end
+		end
+
+		-- Stop air animation track if it's playing
+		if state.airAnimationTrack and state.airAnimationTrack.IsPlaying then
+			pcall(function()
+				state.airAnimationTrack:Stop(0.05)
+			end)
+			state.airAnimationTrack = nil
+			state.lastAirState = "neutral"
+			state.airAnimationStartTime = 0
+		end
+	end
+end
+
 local function ensureClientState()
 	local folder = ReplicatedStorage:FindFirstChild("ClientState")
 	if not folder then
@@ -1126,6 +1427,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			-- stop incompatible states
 			if Climb.isActive(character) then
 				Climb.stop(character)
+				cleanupClimbAnimation(character)
 			end
 			if WallRun.isActive(character) then
 				WallRun.stop(character)
@@ -1135,17 +1437,22 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			end
 			state.sliding = false
 			state.sprintHeld = false
+			-- Stop conflicting animations before starting zipline
+			stopConflictingAnimations(character, "zipline")
 			Zipline.tryStart(character)
 		else
 			-- Toggle climb on climbable walls
 			if Climb.isActive(character) then
 				Climb.stop(character)
+				cleanupClimbAnimation(character)
 			else
 				if state.stamina.current >= Config.ClimbMinStamina then
 					-- stop any wall slide to allow climbing to take over immediately
 					if WallJump.isWallSliding and WallJump.isWallSliding(character) then
 						WallJump.stopSlide(character)
 					end
+					-- Stop conflicting animations before starting climbing
+					stopConflictingAnimations(character, "climbing")
 					if Climb.tryStart(character) then
 						-- start draining immediately on start tick
 						state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * 0.1)
@@ -1470,6 +1777,20 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
+	-- Always update air animations to handle both starting and stopping
+	local isInParkourAction = (
+		Climb.isActive(character)
+		or WallRun.isActive(character)
+		or Zipline.isActive(character)
+		or VerticalClimb.isActive(character)
+		or LedgeHang.isActive(character)
+		or (WallJump.isWallSliding and WallJump.isWallSliding(character))
+	)
+
+	if not isInParkourAction then
+		updateAirAnimation(character)
+	end
+
 	-- Style/Combo tick
 	local styleCtx = {
 		dt = dt,
@@ -1755,6 +2076,11 @@ RunService.RenderStepped:Connect(function(dt)
 		-- WASD strictly by keys, relative to character orientation but not camera
 		move.h = (state.keys.D and 1 or 0) - (state.keys.A and 1 or 0)
 		move.v = (state.keys.W and 1 or 0) - (state.keys.S and 1 or 0)
+
+		-- Update climb animation based on movement direction
+		local moveDirection = Vector3.new(move.h, move.v, 0)
+		updateClimbAnimation(character, moveDirection)
+
 		local ok = Climb.maintain(character, move)
 		-- Drain stamina every frame while active (even without movement)
 		state.stamina.current = state.stamina.current - (Config.ClimbStaminaDrainPerSecond * dt)
@@ -1764,6 +2090,7 @@ RunService.RenderStepped:Connect(function(dt)
 		if state.stamina.current <= 0 then
 			state.stamina.current = 0
 			Climb.stop(character)
+			cleanupClimbAnimation(character)
 		end
 		-- Disable sprint while climbing
 		if state.stamina.isSprinting then
@@ -1777,6 +2104,8 @@ RunService.RenderStepped:Connect(function(dt)
 		if VerticalClimb.isActive(character) then
 			VerticalClimb.maintain(character, dt)
 		else
+			-- Stop conflicting animations before starting vertical climb
+			stopConflictingAnimations(character, "verticalclimb")
 			VerticalClimb.tryStart(character)
 		end
 	end
@@ -1795,6 +2124,8 @@ RunService.RenderStepped:Connect(function(dt)
 		if WallRun.isActive(character) then
 			WallRun.maintain(character)
 		else
+			-- Stop conflicting animations before starting wallrun
+			stopConflictingAnimations(character, "wallrun")
 			local started = WallRun.tryStart(character)
 			if started and (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
 				WallJump.stopSlide(character)
@@ -1949,6 +2280,8 @@ RunService.RenderStepped:Connect(function(dt)
 					state.stamina.current >= (Config.LedgeHangMinStamina or 10)
 					and not (state._staminaDepletedHangCooldown and os.clock() < state._staminaDepletedHangCooldown)
 				then
+					-- Stop conflicting animations before starting ledge hang
+					stopConflictingAnimations(character, "ledgehang")
 					ok = LedgeHang.tryStartFromMantleData(character, fakeHit, nearestTopY)
 				end
 				if Config.DebugLedgeHang then
@@ -2003,7 +2336,14 @@ RunService.RenderStepped:Connect(function(dt)
 		-- Extra: while mantling or within a small window after, completely disable isNearWall to avoid edge flickers on curved surfaces
 		if not state.sprintHeld and state.stamina.current > 0 and canStartSlide and not blockByMantleCandidate then
 			-- Proximity check will internally start/stop slide as needed
+			local wasSliding = WallJump.isWallSliding and WallJump.isWallSliding(character)
 			WallJump.isNearWall(character)
+			local isNowSliding = WallJump.isWallSliding and WallJump.isWallSliding(character)
+
+			-- Stop conflicting animations if wallslide just started
+			if not wasSliding and isNowSliding then
+				stopConflictingAnimations(character, "wallslide")
+			end
 		end
 		-- If slide is active, maintain physics only if we have stamina; otherwise stop
 		if WallJump.isWallSliding and WallJump.isWallSliding(character) then
@@ -2188,6 +2528,8 @@ RunService.RenderStepped:Connect(function(dt)
 								and hasEnoughStamina
 								and not hasStaminaDepletionCooldown
 							then
+								-- Stop conflicting animations before starting ledge hang
+								stopConflictingAnimations(character, "ledgehang")
 								didHang = LedgeHang.tryStartFromMantleData(character, hitRes, topY)
 								if didHang then
 									state._lastLedgeHangTime = os.clock()
