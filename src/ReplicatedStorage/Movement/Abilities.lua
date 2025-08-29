@@ -15,6 +15,13 @@ local originalPhysByPart = {}
 local dashActive = {}
 local airDashCharges = {} -- [character]=currentCharges
 
+-- Helper function to check if a state is active
+local function isStateActive(stateName)
+	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+	local state = cs and cs:FindFirstChild(stateName)
+	return state and state.Value or false
+end
+
 -- Check if there's enough clearance above for a full mantle
 -- Uses same logic as ParkourController to ensure consistency
 local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
@@ -167,11 +174,33 @@ function Abilities.tryDash(character)
 	end
 
 	-- Prevent dash during climb
-	local cs = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
-	local isClimbing = cs and cs:FindFirstChild("IsClimbing")
-	if not Config.DashAllowedDuringClimb and isClimbing and isClimbing.Value then
+	if not Config.DashAllowedDuringClimb and isStateActive("IsClimbing") then
 		if Config.DebugDash then
-			print("[Dash] Blocked during climb - IsClimbing:", isClimbing.Value)
+			print("[Dash] Blocked during climb")
+		end
+		return false
+	end
+
+	-- Prevent dash during zipline
+	if not Config.DashAllowedDuringZipline and isStateActive("IsZiplining") then
+		if Config.DebugDash then
+			print("[Dash] Blocked during zipline")
+		end
+		return false
+	end
+
+	-- Prevent dash during vault
+	if not Config.DashAllowedDuringVault and isStateActive("IsVaulting") then
+		if Config.DebugDash then
+			print("[Dash] Blocked during vault")
+		end
+		return false
+	end
+
+	-- Prevent dash during mantle
+	if not Config.DashAllowedDuringMantle and isStateActive("IsMantling") then
+		if Config.DebugDash then
+			print("[Dash] Blocked during mantle")
 		end
 		return false
 	end

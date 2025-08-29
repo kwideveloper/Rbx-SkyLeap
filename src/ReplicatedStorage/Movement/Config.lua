@@ -551,6 +551,9 @@ Config.SpeedWindLinesWaveAmplitudeZ = 0.8 -- depth wave strength
 Config.SpeedWindLinesWaveSpeed = 0.15 -- how fast the wave motion changes
 
 Config.DashAllowedDuringClimb = false -- prevent dash execution while climbing
+Config.DashAllowedDuringZipline = false -- prevent dash execution while ziplining
+Config.DashAllowedDuringVault = false -- prevent dash execution while vaulting
+Config.DashAllowedDuringMantle = false -- prevent dash execution while mantling
 Config.DebugDash = false -- enable debug prints for dash system
 
 return Config
