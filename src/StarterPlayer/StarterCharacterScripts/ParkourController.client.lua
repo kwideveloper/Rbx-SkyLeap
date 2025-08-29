@@ -1055,7 +1055,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		if character then
 			-- PRIORITY 1: LedgeHang release (highest priority)
 			if LedgeHang.isActive(character) then
-				print("[ParkourController] C pressed during ledge hang - releasing")
 				LedgeHang.stop(character, true) -- true = manual release
 				return -- Don't process other C key functions
 			end
@@ -1064,9 +1063,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 			if WallJump.isWallSliding and WallJump.isWallSliding(character) then
 				-- Currently wallsliding - toggle OFF
 				local success = WallJump.toggleWallslide(character)
-				if success then
-					print("[ParkourController] Wallslide toggled off during slide")
-				end
 				return -- Don't process other C key functions
 			elseif WallJump.isWallslideDisabled and WallJump.isWallslideDisabled(character) then
 				-- Wallslide is disabled - try to reactivate manually during fall
@@ -1074,9 +1070,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 				local isAirborne = humanoid and (humanoid.FloorMaterial == Enum.Material.Air)
 				if isAirborne then
 					local success = WallJump.tryManualReactivate(character)
-					if success then
-						print("[ParkourController] Wallslide manually reactivated during fall")
-					end
 					return -- Only block other C key functions if we're airborne
 				end
 				-- If we're grounded, allow normal ground slide to continue
@@ -1236,9 +1229,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					end
 				end
 			elseif sPressed then
-				print("[ParkourController] S+Space pressed during ledge hang - attempting back jump")
 				didDirectionalJump = LedgeHang.tryDirectionalJump(character, "back")
-				print(string.format("[ParkourController] Back jump result: %s", tostring(didDirectionalJump)))
 				if didDirectionalJump then
 					state.stamina.current = math.max(0, state.stamina.current - (Config.LedgeHangJumpStaminaCost or 10))
 					Style.addEvent(state.style, "LedgeJump", 1)
@@ -2190,19 +2181,6 @@ RunService.RenderStepped:Connect(function(dt)
 								and os.clock() < state._staminaDepletedHangCooldown
 							local hasEnoughStamina = state.stamina.current >= minStaminaForHang
 
-							-- Debug prints for ledge hang logic
-							if not didMantle and Config.LedgeHangEnabled and not hasClearance then
-								print(
-									string.format(
-										"[DEBUG] Ledge hang check - Stamina: %.1f/%.1f, HasCooldown: %s, EnoughStamina: %s",
-										state.stamina.current,
-										minStaminaForHang,
-										tostring(hasStaminaDepletionCooldown),
-										tostring(hasEnoughStamina)
-									)
-								)
-							end
-
 							if
 								not didMantle
 								and Config.LedgeHangEnabled
@@ -2210,13 +2188,9 @@ RunService.RenderStepped:Connect(function(dt)
 								and hasEnoughStamina
 								and not hasStaminaDepletionCooldown
 							then
-								print("[DEBUG] Attempting ledge hang...")
 								didHang = LedgeHang.tryStartFromMantleData(character, hitRes, topY)
 								if didHang then
-									print("[DEBUG] Ledge hang started successfully")
 									state._lastLedgeHangTime = os.clock()
-								else
-									print("[DEBUG] Ledge hang failed to start")
 								end
 							end
 

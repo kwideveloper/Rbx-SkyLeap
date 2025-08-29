@@ -47,7 +47,8 @@ local function getElapsedFor(userId)
 		p.rewards.playtimeClaimed = {}
 		p.rewards.lastPlaytimeDay = dayKey
 		p.rewards.playtimeAccumulatedSeconds = 0
-		PlayerProfile.save(userId)
+		-- REMOVED: PlayerProfile.save(userId) - Let the batching system handle saves
+		-- The daily reset will be saved when the player disconnects or through auto-save
 	end
 
 	local acc = tonumber(p.rewards.playtimeAccumulatedSeconds) or 0
@@ -163,11 +164,11 @@ Players.PlayerAdded:Connect(function(plr)
 		-- Validate that the accumulated time is reasonable (not negative, not excessively high)
 		if existingAccumulated < 0 then
 			prof.rewards.playtimeAccumulatedSeconds = 0
-			PlayerProfile.save(userId)
+			-- REMOVED: PlayerProfile.save(userId) - Use batching system
 			existingAccumulated = 0
 		elseif existingAccumulated > 86400 then -- More than 24 hours in a single day
 			prof.rewards.playtimeAccumulatedSeconds = 86400
-			PlayerProfile.save(userId)
+			-- REMOVED: PlayerProfile.save(userId) - Use batching system
 			existingAccumulated = 86400
 		end
 	end
@@ -175,13 +176,14 @@ Players.PlayerAdded:Connect(function(plr)
 	SESSIONS[plr] = { start = currentTime }
 end)
 
--- Clean up sessions when players leave (save data immediately before cleanup)
+-- Clean up sessions when players leave (update data in memory only - PlayerProfile.release handles final save)
 Players.PlayerRemoving:Connect(function(plr)
 	if SESSIONS[plr] and SESSIONS[plr].start then
 		local sessionStart = SESSIONS[plr].start
 		local currentTime = os.time()
 		local delta = math.max(0, currentTime - sessionStart)
 
+		-- OPTIMIZED: Update in memory only - PlayerProfile.release will handle the final consolidated save
 		local prof = PlayerProfile.load(plr.UserId)
 		prof.rewards = prof.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
 
@@ -189,14 +191,16 @@ Players.PlayerRemoving:Connect(function(plr)
 		local accumulatedAfter = accumulatedBefore + delta
 
 		prof.rewards.playtimeAccumulatedSeconds = accumulatedAfter
-		PlayerProfile.save(plr.UserId)
+		-- REMOVED: PlayerProfile.save(plr.UserId) - Let PlayerProfile.release handle all final saves
 	end
 	SESSIONS[plr] = nil
 end)
 
+-- OPTIMIZED: Reduced save frequency from 30s to 120s to reduce DataStore load
+-- The auto-save system in PlayerProfile.lua handles most saves anyway
 task.spawn(function()
 	while true do
-		task.wait(30)
+		task.wait(120) -- Increased from 30 to 120 seconds
 		for plr, s in pairs(SESSIONS) do
 			if plr.Parent and s.start then
 				local delta = math.max(0, os.time() - s.start)
@@ -209,7 +213,12 @@ task.spawn(function()
 				local accumulatedAfter = accumulatedBefore + delta
 
 				prof.rewards.playtimeAccumulatedSeconds = accumulatedAfter
-				PlayerProfile.save(plr.UserId)
+				-- Use PlayerProfile's batching system instead of forcing immediate save
+				-- This reduces DataStore requests while still tracking time accurately
+				local timeInMinutes = math.floor(delta / 60)
+				if timeInMinutes > 0 then
+					PlayerProfile.addTimePlayed(plr.UserId, timeInMinutes)
+				end
 			end
 		end
 	end
@@ -226,7 +235,8 @@ DebugResetPlaytime.OnServerInvoke = function(player)
 		prof.rewards.playtimeClaimed = {}
 		prof.rewards.playtimeAccumulatedSeconds = 0
 		prof.rewards.lastLoginDay = nil
-		PlayerProfile.save(player.UserId)
+		-- Use batching system instead of immediate save for debug operations
+		PlayerProfile.save(player.UserId) -- Still save immediately for debug functions
 		print("DEBUG: Reset complete for", player.Name)
 		return { success = true }
 	end

@@ -608,8 +608,6 @@ function WallJump.toggleWallslide(character)
 
 	-- Don't apply cooldown when manually disabled - we want immediate reactivation when appropriate
 	slideCooldownUntil[character] = nil
-
-	print("[WallJump] Wallslide disabled for", character.Name, "- will re-enable when touching ground")
 	return true
 end
 
@@ -646,7 +644,6 @@ function WallJump.tryManualReactivate(character)
 		wallslideDisabled[character] = nil
 		-- Clear any existing cooldown to allow immediate wallslide
 		slideCooldownUntil[character] = nil
-		print("[WallJump] Wallslide manually reactivated for", character.Name, "- near wall during fall")
 		return true
 	end
 
@@ -748,7 +745,6 @@ function WallJump.updateWallslideState(character)
 		wallslideDisabled[character] = nil
 		-- Clear any existing cooldown to allow immediate wallslide
 		slideCooldownUntil[character] = nil
-		print("[WallJump] Wallslide re-enabled for", character.Name, "- " .. reason)
 	end
 end
 

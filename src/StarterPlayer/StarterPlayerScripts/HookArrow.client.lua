@@ -65,13 +65,6 @@ local function createHookHighlight(hookPart)
 	local highlightClone = highlightTemplate:Clone()
 	highlightClone.Parent = hookPart
 
-	-- Debug: Check highlight properties
-	print("HookArrow: Created highlight for", hookPart:GetFullName())
-	print("HookArrow: Highlight Enabled =", highlightClone.Enabled)
-	print("HookArrow: Highlight FillColor =", highlightClone.FillColor)
-	print("HookArrow: Highlight OutlineColor =", highlightClone.OutlineColor)
-	print("HookArrow: Highlight FillTransparency =", highlightClone.FillTransparency)
-
 	-- Store the highlight
 	hookHighlights[hookPart] = highlightClone
 
@@ -152,15 +145,11 @@ local function updateHookHighlights(character, bestTarget)
 				-- Hook is on cooldown - RED color
 				highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red fill
 				highlight.OutlineColor = Color3.fromRGB(255, 0, 0) -- Red outline
-				print("HookArrow: Set", hookPart:GetFullName(), "to RED (cooldown)")
-				print("HookArrow: Highlight Enabled =", highlight.Enabled)
 				showCooldownLabel(hookPart, cooldownRemaining)
 			else
 				-- Hook is ready - GREEN color
 				highlight.FillColor = Color3.fromRGB(0, 255, 0) -- Green fill
 				highlight.OutlineColor = Color3.fromRGB(0, 255, 0) -- Green outline
-				print("HookArrow: Set", hookPart:GetFullName(), "to GREEN (ready)")
-				print("HookArrow: Highlight Enabled =", highlight.Enabled)
 				hideCooldownLabel(hookPart)
 			end
 

@@ -285,17 +285,12 @@ end)
 -- Only log initialization once
 if Config.HookCooldownLabels then
 	local template = getBillboardGuiTemplate()
-	if template then
-		print("HookCooldownLabels: System initialized and ready")
-		print("HookCooldownLabels: Config.HookCooldownLabels =", Config.HookCooldownLabels)
-		print("HookCooldownLabels: Config.HookTag =", Config.HookTag or "Hookable")
-		print("HookCooldownLabels: Config.HookAutoRange =", Config.HookAutoRange or 90)
-		print("HookCooldownLabels: BillboardGui template ready")
-	else
+	if not template then
 		warn("HookCooldownLabels: BillboardGui template not found")
+		return
 	end
 else
-	print("HookCooldownLabels: System DISABLED in config")
+	warn("HookCooldownLabels: System DISABLED in config")
 end
 
 -- ============================================================================

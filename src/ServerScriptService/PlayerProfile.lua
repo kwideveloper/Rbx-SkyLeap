@@ -13,6 +13,8 @@ local LAST_SAVE = {} -- Track last save time per user
 local SAVE_INTERVAL = 30 -- Save every 30 seconds maximum
 local CRITICAL_SAVE_THRESHOLD = 5000 -- Auto-save if coins/diamonds change by this much
 local LOADING = {} -- Track profiles currently being loaded to prevent duplicate requests
+local SAVE_QUEUE = {} -- Queue for DataStore operations to prevent overload
+local MAX_CONCURRENT_SAVES = 3 -- Maximum concurrent DataStore operations
 
 local function defaultProfile()
 	return {
@@ -86,6 +88,37 @@ local function keyFor(userId)
 	return "u:" .. tostring(userId)
 end
 
+-- OPTIMIZED: Queue system to prevent DataStore overload
+local activeSaveCount = 0
+local function processSaveQueue()
+	while #SAVE_QUEUE > 0 and activeSaveCount < MAX_CONCURRENT_SAVES do
+		local saveRequest = table.remove(SAVE_QUEUE, 1)
+		activeSaveCount = activeSaveCount + 1
+
+		task.spawn(function()
+			local success = saveRequest.callback()
+			activeSaveCount = activeSaveCount - 1
+
+			if not success and saveRequest.retries < 3 then
+				saveRequest.retries = saveRequest.retries + 1
+				table.insert(SAVE_QUEUE, saveRequest)
+				task.wait(2 ^ saveRequest.retries) -- Exponential backoff
+			end
+		end)
+	end
+end
+
+local function queueSaveOperation(userId, callback)
+	table.insert(SAVE_QUEUE, {
+		userId = userId,
+		callback = callback,
+		retries = 0,
+		timestamp = os.time(),
+	})
+	processSaveQueue()
+	return true -- Return true to indicate operation was queued
+end
+
 -- OPTIMIZED: Use GetAsync for reads, prevent duplicate loads, only UpdateAsync when migration needed
 function PlayerProfile.load(userId)
 	userId = tostring(userId)
@@ -155,7 +188,7 @@ function PlayerProfile.load(userId)
 	return loaded
 end
 
--- OPTIMIZED: Batched save system to reduce DataStore requests
+-- OPTIMIZED: Batched save system with queue to reduce DataStore requests
 local function forceSave(userId)
 	userId = tostring(userId) -- Ensure userId is string
 	local data = ACTIVE[userId]
@@ -172,24 +205,27 @@ local function forceSave(userId)
 	end
 
 	data.meta.updatedAt = os.time()
-	local success = false
-	local err = nil
-	local ok, errorMsg = pcall(function()
-		store:SetAsync(keyFor(userId), data)
-		LAST_SAVE[userId] = os.time()
-		PENDING_CHANGES[userId] = nil -- Clear pending changes after successful save
-		success = true
+
+	return queueSaveOperation(userId, function()
+		local success = false
+		local err = nil
+		local ok, errorMsg = pcall(function()
+			store:SetAsync(keyFor(userId), data)
+			LAST_SAVE[userId] = os.time()
+			PENDING_CHANGES[userId] = nil -- Clear pending changes after successful save
+			success = true
+		end)
+
+		if not ok then
+			err = errorMsg
+		end
+
+		if not success then
+			warn(string.format("[PlayerProfile] forceSave FAILED for user %s: %s", userId, tostring(err)))
+		end
+
+		return success
 	end)
-
-	if not ok then
-		err = errorMsg
-	end
-
-	if not success then
-		warn(string.format("[PlayerProfile] forceSave FAILED for user %s: %s", userId, tostring(err)))
-	end
-
-	return success
 end
 
 -- OPTIMIZED: Checks if user needs saving based on time or critical changes
@@ -463,21 +499,76 @@ function PlayerProfile.markPlaytimeClaimed(userId, index)
 	return success
 end
 
--- OPTIMIZATION: Periodic auto-save system
+-- OPTIMIZATION: Periodic auto-save system with queue management
 task.spawn(function()
 	while true do
 		task.wait(SAVE_INTERVAL)
 
+		-- Process pending saves
 		for userId, _ in pairs(ACTIVE) do
 			local shouldSaveNow, reason = shouldSave(userId)
 			if shouldSaveNow then
 				forceSave(userId)
 			end
 		end
+
+		-- Clean up old queue entries (older than 5 minutes)
+		local currentTime = os.time()
+		local cleanedQueue = {}
+		for _, request in ipairs(SAVE_QUEUE) do
+			if currentTime - request.timestamp < 300 then -- 5 minutes
+				table.insert(cleanedQueue, request)
+			end
+		end
+		SAVE_QUEUE = cleanedQueue
+
+		-- Process queue if not at capacity
+		processSaveQueue()
 	end
 end)
 
 -- REMOVED: PlayerRemoving cleanup - PlayerData.server.lua handles all cleanup via release()
 -- This prevents any race conditions or duplicate cleanup operations
+
+-- DEBUG: Add monitoring function for DataStore queue status
+function PlayerProfile.getQueueStatus()
+	return {
+		queueSize = #SAVE_QUEUE,
+		activeSaves = activeSaveCount,
+		maxConcurrent = MAX_CONCURRENT_SAVES,
+		activeProfiles = #ACTIVE,
+	}
+end
+
+-- DEBUG: Function to force process queue (for debugging purposes)
+function PlayerProfile.processQueue()
+	processSaveQueue()
+end
+
+-- DEBUG: Periodic monitoring of DataStore queue health
+task.spawn(function()
+	while true do
+		task.wait(60) -- Check every minute
+
+		local status = PlayerProfile.getQueueStatus()
+		if status.queueSize > 10 then
+			warn(
+				string.format(
+					"[PlayerProfile] WARNING: Large DataStore queue detected. Queue: %d, Active: %d/%d, Profiles: %d",
+					status.queueSize,
+					status.activeSaves,
+					status.maxConcurrent,
+					status.activeProfiles
+				)
+			)
+		end
+
+		-- Force process queue if it's getting too large
+		if status.queueSize > 20 then
+			warn("[PlayerProfile] Queue overload detected, forcing processing...")
+			processSaveQueue()
+		end
+	end
+end)
 
 return PlayerProfile

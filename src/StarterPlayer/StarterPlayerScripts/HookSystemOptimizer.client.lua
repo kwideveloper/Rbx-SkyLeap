@@ -83,6 +83,4 @@ local HookSystemOptimizer = {
 -- Initialize cache on startup
 getHooksCached()
 
-print("HookSystemOptimizer: Initialized with optimized hook caching")
-
 return HookSystemOptimizer
