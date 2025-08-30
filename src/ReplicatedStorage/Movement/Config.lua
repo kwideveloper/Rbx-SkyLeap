@@ -265,6 +265,20 @@ Config.ZiplineEndDetachDistance = 2
 Config.ZiplineTagName = "Zipline" -- Tag name used to identify zipline objects
 Config.ZiplineAutoInitialize = true -- Whether to automatically create RopeConstraints for tagged objects
 
+-- Hook / Grapple animation durations (in seconds - EXACT duration the animation will play)
+-- The system automatically calculates SpeedMultiplier = OriginalDuration / TargetDuration
+-- Example: If animation is 2 seconds and you want 5 seconds, SpeedMultiplier = 2/5 = 0.4 (slower)
+-- Example: If animation is 2 seconds and you want 0.5 seconds, SpeedMultiplier = 2/0.5 = 4.0 (faster)
+-- IMPORTANT: Uses Play() first, then AdjustSpeed() for reliable speed control
+Config.HookStartDurationSeconds = 0.5 -- EXACT duration for hook start animation (grabbing the hook)
+Config.HookFinishDurationSeconds = 0.35 -- EXACT duration for hook finish animation (releasing/jumping off)
+
+-- Zipline animation durations (in seconds - EXACT duration the animation will play)
+-- Same system: SpeedMultiplier = OriginalDuration / TargetDuration
+-- IMPORTANT: Uses Play() with speed parameters for reliable speed control
+Config.ZiplineStartDurationSeconds = 0.5 -- EXACT duration for zipline start animation (grabbing the line)
+Config.ZiplineEndDurationSeconds = 0.35 -- EXACT duration for zipline end animation (releasing/jumping off)
+
 -- Camera alignment (body yaw + head tracking)
 Config.CameraAlignEnabled = false
 Config.CameraAlignBodyLerpAlpha = 0.25 -- 0..1 per frame smoothing for body yaw

@@ -92,6 +92,17 @@ function VerticalClimb.tryStart(character)
 			local animSpeed = Config.VerticalClimbAnimationSpeed or 1.0
 			animTrack:AdjustSpeed(animSpeed)
 
+			-- Temporarily suppress default animations to prevent Fall animation from interrupting
+			local originalAnim = humanoid:GetPlayingAnimationTracks()
+			for _, track in ipairs(originalAnim) do
+				if track.Animation and track.Animation.AnimationId then
+					local animId = string.lower(track.Animation.AnimationId)
+					if animId:find("fall") or animId:find("jump") or animId:find("land") then
+						track:Stop(0.1)
+					end
+				end
+			end
+
 			animTrack:Play()
 
 			-- Store animation track for cleanup

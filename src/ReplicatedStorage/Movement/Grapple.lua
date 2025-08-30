@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage.Movement.Config)
+local Animations = require(ReplicatedStorage.Movement.Animations)
 
 local Grapple = {}
 
@@ -27,6 +28,16 @@ local function isPlayerDescendant(instance)
 		instance = instance.Parent
 	end
 	return false
+end
+
+local function stopHookAnimation(character)
+	local st = characterState[character]
+	if st and st.animTrack then
+		if st.animTrack.IsPlaying then
+			st.animTrack:Stop()
+		end
+		st.animTrack = nil
+	end
 end
 
 local function ensureRootAttachment(character)
@@ -66,6 +77,52 @@ local function cleanup(char)
 	if not st then
 		return
 	end
+
+	-- Prevent multiple cleanup calls for the same character
+	if st.isCleaningUp then
+		return
+	end
+	st.isCleaningUp = true
+
+	-- Play hook finish animation before cleanup (only once)
+	if st.animTrack and not st.finishAnimationPlayed then
+		st.finishAnimationPlayed = true
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			local animator = hum:FindFirstChild("Animator")
+			if animator then
+				-- Use the new global animation function
+				local finishTrack, errorMsg =
+					Animations.playWithDuration(animator, "HookFinish", Config.HookFinishDurationSeconds or 0.5, {
+						debug = true,
+						onComplete = function(actualDuration, expectedDuration)
+							print(
+								"[Hook] HookFinish - Animation completed in",
+								actualDuration,
+								"seconds (expected:",
+								expectedDuration,
+								"seconds)"
+							)
+						end,
+					})
+
+				if not finishTrack then
+					print("[Hook] HookFinish - ERROR:", errorMsg)
+				end
+			else
+				print("[Hook] HookFinish - ERROR: Animator not found!")
+			end
+		else
+			print("[Hook] HookFinish - ERROR: Humanoid not found!")
+		end
+
+		-- Stop current animation
+		if st.animTrack and st.animTrack.IsPlaying then
+			st.animTrack:Stop()
+		end
+		st.animTrack = nil
+	end
+
 	if st.rope then
 		st.rope:Destroy()
 	end
@@ -415,15 +472,63 @@ function Grapple.tryFire(character, cameraCFrame)
 	if not autoDetachDistance or autoDetachDistance <= 0 then
 		autoDetachDistance = Config.HookAutoDetachDistance or 10
 	end
-	characterState[character] = {
-		anchor = anchor,
-		rope = rope,
-		force = force,
-		reel = 0,
-		targetPart = hookablePart,
-		maxApproachSpeed = maxApproachSpeed,
-		autoDetachDistance = autoDetachDistance,
-	}
+	-- Start hook animation using the new global function
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChild("Animator")
+	if animator then
+		local animTrack, errorMsg =
+			Animations.playWithDuration(animator, "HookStart", Config.HookStartDurationSeconds or 1.0, {
+				debug = true,
+				onComplete = function(actualDuration, expectedDuration)
+					print(
+						"[Hook] HookStart - Animation completed in",
+						actualDuration,
+						"seconds (expected:",
+						expectedDuration,
+						"seconds)"
+					)
+				end,
+			})
+
+		if animTrack then
+			-- Store animation track for cleanup
+			characterState[character] = {
+				anchor = anchor,
+				rope = rope,
+				force = force,
+				reel = 0,
+				targetPart = hookablePart,
+				maxApproachSpeed = maxApproachSpeed,
+				autoDetachDistance = autoDetachDistance,
+				animTrack = animTrack,
+				startAnimationPlayed = true, -- Mark start animation as played
+			}
+		else
+			print("[Hook] HookStart - ERROR:", errorMsg)
+			-- Store state without animation track
+			characterState[character] = {
+				anchor = anchor,
+				rope = rope,
+				force = force,
+				reel = 0,
+				targetPart = hookablePart,
+				maxApproachSpeed = maxApproachSpeed,
+				autoDetachDistance = autoDetachDistance,
+				startAnimationPlayed = true, -- Mark start animation as played
+			}
+		end
+	else
+		characterState[character] = {
+			anchor = anchor,
+			rope = rope,
+			force = force,
+			reel = 0,
+			targetPart = hookablePart,
+			maxApproachSpeed = maxApproachSpeed,
+			autoDetachDistance = autoDetachDistance,
+			startAnimationPlayed = true, -- Mark start animation as played
+		}
+	end
 	local player = Players.LocalPlayer
 	if player and player.PlayerGui then
 		local ui = player.PlayerGui:FindFirstChild("HookUI")
@@ -431,6 +536,7 @@ function Grapple.tryFire(character, cameraCFrame)
 			ui.Enabled = true
 		end
 	end
+
 	return true
 end
 
@@ -443,8 +549,40 @@ function Grapple.update(character, dt)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local hum = character:FindFirstChildOfClass("Humanoid")
 	if not (root and hum and st.rope and st.anchor) then
-		cleanup(character)
+		-- Prevent multiple cleanup calls
+		if not st.isCleaningUp then
+			cleanup(character)
+		end
 		return
+	end
+
+	-- Handle animation transitions
+
+	-- Handle hook animation transitions
+	if st.animTrack and st.animTrack.IsPlaying then
+		-- Check if HookStart animation has finished (non-looped animation)
+		if not st.animTrack.Looped and st.animTrack.TimePosition >= st.animTrack.Length - 0.1 then
+			-- HookStart animation finished, start HookLoop
+			st.animTrack:Stop()
+			st.animTrack = nil
+
+			-- Use the new global animation function for HookLoop
+			local loopTrack, errorMsg = Animations.playWithDuration(
+				hum:FindFirstChild("Animator"),
+				"HookLoop",
+				1.0, -- No duration control needed for loop
+				{
+					looped = true,
+					debug = false, -- No debug needed for loop
+				}
+			)
+
+			if loopTrack then
+				st.animTrack = loopTrack
+			else
+				print("[Hook] HookLoop - ERROR:", errorMsg)
+			end
+		end
 	end
 	local pullStrength = Config.GrapplePullForce or 6000
 	local reelSpeed = Config.GrappleReelSpeed or 28
@@ -457,7 +595,11 @@ function Grapple.update(character, dt)
 	local dist = toAnchor.Magnitude
 	local autoDetachDistance = (st.autoDetachDistance or Config.HookAutoDetachDistance or 10)
 	if dist <= autoDetachDistance then
-		Grapple.stop(character)
+		-- Prevent multiple stop calls
+		if not st.isStopping then
+			st.isStopping = true
+			Grapple.stop(character)
+		end
 		return
 	end
 	local dir = toAnchor.Unit
@@ -484,5 +626,13 @@ Players.PlayerRemoving:Connect(function(plr)
 		cleanup(plr.Character)
 	end
 end)
+
+-- Clean up all active hook animations (useful for cleanup)
+function Grapple.cleanupAll()
+	for character, _ in pairs(characterState) do
+		stopHookAnimation(character)
+	end
+	characterState = {}
+end
 
 return Grapple

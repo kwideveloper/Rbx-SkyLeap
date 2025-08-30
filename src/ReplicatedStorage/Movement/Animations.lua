@@ -8,9 +8,14 @@ local Animations = {
 	Dash = "rbxassetid://109076026405774",
 
 	-- Zipline
-	ZiplineStart = "",
+	ZiplineStart = "rbxassetid://120192430577020",
 	ZiplineLoop = "",
-	ZiplineEnd = "",
+	ZiplineEnd = "rbxassetid://94363874797651",
+
+	-- Hook / Grapple
+	HookStart = "rbxassetid://120192430577020",
+	HookLoop = "rbxassetid://120192430577020",
+	HookFinish = "rbxassetid://94363874797651",
 
 	-- Slide
 	SlideStart = "rbxassetid://76415278161766",
@@ -18,9 +23,10 @@ local Animations = {
 	SlideEnd = "",
 
 	-- Jump / Air
-	JumpStart = "rbxassetid://104518933369704", -- custom jump start animation
-	Jump = "rbxassetid://134519357945550",
-	Fall = "rbxassetid://128424180385734", -- optional fall animation (when falling without jumping)
+	JumpStart = "", -- custom jump start animation
+	Jump = "",
+	-- Fall = "rbxassetid://128424180385734", -- optional fall animation (when falling without jumping)
+	Fall = "", -- optional fall animation (when falling without jumping)
 	Rise = "", -- optional rise animation (when going up after jump or on launch pads)
 	LandRoll = "rbxassetid://138804567004011", -- landing roll after high fall
 	DoubleJump = "", -- optional; fallback to Jump if empty
@@ -238,6 +244,139 @@ function Animations.preload()
 	pcall(function()
 		ContentProvider:PreloadAsync(assets)
 	end)
+end
+
+-- ============================================================================
+-- GLOBAL ANIMATION SPEED CONTROL FUNCTION
+-- ============================================================================
+-- This function provides a unified way to control animation speed and duration
+-- across all movement systems (Hook, Zipline, Vault, etc.)
+--
+-- @param animator: The Humanoid's Animator instance
+-- @param animationName: The name of the animation (e.g., "HookStart", "ZiplineEnd")
+-- @param targetDurationSeconds: The exact duration you want the animation to play (in seconds)
+-- @param options: Optional table with additional settings
+--   - priority: AnimationPriority (default: Action)
+--   - looped: boolean (default: false)
+--   - suppressDefault: boolean (default: true) - suppress fall/jump/land animations
+--   - onComplete: function - callback when animation finishes
+--   - debug: boolean (default: false) - enable debug logging
+--
+-- @return: AnimationTrack if successful, nil if failed
+-- @return: string - error message if failed
+function Animations.playWithDuration(animator, animationName, targetDurationSeconds, options)
+	-- Validate inputs
+	if not animator or not animationName or not targetDurationSeconds then
+		return nil, "Invalid parameters: animator, animationName, and targetDurationSeconds are required"
+	end
+
+	-- Get animation instance
+	local animation = Animations.get(animationName)
+	if not animation then
+		return nil, "Animation not found: " .. tostring(animationName)
+	end
+
+	-- Set default options
+	options = options or {}
+	local priority = options.priority or Enum.AnimationPriority.Action
+	local looped = options.looped or false
+	local suppressDefault = options.suppressDefault ~= false -- default to true
+	local onComplete = options.onComplete
+	local debug = options.debug or false
+
+	-- Load animation track
+	local animTrack = animator:LoadAnimation(animation)
+	if not animTrack then
+		return nil, "Failed to load animation track"
+	end
+
+	-- Configure animation track
+	animTrack.Looped = looped
+	animTrack.Priority = priority
+
+	-- Calculate speed multiplier for target duration
+	local originalDuration = animTrack.Length
+	local speedMultiplier = originalDuration / targetDurationSeconds
+
+	-- Clamp speed multiplier to reasonable limits (0.1x to 10x)
+	speedMultiplier = math.clamp(speedMultiplier, 0.1, 10.0)
+
+	-- Debug logging
+	if debug then
+		print(
+			"[Animations] " .. animationName .. " - Original Duration:",
+			originalDuration,
+			"seconds",
+			"| Target Duration:",
+			targetDurationSeconds,
+			"seconds",
+			"| Speed Multiplier:",
+			speedMultiplier,
+			"x",
+			"| Expected Duration:",
+			originalDuration / speedMultiplier,
+			"seconds"
+		)
+	end
+
+	-- Suppress default animations if requested
+	if suppressDefault then
+		local humanoid = animator.Parent
+		if humanoid and humanoid:IsA("Humanoid") then
+			local originalAnim = humanoid:GetPlayingAnimationTracks()
+			for _, track in ipairs(originalAnim) do
+				if track.Animation and track.Animation.AnimationId then
+					local animId = string.lower(tostring(track.Animation.AnimationId))
+					if animId:find("fall") or animId:find("jump") or animId:find("land") then
+						track:Stop(0.1)
+					end
+				end
+			end
+		end
+	end
+
+	-- Play animation with correct speed (Play first, then AdjustSpeed)
+	animTrack:Play()
+	animTrack:AdjustSpeed(speedMultiplier)
+
+	if debug then
+		print("[Animations] " .. animationName .. " - Speed after Play + AdjustSpeed:", animTrack.Speed)
+	end
+
+	-- Verify animation started successfully
+	if not animTrack.IsPlaying then
+		animTrack:Destroy()
+		return nil, "Animation failed to start"
+	end
+
+	-- Set up completion tracking if callback provided
+	if onComplete and not looped then
+		task.spawn(function()
+			local startTime = os.clock()
+			while animTrack and animTrack.IsPlaying do
+				task.wait(0.1)
+			end
+			local endTime = os.clock()
+			local actualDuration = endTime - startTime
+
+			if debug then
+				print(
+					"[Animations] " .. animationName .. " - Completed in",
+					actualDuration,
+					"seconds (expected:",
+					targetDurationSeconds,
+					"seconds)"
+				)
+			end
+
+			-- Call completion callback
+			if onComplete then
+				pcall(onComplete, actualDuration, targetDurationSeconds)
+			end
+		end)
+	end
+
+	return animTrack
 end
 
 return Animations

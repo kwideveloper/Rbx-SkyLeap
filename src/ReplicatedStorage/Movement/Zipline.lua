@@ -2,6 +2,7 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local CollectionService = game:GetService("CollectionService")
+local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
 
 local Zipline = {}
 
@@ -12,6 +13,16 @@ local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	return root, humanoid
+end
+
+local function stopZiplineAnimation(character)
+	local data = active[character]
+	if data and data.animTrack then
+		if data.animTrack.IsPlaying then
+			data.animTrack:Stop()
+		end
+		data.animTrack = nil
+	end
 end
 
 -- Find the closest rope setup near the character. We look for any object tagged with the configured zipline tag
@@ -126,15 +137,57 @@ function Zipline.tryStart(character)
 		dirSign = (p0.Y > p1.Y) and 1 or -1
 	end
 
-	local token = {}
-	active[character] = {
-		a0 = info.a0,
-		a1 = info.a1,
-		t = info.t,
-		dirSign = dirSign,
-		token = token,
-		model = info.model, -- Store reference to the model to access its Speed attribute
-	}
+	-- Start zipline animation using the new global function
+	local animator = humanoid:FindFirstChild("Animator")
+	if animator then
+		local animTrack, errorMsg =
+			Animations.playWithDuration(animator, "ZiplineStart", Config.ZiplineStartDurationSeconds or 0.2, {
+				debug = true,
+				onComplete = function(actualDuration, expectedDuration)
+					print(
+						"[Zipline] ZiplineStart - Animation completed in",
+						actualDuration,
+						"seconds (expected:",
+						expectedDuration,
+						"seconds)"
+					)
+				end,
+			})
+
+		if animTrack then
+			-- Store animation track for cleanup
+			local token = {}
+			active[character] = {
+				a0 = info.a0,
+				a1 = info.a1,
+				t = info.t,
+				dirSign = dirSign,
+				token = token,
+				model = info.model, -- Store reference to the model to access its Speed attribute
+				animTrack = animTrack,
+			}
+		else
+			local token = {}
+			active[character] = {
+				a0 = info.a0,
+				a1 = info.a1,
+				t = info.t,
+				dirSign = dirSign,
+				token = token,
+				model = info.model, -- Store reference to the model to access its Speed attribute
+			}
+		end
+	else
+		local token = {}
+		active[character] = {
+			a0 = info.a0,
+			a1 = info.a1,
+			t = info.t,
+			dirSign = dirSign,
+			token = token,
+			model = info.model, -- Store reference to the model to access its Speed attribute
+		}
+	end
 	return true
 end
 
@@ -143,6 +196,40 @@ function Zipline.stop(character)
 	if not data then
 		return
 	end
+
+	-- Play zipline end animation before cleanup using the new global function
+	if data.animTrack then
+		local _, humanoid = getCharacterParts(character)
+		if humanoid then
+			local animator = humanoid:FindFirstChild("Animator")
+			if animator then
+				local endTrack, errorMsg =
+					Animations.playWithDuration(animator, "ZiplineEnd", Config.ZiplineEndDurationSeconds or 0.2, {
+						debug = true,
+						onComplete = function(actualDuration, expectedDuration)
+							print(
+								"[Zipline] ZiplineEnd - Animation completed in",
+								actualDuration,
+								"seconds (expected:",
+								expectedDuration,
+								"seconds)"
+							)
+						end,
+					})
+
+				if not endTrack then
+					print("[Zipline] ZiplineEnd - ERROR:", errorMsg)
+				end
+			end
+		end
+
+		-- Stop current animation
+		if data.animTrack.IsPlaying then
+			data.animTrack:Stop()
+		end
+		data.animTrack = nil
+	end
+
 	local _, humanoid = getCharacterParts(character)
 	if humanoid then
 		humanoid.AutoRotate = true
@@ -162,6 +249,33 @@ function Zipline.maintain(character, dt)
 	if not root or not humanoid then
 		Zipline.stop(character)
 		return false
+	end
+
+	-- Handle zipline animation transitions
+	if data.animTrack and data.animTrack.IsPlaying then
+		-- Check if ZiplineStart animation has finished (non-looped animation)
+		if not data.animTrack.Looped and data.animTrack.TimePosition >= data.animTrack.Length - 0.1 then
+			-- ZiplineStart animation finished, start ZiplineLoop
+			data.animTrack:Stop()
+			data.animTrack = nil
+
+			-- Use the new global animation function for ZiplineLoop
+			local loopTrack, errorMsg = Animations.playWithDuration(
+				humanoid:FindFirstChild("Animator"),
+				"ZiplineLoop",
+				1.0, -- No duration control needed for loop
+				{
+					looped = true,
+					debug = false, -- No debug needed for loop
+				}
+			)
+
+			if loopTrack then
+				data.animTrack = loopTrack
+			else
+				print("[Zipline] ZiplineLoop - ERROR:", errorMsg)
+			end
+		end
 	end
 
 	-- Move parameter t along rope
@@ -218,6 +332,14 @@ function Zipline.maintain(character, dt)
 		return false
 	end
 	return true
+end
+
+-- Clean up all active zipline animations (useful for cleanup)
+function Zipline.cleanupAll()
+	for character, _ in pairs(active) do
+		stopZiplineAnimation(character)
+	end
+	active = {}
 end
 
 return Zipline
