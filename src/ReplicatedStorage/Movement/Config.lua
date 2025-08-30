@@ -234,6 +234,9 @@ Config.ClimbAnimationSpeed = {
 	Default = 1.0, -- Default duration for ClimbLoop if not configured
 }
 
+-- Vertical Climb animation speed (in seconds per animation cycle)
+Config.VerticalClimbAnimationSpeed = 0.25 -- Duration for vertical climb animation (matches VerticalClimbDurationSeconds)
+
 -- Air animation speeds (in seconds per animation cycle)
 Config.AirAnimationSpeed = {
 	Jump = 1.0, -- Duration for jump animation

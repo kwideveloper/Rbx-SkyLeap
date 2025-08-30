@@ -2,6 +2,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Movement.Config)
+local Animations = require(ReplicatedStorage.Movement.Animations)
 
 local VerticalClimb = {}
 
@@ -12,6 +13,14 @@ local function getParts(character)
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	return root, humanoid
+end
+
+local function stopVerticalClimbAnimation(character)
+	local st = active[character]
+	if st and st.animTrack then
+		st.animTrack:Stop()
+		st.animTrack = nil
+	end
 end
 
 local function findFrontWall(root)
@@ -70,11 +79,42 @@ function VerticalClimb.tryStart(character)
 	if not hit then
 		return false
 	end
-	active[character] = {
-		t0 = os.clock(),
-		dir = root.CFrame.LookVector,
-		normal = hit.Normal,
-	}
+	-- Start vertical climb animation
+	local animator = humanoid:FindFirstChild("Animator")
+	if animator then
+		local verticalClimbAnim = Animations.get("VerticalClimb")
+		if verticalClimbAnim then
+			local animTrack = animator:LoadAnimation(verticalClimbAnim)
+			animTrack.Looped = false
+			animTrack.Priority = Enum.AnimationPriority.Action
+
+			-- Set animation speed based on config
+			local animSpeed = Config.VerticalClimbAnimationSpeed or 1.0
+			animTrack:AdjustSpeed(animSpeed)
+
+			animTrack:Play()
+
+			-- Store animation track for cleanup
+			active[character] = {
+				t0 = os.clock(),
+				dir = root.CFrame.LookVector,
+				normal = hit.Normal,
+				animTrack = animTrack,
+			}
+		else
+			active[character] = {
+				t0 = os.clock(),
+				dir = root.CFrame.LookVector,
+				normal = hit.Normal,
+			}
+		end
+	else
+		active[character] = {
+			t0 = os.clock(),
+			dir = root.CFrame.LookVector,
+			normal = hit.Normal,
+		}
+	end
 	return true
 end
 
@@ -85,17 +125,20 @@ function VerticalClimb.maintain(character, dt)
 	end
 	local root, humanoid = getParts(character)
 	if not root or not humanoid then
+		stopVerticalClimbAnimation(character)
 		active[character] = nil
 		return false
 	end
 	-- stop if grounded or time exceeded
 	if humanoid.FloorMaterial ~= Enum.Material.Air then
+		stopVerticalClimbAnimation(character)
 		active[character] = nil
 		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
 		return false
 	end
 	local dur = Config.VerticalClimbDurationSeconds or 0.45
 	if (os.clock() - st.t0) > dur then
+		stopVerticalClimbAnimation(character)
 		active[character] = nil
 		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
 		return false
@@ -103,6 +146,7 @@ function VerticalClimb.maintain(character, dt)
 	-- re-confirm wall and refresh normal for stability
 	local hit = findFrontWall(root)
 	if not hit then
+		stopVerticalClimbAnimation(character)
 		active[character] = nil
 		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
 		return false
@@ -118,6 +162,7 @@ function VerticalClimb.maintain(character, dt)
 	if Abilities and Abilities.isMantleCandidate and Abilities.tryMantle then
 		if Abilities.isMantleCandidate(character) then
 			if Abilities.tryMantle(character) then
+				stopVerticalClimbAnimation(character)
 				active[character] = nil
 				cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
 				return false
@@ -125,6 +170,14 @@ function VerticalClimb.maintain(character, dt)
 		end
 	end
 	return true
+end
+
+-- Clean up all active vertical climb animations (useful for cleanup)
+function VerticalClimb.cleanupAll()
+	for character, _ in pairs(active) do
+		stopVerticalClimbAnimation(character)
+	end
+	active = {}
 end
 
 return VerticalClimb
