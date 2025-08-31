@@ -9,12 +9,12 @@ local Animations = {
 
 	-- Zipline
 	ZiplineStart = "rbxassetid://126089819563027",
-	ZiplineLoop = "",
+	ZiplineLoop = "rbxassetid://108110533497477",
 	ZiplineEnd = "rbxassetid://94363874797651",
 
 	-- Hook / Grapple
 	HookStart = "rbxassetid://126089819563027",
-	HookLoop = "",
+	HookLoop = "rbxassetid://108110533497477",
 	HookFinish = "rbxassetid://94363874797651",
 
 	-- Slide
@@ -32,7 +32,8 @@ local Animations = {
 	DoubleJump = "", -- optional; fallback to Jump if empty
 
 	-- Run / Locomotion
-	Run = "rbxassetid://129741854679661",
+	Run = "rbxassetid://123068310096943", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/run
+	Walk = "rbxassetid://95528593238099", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/walk
 
 	-- Wall interactions
 	WallRunLoop = "",
