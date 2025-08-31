@@ -84,45 +84,13 @@ local function cleanup(char)
 	end
 	st.isCleaningUp = true
 
-	-- Play hook finish animation before cleanup (only once)
-	if st.animTrack and not st.finishAnimationPlayed then
-		st.finishAnimationPlayed = true
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			local animator = hum:FindFirstChild("Animator")
-			if animator then
-				-- Use the new global animation function
-				local finishTrack, errorMsg =
-					Animations.playWithDuration(animator, "HookFinish", Config.HookFinishDurationSeconds or 0.5, {
-						debug = true,
-						onComplete = function(actualDuration, expectedDuration)
-							print(
-								"[Hook] HookFinish - Animation completed in",
-								actualDuration,
-								"seconds (expected:",
-								expectedDuration,
-								"seconds)"
-							)
-						end,
-					})
-
-				if not finishTrack then
-					print("[Hook] HookFinish - ERROR:", errorMsg)
-				end
-			else
-				print("[Hook] HookFinish - ERROR: Animator not found!")
-			end
-		else
-			print("[Hook] HookFinish - ERROR: Humanoid not found!")
-		end
-
-		-- Stop current animation
-		if st.animTrack and st.animTrack.IsPlaying then
-			st.animTrack:Stop()
-		end
-		st.animTrack = nil
+	-- Stop current animation if still playing
+	if st.animTrack and st.animTrack.IsPlaying then
+		st.animTrack:Stop()
 	end
+	st.animTrack = nil
 
+	-- Clean up rope and force
 	if st.rope then
 		st.rope:Destroy()
 	end
@@ -132,6 +100,7 @@ local function cleanup(char)
 	if st.force then
 		st.force:Destroy()
 	end
+
 	characterState[char] = nil
 end
 
@@ -151,29 +120,11 @@ local function setPartCooldown(part, duration)
 	end)
 end
 
-function Grapple.stop(character)
-	local st = characterState[character]
-	cleanup(character)
-	local player = Players.LocalPlayer
-	if player then
-		local ui = player:FindFirstChildOfClass("PlayerGui") and player.PlayerGui:FindFirstChild("HookUI")
-		if ui then
-			ui.Enabled = false
-		end
-	end
-	-- Part-level cooldown (per hookable), not per character
-	if st and st.targetPart and st.targetPart:IsDescendantOf(workspace) then
-		local duration = Config.HookCooldownSeconds or 0
-		local attr = st.targetPart:GetAttribute("HookCooldownSeconds")
-		if typeof(attr) == "number" then
-			duration = attr
-		end
-		setPartCooldown(st.targetPart, duration)
-	end
-end
+-- This function is now handled by the new Grapple.stop() implementation above
 
 function Grapple.isActive(character)
-	return characterState[character] ~= nil
+	local st = characterState[character]
+	return st ~= nil and not st.isExiting
 end
 
 -- Returns remaining cooldown seconds for the currently targeted (visible) hookable part (> 0 when on cooldown), or 0 if ready
@@ -478,15 +429,16 @@ function Grapple.tryFire(character, cameraCFrame)
 	if animator then
 		local animTrack, errorMsg =
 			Animations.playWithDuration(animator, "HookStart", Config.HookStartDurationSeconds or 1.0, {
-				debug = true,
+				debug = false,
 				onComplete = function(actualDuration, expectedDuration)
-					print(
-						"[Hook] HookStart - Animation completed in",
-						actualDuration,
-						"seconds (expected:",
-						expectedDuration,
-						"seconds)"
-					)
+					-- Debug logging (disabled for production)
+					-- print(
+					-- 	"[Hook] HookStart - Animation completed in",
+					-- 	actualDuration,
+					-- 	"seconds (expected:",
+					-- 	expectedDuration,
+					-- 	"seconds)"
+					-- )
 				end,
 			})
 
@@ -546,6 +498,12 @@ function Grapple.update(character, dt)
 		findAutoTarget(character)
 		return
 	end
+
+	-- If we're in exit state, don't process movement
+	if st.isExiting then
+		return
+	end
+
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local hum = character:FindFirstChildOfClass("Humanoid")
 	if not (root and hum and st.rope and st.anchor) then
@@ -579,8 +537,13 @@ function Grapple.update(character, dt)
 
 			if loopTrack then
 				st.animTrack = loopTrack
-			else
+			elseif errorMsg then
+				-- Only show error if it's a real error, not just unconfigured animation
 				print("[Hook] HookLoop - ERROR:", errorMsg)
+			else
+				-- Animation not configured, fallback to Roblox defaults (no error)
+				-- Debug logging (disabled for production)
+				-- print("[Hook] HookLoop - No loop animation configured, using Roblox defaults")
 			end
 		end
 	end
@@ -621,6 +584,112 @@ function Grapple.setReel(character, direction)
 	st.reel = direction -- -1 reel in, +1 reel out, 0 none
 end
 
+-- Stop hook and play finish animation after rope detaches
+function Grapple.stop(character)
+	local st = characterState[character]
+	if not st then
+		return
+	end
+
+	-- Check if we're already in exit state
+	if st.isExiting then
+		return
+	end
+
+	-- Mark as exiting to prevent multiple calls
+	st.isExiting = true
+	-- Debug logging (disabled for production)
+	-- print("[Hook] Starting exit sequence for character")
+
+	-- Immediately detach the rope (maintain original logic)
+	if st.rope then
+		st.rope:Destroy()
+		st.rope = nil
+	end
+	if st.force then
+		st.force:Destroy()
+		st.force = nil
+	end
+
+	-- Handle UI and cooldown logic immediately
+	local player = Players.LocalPlayer
+	if player then
+		local ui = player:FindFirstChildOfClass("PlayerGui") and player.PlayerGui:FindFirstChild("HookUI")
+		if ui then
+			ui.Enabled = false
+		end
+	end
+
+	-- Part-level cooldown (per hookable), not per character
+	if st and st.targetPart and st.targetPart:IsDescendantOf(workspace) then
+		local duration = Config.HookCooldownSeconds or 0
+		local attr = st.targetPart:GetAttribute("HookCooldownSeconds")
+		if typeof(attr) == "number" then
+			duration = attr
+		end
+		setPartCooldown(st.targetPart, duration)
+	end
+
+	-- Now play hook finish animation
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if hum then
+		local animator = hum:FindFirstChild("Animator")
+		if animator then
+			local finishTrack, errorMsg =
+				Animations.playWithDuration(animator, "HookFinish", Config.HookFinishDurationSeconds or 0.5, {
+					debug = false,
+					onComplete = function(actualDuration, expectedDuration)
+						-- Debug logging (disabled for production)
+						-- print(
+						-- 	"[Hook] HookFinish - Animation completed in",
+						-- 	actualDuration,
+						-- 	"seconds (expected:",
+						-- 	expectedDuration,
+						-- 	"seconds)"
+						-- )
+						-- Animation complete, now cleanup the state
+						Grapple.cleanup(character)
+					end,
+				})
+
+			if not finishTrack then
+				if errorMsg then
+					print("[Hook] HookFinish - ERROR:", errorMsg)
+				else
+					print("[Hook] HookFinish - Animation not configured, proceeding with cleanup")
+				end
+				-- If no finish animation, cleanup immediately
+				Grapple.cleanup(character)
+			end
+		else
+			-- No animator, cleanup immediately
+			Grapple.cleanup(character)
+		end
+	else
+		-- No humanoid, cleanup immediately
+		Grapple.cleanup(character)
+	end
+end
+
+-- Separate cleanup function that actually removes the hook state
+function Grapple.cleanup(character)
+	local st = characterState[character]
+	if not st then
+		return
+	end
+
+	-- Stop current animation if still playing
+	if st.animTrack and st.animTrack.IsPlaying then
+		st.animTrack:Stop()
+	end
+	st.animTrack = nil
+
+	-- Clear the data (rope and force already destroyed in stop())
+	characterState[character] = nil
+	-- Debug logging (disabled for production)
+	-- print("[Hook] Cleanup completed for character")
+end
+
 Players.PlayerRemoving:Connect(function(plr)
 	if plr.Character then
 		cleanup(plr.Character)
@@ -630,7 +699,7 @@ end)
 -- Clean up all active hook animations (useful for cleanup)
 function Grapple.cleanupAll()
 	for character, _ in pairs(characterState) do
-		stopHookAnimation(character)
+		Grapple.cleanup(character)
 	end
 	characterState = {}
 end

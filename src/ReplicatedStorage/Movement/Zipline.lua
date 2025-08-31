@@ -105,7 +105,8 @@ function Zipline.isNear(character)
 end
 
 function Zipline.isActive(character)
-	return active[character] ~= nil
+	local data = active[character]
+	return data ~= nil and not data.isExiting
 end
 
 function Zipline.tryStart(character)
@@ -142,15 +143,16 @@ function Zipline.tryStart(character)
 	if animator then
 		local animTrack, errorMsg =
 			Animations.playWithDuration(animator, "ZiplineStart", Config.ZiplineStartDurationSeconds or 0.2, {
-				debug = true,
+				debug = false,
 				onComplete = function(actualDuration, expectedDuration)
-					print(
-						"[Zipline] ZiplineStart - Animation completed in",
-						actualDuration,
-						"seconds (expected:",
-						expectedDuration,
-						"seconds)"
-					)
+					-- Debug logging (disabled for production)
+					-- print(
+					-- 	"[Zipline] ZiplineStart - Animation completed in",
+					-- 	actualDuration,
+					-- 	"seconds (expected:",
+					-- 	expectedDuration,
+					-- 	"seconds)"
+					-- )
 				end,
 			})
 
@@ -197,38 +199,69 @@ function Zipline.stop(character)
 		return
 	end
 
-	-- Play zipline end animation before cleanup using the new global function
-	if data.animTrack then
-		local _, humanoid = getCharacterParts(character)
-		if humanoid then
-			local animator = humanoid:FindFirstChild("Animator")
-			if animator then
-				local endTrack, errorMsg =
-					Animations.playWithDuration(animator, "ZiplineEnd", Config.ZiplineEndDurationSeconds or 0.2, {
-						debug = true,
-						onComplete = function(actualDuration, expectedDuration)
-							print(
-								"[Zipline] ZiplineEnd - Animation completed in",
-								actualDuration,
-								"seconds (expected:",
-								expectedDuration,
-								"seconds)"
-							)
-						end,
-					})
-
-				if not endTrack then
-					print("[Zipline] ZiplineEnd - ERROR:", errorMsg)
-				end
-			end
-		end
-
-		-- Stop current animation
-		if data.animTrack.IsPlaying then
-			data.animTrack:Stop()
-		end
-		data.animTrack = nil
+	-- Check if we're already in exit state
+	if data.isExiting then
+		return
 	end
+
+	-- Mark as exiting to prevent multiple calls
+	data.isExiting = true
+	-- Debug logging (disabled for production)
+	-- print("[Zipline] Starting exit sequence for character")
+
+	-- Play zipline end animation before cleanup using the new global function
+	local _, humanoid = getCharacterParts(character)
+	if humanoid then
+		local animator = humanoid:FindFirstChild("Animator")
+		if animator then
+			local endTrack, errorMsg =
+				Animations.playWithDuration(animator, "ZiplineEnd", Config.ZiplineEndDurationSeconds or 0.2, {
+					debug = false,
+					onComplete = function(actualDuration, expectedDuration)
+						-- Debug logging (disabled for production)
+						-- print(
+						-- 	"[Zipline] ZiplineEnd - Animation completed in",
+						-- 	actualDuration,
+						-- 	"seconds (expected:",
+						-- 	expectedDuration,
+						-- 	"seconds)"
+						-- )
+						-- Now that the animation is complete, do the actual cleanup
+						Zipline.cleanup(character)
+					end,
+				})
+
+			if not endTrack then
+				if errorMsg then
+					print("[Zipline] ZiplineEnd - ERROR:", errorMsg)
+				else
+					print("[Zipline] ZiplineEnd - Animation not configured, proceeding with cleanup")
+				end
+				-- If no end animation, cleanup immediately
+				Zipline.cleanup(character)
+			end
+		else
+			-- No animator, cleanup immediately
+			Zipline.cleanup(character)
+		end
+	else
+		-- No humanoid, cleanup immediately
+		Zipline.cleanup(character)
+	end
+end
+
+-- Separate cleanup function that actually removes the zipline state
+function Zipline.cleanup(character)
+	local data = active[character]
+	if not data then
+		return
+	end
+
+	-- Stop current animation if still playing
+	if data.animTrack and data.animTrack.IsPlaying then
+		data.animTrack:Stop()
+	end
+	data.animTrack = nil
 
 	local _, humanoid = getCharacterParts(character)
 	if humanoid then
@@ -236,7 +269,11 @@ function Zipline.stop(character)
 		-- Ensure we leave the non-physics state so jumping works immediately
 		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 	end
+
+	-- Clear the data
 	active[character] = nil
+	-- Debug logging (disabled for production)
+	-- print("[Zipline] Cleanup completed for character")
 end
 
 -- Update zipline motion. Returns true if still active.
@@ -245,9 +282,15 @@ function Zipline.maintain(character, dt)
 	if not data then
 		return false
 	end
+
+	-- If we're in exit state, don't process movement
+	if data.isExiting then
+		return false
+	end
+
 	local root, humanoid = getCharacterParts(character)
 	if not root or not humanoid then
-		Zipline.stop(character)
+		Zipline.cleanup(character)
 		return false
 	end
 
@@ -272,8 +315,13 @@ function Zipline.maintain(character, dt)
 
 			if loopTrack then
 				data.animTrack = loopTrack
-			else
+			elseif errorMsg then
+				-- Only show error if it's a real error, not just unconfigured animation
 				print("[Zipline] ZiplineLoop - ERROR:", errorMsg)
+			else
+				-- Animation not configured, fallback to Roblox defaults (no error)
+				-- Debug logging (disabled for production)
+				-- print("[Zipline] ZiplineLoop - No loop animation configured, using Roblox defaults")
 			end
 		end
 	end
@@ -337,7 +385,7 @@ end
 -- Clean up all active zipline animations (useful for cleanup)
 function Zipline.cleanupAll()
 	for character, _ in pairs(active) do
-		stopZiplineAnimation(character)
+		Zipline.cleanup(character)
 	end
 	active = {}
 end

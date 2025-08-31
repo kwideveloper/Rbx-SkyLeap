@@ -8,13 +8,13 @@ local Animations = {
 	Dash = "rbxassetid://109076026405774",
 
 	-- Zipline
-	ZiplineStart = "rbxassetid://120192430577020",
+	ZiplineStart = "rbxassetid://126089819563027",
 	ZiplineLoop = "",
 	ZiplineEnd = "rbxassetid://94363874797651",
 
 	-- Hook / Grapple
-	HookStart = "rbxassetid://120192430577020",
-	HookLoop = "rbxassetid://120192430577020",
+	HookStart = "rbxassetid://126089819563027",
+	HookLoop = "",
 	HookFinish = "rbxassetid://94363874797651",
 
 	-- Slide
@@ -98,6 +98,12 @@ function Animations.get(name)
 		end
 	end
 	return inst
+end
+
+-- Check if an animation is configured (has a valid ID)
+function Animations.isConfigured(name)
+	local id = Animations[name]
+	return type(id) == "string" and id ~= ""
 end
 
 -- Returns an array of all configured Animation instances (non-empty ids)
@@ -252,6 +258,10 @@ end
 -- This function provides a unified way to control animation speed and duration
 -- across all movement systems (Hook, Zipline, Vault, etc.)
 --
+-- IMPORTANT: If an animation is not configured (empty string in Animations table),
+-- this function returns nil, nil (no error) to allow graceful fallback to Roblox defaults.
+-- Use Animations.tryPlayWithDuration() for clearer handling of optional animations.
+--
 -- @param animator: The Humanoid's Animator instance
 -- @param animationName: The name of the animation (e.g., "HookStart", "ZiplineEnd")
 -- @param targetDurationSeconds: The exact duration you want the animation to play (in seconds)
@@ -262,12 +272,19 @@ end
 --   - onComplete: function - callback when animation finishes
 --   - debug: boolean (default: false) - enable debug logging
 --
--- @return: AnimationTrack if successful, nil if failed
--- @return: string - error message if failed
+-- @return: AnimationTrack if successful, nil if failed or not configured
+-- @return: string - error message if failed, nil if not configured (fallback to Roblox defaults)
 function Animations.playWithDuration(animator, animationName, targetDurationSeconds, options)
 	-- Validate inputs
 	if not animator or not animationName or not targetDurationSeconds then
 		return nil, "Invalid parameters: animator, animationName, and targetDurationSeconds are required"
+	end
+
+	-- Check if animation is configured
+	if not Animations.isConfigured(animationName) then
+		-- Return nil without error for unconfigured animations (fallback to Roblox defaults)
+		-- This allows the system to gracefully fall back to Roblox default animations
+		return nil, nil
 	end
 
 	-- Get animation instance
@@ -301,23 +318,23 @@ function Animations.playWithDuration(animator, animationName, targetDurationSeco
 	-- Clamp speed multiplier to reasonable limits (0.1x to 10x)
 	speedMultiplier = math.clamp(speedMultiplier, 0.1, 10.0)
 
-	-- Debug logging
-	if debug then
-		print(
-			"[Animations] " .. animationName .. " - Original Duration:",
-			originalDuration,
-			"seconds",
-			"| Target Duration:",
-			targetDurationSeconds,
-			"seconds",
-			"| Speed Multiplier:",
-			speedMultiplier,
-			"x",
-			"| Expected Duration:",
-			originalDuration / speedMultiplier,
-			"seconds"
-		)
-	end
+	-- Debug logging (disabled for production)
+	-- if debug then
+	-- 	print(
+	-- 		"[Animations] " .. animationName .. " - Original Duration:",
+	-- 		originalDuration,
+	-- 		"seconds",
+	-- 		"| Target Duration:",
+	-- 		targetDurationSeconds,
+	-- 		"seconds",
+	-- 		"| Speed Multiplier:",
+	-- 		speedMultiplier,
+	-- 		"x",
+	-- 		"| Expected Duration:",
+	-- 		originalDuration / speedMultiplier,
+	-- 		"seconds"
+	-- 	)
+	-- end
 
 	-- Suppress default animations if requested
 	if suppressDefault then
@@ -339,9 +356,10 @@ function Animations.playWithDuration(animator, animationName, targetDurationSeco
 	animTrack:Play()
 	animTrack:AdjustSpeed(speedMultiplier)
 
-	if debug then
-		print("[Animations] " .. animationName .. " - Speed after Play + AdjustSpeed:", animTrack.Speed)
-	end
+	-- Debug logging (disabled for production)
+	-- if debug then
+	-- 	print("[Animations] " .. animationName .. " - Speed after Play + AdjustSpeed:", animTrack.Speed)
+	-- end
 
 	-- Verify animation started successfully
 	if not animTrack.IsPlaying then
@@ -359,15 +377,16 @@ function Animations.playWithDuration(animator, animationName, targetDurationSeco
 			local endTime = os.clock()
 			local actualDuration = endTime - startTime
 
-			if debug then
-				print(
-					"[Animations] " .. animationName .. " - Completed in",
-					actualDuration,
-					"seconds (expected:",
-					targetDurationSeconds,
-					"seconds)"
-				)
-			end
+			-- Debug logging (disabled for production)
+			-- if debug then
+			-- 	print(
+			-- 		"[Animations] " .. animationName .. " - Completed in",
+			-- 		actualDuration,
+			-- 		"seconds (expected:",
+			-- 		targetDurationSeconds,
+			-- 		"seconds)"
+			-- 	)
+			-- end
 
 			-- Call completion callback
 			if onComplete then
@@ -377,6 +396,27 @@ function Animations.playWithDuration(animator, animationName, targetDurationSeco
 	end
 
 	return animTrack
+end
+
+-- ============================================================================
+-- HELPER FUNCTION FOR OPTIONAL ANIMATIONS
+-- ============================================================================
+-- This function is useful for animations that are optional (like loop animations)
+-- It returns nil, nil if the animation is not configured, allowing graceful fallback
+--
+-- @param animator: The Humanoid's Animator instance
+-- @param animationName: The name of the animation
+-- @param targetDurationSeconds: The exact duration you want the animation to play
+-- @param options: Optional table with additional settings
+--
+-- @return: AnimationTrack if successful, nil if failed or not configured
+-- @return: string - error message if failed, nil if not configured (fallback to Roblox defaults)
+function Animations.tryPlayWithDuration(animator, animationName, targetDurationSeconds, options)
+	local animTrack, errorMsg = Animations.playWithDuration(animator, animationName, targetDurationSeconds, options)
+
+	-- If errorMsg is nil, it means the animation is not configured (not an error)
+	-- If errorMsg is a string, it means there was a real error
+	return animTrack, errorMsg
 end
 
 return Animations
