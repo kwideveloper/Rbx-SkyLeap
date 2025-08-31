@@ -376,11 +376,36 @@ Config.VaultMaxHeight = 5 -- studs above feet
 Config.VaultMinSpeed = 24 -- require decent speed (sprinting)
 Config.VaultUpBoost = 0
 Config.VaultForwardBoost = 40 -- base minimum forward speed to ensure clearance
-Config.VaultDurationSeconds = 0.18 -- shorter for snappier feel
-Config.VaultPreserveSpeed = true -- preserve current horizontal speed if higher than base
+Config.VaultDurationSeconds = 0.25 --0.18 -- shorter for snappier feel
+Config.VaultPreserveSpeed = false -- preserve current horizontal speed if higher than base
 Config.VaultCooldownSeconds = 0.6
--- Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Lazy", "Vault_Kong", "Vault_Dash", "Vault_TwoHanded" }
-Config.VaultAnimationKeys = { "Vault_Speed" }
+-- Vault Animation System Configuration
+-- Enable/disable random vault animation selection (Premium Feature)
+Config.VaultRandomAnimationsEnabled = true -- Set to false to disable random selection (Premium Feature)
+-- Available vault animations for random selection
+Config.VaultAnimationKeys = { "Vault_Speed", "Vault_Monkey", "Vault_1_Hand", "Front_Flip", "Jump_Over" }
+-- Config.VaultAnimationKeys = { "Jump_Over" }
+-- Fallback animation if random selection is disabled or fails
+Config.VaultFallbackAnimation = "Vault_Speed"
+
+-- Vault Animation Duration Control
+Config.VaultAnimationDuration = 0.8 -- Target duration for vault animations to complete (seconds)
+Config.VaultAnimationSpeedOverride = true -- If true, override animation speed to match target duration
+Config.VaultAnimationMinSpeed = 0 -- Minimum animation speed multiplier (prevents too slow playback)
+Config.VaultAnimationMaxSpeed = 3.0 -- Maximum animation speed multiplier (prevents too fast playback)
+Config.VaultAnimationIndependentDuration = true -- If true, animation completes independently of vault physics duration
+
+-- Custom duration for specific vault animations (optional)
+-- If not specified, uses Config.VaultAnimationDuration
+Config.VaultAnimationCustomDurations = {
+	-- ["AnimationName"] = duration_in_seconds,
+	Vault_Monkey = 0.45, -- Standard monkey vault
+	Vault_1_Hand = 0.45, -- Slower one-hand vault
+	Front_Flip = 0.5, -- Longer flip animation
+	Jump_Over = 0.5, -- Medium jump over
+	-- Add more as needed...
+}
+
 Config.DebugVault = false
 -- Dynamic vault clearance: how many studs above obstacle top we aim to pass
 Config.VaultClearanceStuds = 1.5

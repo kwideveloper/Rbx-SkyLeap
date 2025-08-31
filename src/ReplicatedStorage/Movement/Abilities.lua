@@ -1829,6 +1829,17 @@ local function isVaultCandidate(root, humanoid)
 end
 
 local function pickVaultAnimation()
+	-- Use the new vault animation system for random selection
+	if Animations and Animations.getRandomVaultAnimation then
+		local animInst, animName = Animations.getRandomVaultAnimation()
+		if animInst then
+			-- Debug logging (disabled for production)
+			-- print("[Vault] Selected animation:", animName)
+			return animInst
+		end
+	end
+
+	-- Fallback to old system if new system not available
 	local keys = Config.VaultAnimationKeys or {}
 	if #keys == 0 then
 		return nil
@@ -2002,165 +2013,214 @@ function Abilities.tryVault(character)
 		end)
 	end
 
-	local animInst = pickVaultAnimation()
-	if animInst then
-		local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
-		animator.Parent = humanoid
-		local track
-		pcall(function()
-			track = animator:LoadAnimation(animInst)
-		end)
-		if track then
-			track.Priority = Enum.AnimationPriority.Action
-			track:Play(0.05, 1, 1)
-			-- Hand IK setup (simple target holders)
-			local targetsFolder = workspace:FindFirstChild("VaultTargets") or Instance.new("Folder")
-			targetsFolder.Name = "VaultTargets"
-			targetsFolder.Parent = workspace
-			local function makeTarget(name, pos)
-				local p = Instance.new("Part")
-				p.Name = name
-				p.Size = Vector3.new(0.2, 0.2, 0.2)
-				p.Transparency = 1
-				p.CanCollide = false
-				p.Anchored = true
-				p.CFrame = CFrame.new(pos)
-				p.Parent = targetsFolder
-				local a = Instance.new("Attachment")
-				a.Name = "Attach"
-				a.Parent = p
-				return p, a
-			end
-			-- Compute two hand points along the obstacle top edge
-			local hitPos = res.Position
-			local normal = res.Normal
-			local tangent = Vector3.yAxis:Cross(normal)
-			if tangent.Magnitude < 0.05 then
-				tangent = Vector3.xAxis:Cross(normal)
-			end
-			tangent = tangent.Unit
-			local topYAdj = topY + 0.05
-			local center = Vector3.new(hitPos.X, topYAdj, hitPos.Z) - (normal * 0.15)
-			local handOffset = 0.5
-			local leftPos = center - (tangent * handOffset)
-			local rightPos = center + (tangent * handOffset)
-			local leftPart, leftAttach = makeTarget("VaultHandL", leftPos)
-			local rightPart, rightAttach = makeTarget("VaultHandR", rightPos)
+	-- Use the new vault animation system for guaranteed completion
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+	animator.Parent = humanoid
 
-			local function setupIK(side, chainRootName, endEffName, attach)
-				local ik = Instance.new("IKControl")
-				ik.Name = "IK_Vault_" .. side
-				ik.Type = Enum.IKControlType.Position
-				ik.ChainRoot = humanoid.Parent:FindFirstChild(chainRootName)
-				ik.EndEffector = humanoid.Parent:FindFirstChild(endEffName)
-				ik.Target = attach
-				pcall(function()
-					ik.Priority = Enum.IKPriority.Body
-				end)
-				ik.Enabled = false
-				ik.Weight = 0
-				ik.Parent = humanoid
-				return ik
-			end
-			local ikL = setupIK("L", "LeftUpperArm", "LeftHand", leftAttach)
-			local ikR = setupIK("R", "RightUpperArm", "RightHand", rightAttach)
-
-			local function cleanupIK()
-				pcall(function()
-					ikL.Enabled = false
-					ikL:Destroy()
-				end)
-				pcall(function()
-					ikR.Enabled = false
-					ikR:Destroy()
-				end)
-				pcall(function()
-					leftPart:Destroy()
-				end)
-				pcall(function()
-					rightPart:Destroy()
-				end)
-			end
-
-			local ended = false
-			local function endVault()
-				if ended then
-					return
+	local track, errorMsg
+	if Animations and Animations.playRandomVaultAnimationWithDuration then
+		-- Use new system for guaranteed animation completion
+		track, errorMsg = Animations.playRandomVaultAnimationWithDuration(animator, {
+			priority = Enum.AnimationPriority.Action,
+			onComplete = function(actualDuration, targetDuration)
+				-- Animation completed successfully
+				if Config.DebugVault then
+					print("[Vault] Animation completed in", string.format("%.3f", actualDuration), "s")
 				end
-				ended = true
-				stillVaulting = false
-				cleanupIK()
-				-- Character collisions remain enabled
-				-- Restore obstacle collision/touch locally
-				for part, prev in pairs(obstaclePrevByPart) do
-					if part and part.Parent then
-						if prev.collide ~= nil then
-							part.CanCollide = prev.collide
-						end
-						if prev.touch ~= nil then
-							part.CanTouch = prev.touch
-						end
+			end,
+			debug = Config.DebugVault,
+		})
+
+		if not track and errorMsg then
+			print("[Vault] Animation error:", errorMsg)
+		end
+	end
+
+	-- Fallback to old system if new system not available
+	if not track then
+		local animInst = pickVaultAnimation()
+		if animInst then
+			pcall(function()
+				track = animator:LoadAnimation(animInst)
+			end)
+			if track then
+				track.Priority = Enum.AnimationPriority.Action
+				track:Play(0.05, 1, 1)
+			end
+		end
+	end
+
+	if track then
+		-- Hand IK setup (simple target holders)
+		local targetsFolder = workspace:FindFirstChild("VaultTargets") or Instance.new("Folder")
+		targetsFolder.Name = "VaultTargets"
+		targetsFolder.Parent = workspace
+		local function makeTarget(name, pos)
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Size = Vector3.new(0.2, 0.2, 0.2)
+			p.Transparency = 1
+			p.CanCollide = false
+			p.Anchored = true
+			p.CFrame = CFrame.new(pos)
+			p.Parent = targetsFolder
+			local a = Instance.new("Attachment")
+			a.Name = "Attach"
+			a.Parent = p
+			return p, a
+		end
+		-- Compute two hand points along the obstacle top edge
+		local hitPos = res.Position
+		local normal = res.Normal
+		local tangent = Vector3.yAxis:Cross(normal)
+		if tangent.Magnitude < 0.05 then
+			tangent = Vector3.xAxis:Cross(normal)
+		end
+		tangent = tangent.Unit
+		local topYAdj = topY + 0.05
+		local center = Vector3.new(hitPos.X, topYAdj, hitPos.Z) - (normal * 0.15)
+		local handOffset = 0.5
+		local leftPos = center - (tangent * handOffset)
+		local rightPos = center + (tangent * handOffset)
+		local leftPart, leftAttach = makeTarget("VaultHandL", leftPos)
+		local rightPart, rightAttach = makeTarget("VaultHandR", rightPos)
+
+		local function setupIK(side, chainRootName, endEffName, attach)
+			local ik = Instance.new("IKControl")
+			ik.Name = "IK_Vault_" .. side
+			ik.Type = Enum.IKControlType.Position
+			ik.ChainRoot = humanoid.Parent:FindFirstChild(chainRootName)
+			ik.EndEffector = humanoid.Parent:FindFirstChild(endEffName)
+			ik.Target = attach
+			pcall(function()
+				ik.Priority = Enum.IKPriority.Body
+			end)
+			ik.Enabled = false
+			ik.Weight = 0
+			ik.Parent = humanoid
+			return ik
+		end
+		local ikL = setupIK("L", "LeftUpperArm", "LeftHand", leftAttach)
+		local ikR = setupIK("R", "RightUpperArm", "RightHand", rightAttach)
+
+		local function cleanupIK()
+			pcall(function()
+				ikL.Enabled = false
+				ikL:Destroy()
+			end)
+			pcall(function()
+				ikR.Enabled = false
+				ikR:Destroy()
+			end)
+			pcall(function()
+				leftPart:Destroy()
+			end)
+			pcall(function()
+				rightPart:Destroy()
+			end)
+		end
+
+		local ended = false
+		local function endVault()
+			if ended then
+				return
+			end
+			ended = true
+			stillVaulting = false
+			cleanupIK()
+			-- Character collisions remain enabled
+			-- Restore obstacle collision/touch locally
+			for part, prev in pairs(obstaclePrevByPart) do
+				if part and part.Parent then
+					if prev.collide ~= nil then
+						part.CanCollide = prev.collide
+					end
+					if prev.touch ~= nil then
+						part.CanTouch = prev.touch
 					end
 				end
-				-- Clear vaulting flag
-				local cs2 = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
-				local v2 = cs2 and cs2:FindFirstChild("IsVaulting")
-				if v2 then
-					v2.Value = false
-				end
 			end
+			-- Clear vaulting flag
+			local cs2 = game:GetService("ReplicatedStorage"):FindFirstChild("ClientState")
+			local v2 = cs2 and cs2:FindFirstChild("IsVaulting")
+			if v2 then
+				v2.Value = false
+			end
+		end
 
-			-- Marker-driven if present; else time-based fallback
-			local hasMarkers = false
-			pcall(function()
-				if track:GetMarkerReachedSignal("Grab") then
-					hasMarkers = true
-				end
+		-- Marker-driven if present; else time-based fallback
+		local hasMarkers = false
+		pcall(function()
+			if track:GetMarkerReachedSignal("Grab") then
+				hasMarkers = true
+			end
+		end)
+		if hasMarkers then
+			track:GetMarkerReachedSignal("Grab"):Connect(function()
+				ikL.Enabled = true
+				ikR.Enabled = true
+				ikL.Weight = 1
+				ikR.Weight = 1
 			end)
-			if hasMarkers then
-				track:GetMarkerReachedSignal("Grab"):Connect(function()
-					ikL.Enabled = true
-					ikR.Enabled = true
-					ikL.Weight = 1
-					ikR.Weight = 1
-				end)
-				track:GetMarkerReachedSignal("Pass"):Connect(function()
+			track:GetMarkerReachedSignal("Pass"):Connect(function()
+				ikL.Weight = 0.6
+				ikR.Weight = 0.6
+				releasedHeight = true
+			end)
+			track:GetMarkerReachedSignal("Release"):Connect(function()
+				ikL.Weight = 0
+				ikR.Weight = 0
+				ikL.Enabled = false
+				ikR.Enabled = false
+				cleanupIK()
+				releasedHeight = true
+				endVault()
+			end)
+		else
+			-- Fallback timeline: enable/hold/disable
+			task.delay(0.08, function()
+				ikL.Enabled = true
+				ikR.Enabled = true
+				ikL.Weight = 1
+				ikR.Weight = 1
+				task.delay(0.18, function()
 					ikL.Weight = 0.6
 					ikR.Weight = 0.6
 					releasedHeight = true
-				end)
-				track:GetMarkerReachedSignal("Release"):Connect(function()
-					ikL.Weight = 0
-					ikR.Weight = 0
-					ikL.Enabled = false
-					ikR.Enabled = false
-					cleanupIK()
-					releasedHeight = true
-					endVault()
-				end)
-			else
-				-- Fallback timeline: enable/hold/disable
-				task.delay(0.08, function()
-					ikL.Enabled = true
-					ikR.Enabled = true
-					ikL.Weight = 1
-					ikR.Weight = 1
-					task.delay(0.18, function()
-						ikL.Weight = 0.6
-						ikR.Weight = 0.6
-						releasedHeight = true
-						task.delay(0.12, function()
-							ikL.Weight = 0
-							ikR.Weight = 0
-							ikL.Enabled = false
-							ikR.Enabled = false
-							cleanupIK()
-							endVault()
-						end)
+					task.delay(0.12, function()
+						ikL.Weight = 0
+						ikR.Weight = 0
+						ikL.Enabled = false
+						ikR.Enabled = false
+						cleanupIK()
+						endVault()
 					end)
 				end)
-			end
+			end)
+		end
 
+		local vaultEnded = false
+
+		if Config.VaultAnimationIndependentDuration then
+			-- Animation completes independently of vault physics
+			-- Only end vault physics when the vault duration is reached
+			task.delay(Config.VaultDurationSeconds or 0.35, function()
+				if not vaultEnded then
+					vaultEnded = true
+					-- End vault physics but let animation continue
+					endVault()
+				end
+			end)
+
+			-- Stop animation only when it naturally completes or on error
+			track.Stopped:Connect(function()
+				if not vaultEnded then
+					vaultEnded = true
+					endVault()
+				end
+			end)
+		else
+			-- Original behavior: stop animation when vault ends
 			track.Stopped:Connect(function()
 				endVault()
 			end)
