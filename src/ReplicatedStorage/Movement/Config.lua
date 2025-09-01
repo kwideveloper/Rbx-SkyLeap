@@ -7,8 +7,10 @@ Config.LoadingScreenDuration = 4
 Config.PlaytimeDebugUI = false
 
 -- Core humanoid speeds - OPTIMIZED FOR HIGH VELOCITY BUNNY HOP
-Config.BaseWalkSpeed = 25 -- INCREASED: Better base speed for momentum building
-Config.SprintWalkSpeed = 50 -- INCREASED: Higher sprint speed to complement bunny hop
+-- Config.BaseWalkSpeed = 25 -- INCREASED: Better base speed for momentum building
+-- Config.SprintWalkSpeed = 50 -- INCREASED: Higher sprint speed to complement bunny hop
+Config.BaseWalkSpeed = 20 -- INCREASED: Better base speed for momentum building
+Config.SprintWalkSpeed = 45 -- INCREASED: Higher sprint speed to complement bunny hop
 -- Sprint acceleration ramp
 Config.SprintAccelSeconds = 0.50 -- REDUCED: Faster acceleration for better responsiveness
 Config.SprintDecelSeconds = 0.30 -- SLIGHTLY INCREASED: Smoother deceleration for better control

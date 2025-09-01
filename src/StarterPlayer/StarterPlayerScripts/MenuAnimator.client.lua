@@ -1,692 +1,857 @@
--- MenuAnimator: opens/closes Settings with bounce, blur, and FOV override
---
--- Usage (short):
---   local pg = game.Players.LocalPlayer.PlayerGui
---   local btn = pg.UIButtons.CanvasGroup.Config
---   local frame = pg.Settings.Frame
---   -- Registers a toggle on click; duration=0.55s; animation "bounce" (default)
---   _G.MenuAnimator.register(btn, frame, 0.55, "bounce", { fovDelta = -15, blurSize = 18 })
---
---   -- Direct control (no button):
---   -- _G.MenuAnimator.openFrame(frame, 0.55, { animType = "slide" })
---   -- _G.MenuAnimator.closeFrame(frame, 0.25)
---   -- _G.MenuAnimator.toggleFrame(frame, 0.55)
---
--- API:
---   register(button, frame, durationSec, animType?, opts?)
---   openFrame(frame, durationSec, opts?)
---   closeFrame(frame, durationSec, opts?)
---   toggleFrame(frame, durationSec, opts?)
---   animType: "bounce" (default) | "slide"; opts: { fovDelta=-10, blurSize=18, closeDuration?, noOverlayChange? }
-
-local Players = game:GetService("Players")
+-- MenuAnimator.client.lua
+-- Handles UI animations and interactions for elements with specific tags and values
 local TweenService = game:GetService("TweenService")
-local SoundService = game:GetService("SoundService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
 
-local function ensureClientState()
+-- Configuration constants
+local HOVER_SCALE = 1.08
+local HOVER_ROTATION = 2
+local CLICK_Y_OFFSET = 3
+local CLICK_SCALE = 0.95
+local ACTIVATE_ROTATION = -8
+local ACTIVATE_SCALE = 1.12
+local ANIMATION_DURATION = 0.25
+local MENU_ANIMATION_DURATION = 0.4 -- 0.4
+local MENU_CLOSE_ANIMATION_DURATION = 0.25 -- Tiempo más rápido para cerrar el menú
+local BOUNCE_DURATION = 0.15
+
+-- Camera effects constants
+local BLUR_SIZE = 15 -- Maximum blur size when menu is open
+local DEFAULT_FOV = 70 -- Default camera FOV
+local MENU_FOV = 50 -- FOV when menu is open
+local CAMERA_EFFECT_DURATION = 0.5 -- Duration for camera effects
+
+-- Animation states
+local elementStates = {}
+local menuStates = {}
+
+-- Menu management system
+local openMenus = {} -- Track which menus are currently open {menu = button}
+local buttonStates = {} -- Track button active states {button = isActive}
+
+-- Camera effects system
+local camera = Workspace.CurrentCamera
+local blurEffect = nil
+local cameraEffectActive = false
+
+-- Utility functions
+local function createTween(instance, properties, duration, easingStyle, easingDirection)
+	easingStyle = easingStyle or Enum.EasingStyle.Back
+	easingDirection = easingDirection or Enum.EasingDirection.Out
+	local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
+	return TweenService:Create(instance, tweenInfo, properties)
+end
+
+local function createBounceTween(instance, originalPosition)
+	local tweenInfo = TweenInfo.new(BOUNCE_DURATION, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out, 0, false, 0.3)
+	return TweenService:Create(instance, tweenInfo, { Position = originalPosition })
+end
+
+local function createHoverTween(instance, properties)
+	local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0)
+	return TweenService:Create(instance, tweenInfo, properties)
+end
+
+local function createClickTween(instance, properties)
+	local tweenInfo = TweenInfo.new(ANIMATION_DURATION * 0.6, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out)
+	return TweenService:Create(instance, tweenInfo, properties)
+end
+
+-- Camera effects functions
+local function createBlurEffect()
+	if blurEffect then
+		return
+	end
+
+	blurEffect = Instance.new("BlurEffect")
+	blurEffect.Size = 0
+	blurEffect.Parent = camera
+end
+
+local function ensureClientStateFolder()
 	local cs = ReplicatedStorage:FindFirstChild("ClientState")
 	if not cs then
 		cs = Instance.new("Folder")
 		cs.Name = "ClientState"
 		cs.Parent = ReplicatedStorage
 	end
-	local function ensure(name, class)
-		local v = cs:FindFirstChild(name)
-		if not v then
-			v = Instance.new(class)
-			v.Name = name
-			v.Parent = cs
-		end
-		return v
+	return cs
+end
+
+local function setFovOverride(enable, fovValue)
+	local cs = ensureClientStateFolder()
+
+	-- Create or update CameraFovOverrideActive
+	local fovOverrideActive = cs:FindFirstChild("CameraFovOverrideActive")
+	if not fovOverrideActive then
+		fovOverrideActive = Instance.new("BoolValue")
+		fovOverrideActive.Name = "CameraFovOverrideActive"
+		fovOverrideActive.Parent = cs
 	end
-	local active = ensure("CameraFovOverrideActive", "BoolValue")
-	local value = ensure("CameraFovOverrideValue", "NumberValue")
-	return cs, active, value
-end
+	fovOverrideActive.Value = enable
 
-local function ensureBlur()
-	local blur = game:GetService("Lighting"):FindFirstChildOfClass("BlurEffect")
-	if not blur then
-		blur = Instance.new("BlurEffect")
-		blur.Size = 0
-		blur.Parent = game:GetService("Lighting")
+	-- Create or update CameraFovOverrideValue
+	local fovOverrideValue = cs:FindFirstChild("CameraFovOverrideValue")
+	if not fovOverrideValue then
+		fovOverrideValue = Instance.new("NumberValue")
+		fovOverrideValue.Name = "CameraFovOverrideValue"
+		fovOverrideValue.Parent = cs
 	end
-	return blur
-end
+	fovOverrideValue.Value = fovValue
 
-local function getSettingsFrame()
-	local pg = player:WaitForChild("PlayerGui")
-	-- Adjust names if needed; current assumption: PlayerGui.Settings.Frame
-	local settings = pg:FindFirstChild("Settings") or pg:WaitForChild("Settings")
-	local frame = settings:FindFirstChild("Frame") or settings:WaitForChild("Frame")
-	return frame
-end
-
-local function isSettingsFrame(frame)
-	local ok = pcall(function()
-		return frame == getSettingsFrame()
-	end)
-	return ok and frame == getSettingsFrame() or false
-end
-
-local function tween(inst, props, info)
-	local t =
-		TweenService:Create(inst, info or TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props)
-	t:Play()
-	return t
-end
-
-local state = {
-	prevFov = nil,
-	openFrames = {}, -- [Frame] = true
-	openCount = 0,
-	currentFrame = nil, -- currently visible menu frame (single-active)
-	actionToken = 0,
-	fovActive = false,
-	musicDuckActive = false,
-	prevMusicGroupVolume = nil,
-	nsOpenCount = 0, -- non-settings menus open count
-}
-
-local frameToButton = {} -- map menu frame -> associated ImageButton
-local buttonActiveOverride = {} -- map ImageButton -> boolean forcing active style
-local buttonToFrame = {} -- map ImageButton -> menu frame
-
--- Ensure a UIScale exists on a button for smooth scaling
-local function ensureUiScale(inst)
-	local s = inst:FindFirstChildOfClass("UIScale")
-	if not s then
-		s = Instance.new("UIScale")
-		s.Scale = 1
-		s.Parent = inst
+	if _G.DEBUG_CAMERA_EFFECTS then
+		print(string.format("[FOV Override] Set active=%s, value=%d", enable and "true" or "false", fovValue))
 	end
-	return s
 end
 
--- Music helpers ---------------------------------------------------------------
-local function getMusicGroup()
-	return SoundService:FindFirstChild("BackgroundMusic") or SoundService:FindFirstChild("Music")
-end
-
-local function getMusicTracksFolder()
-	local ps = player:FindFirstChild("PlayerScripts") or player:WaitForChild("PlayerScripts")
-	local soundsRoot = ps:FindFirstChild("Sounds") or ps:WaitForChild("Sounds")
-	return soundsRoot:FindFirstChild("BackgroundMusic") or soundsRoot:WaitForChild("BackgroundMusic")
-end
-
-local function ensureReverbOnTrack(track)
-	if not (track and track:IsA("Sound")) then
+local function applyCameraEffects(enable)
+	if not camera then
 		return
 	end
-	local eff = track:FindFirstChild("MenuReverb")
-	if not eff then
-		eff = Instance.new("ReverbSoundEffect")
-		eff.Name = "MenuReverb"
-		eff.Parent = track
-	end
-	-- Softer, shorter reverb (roughly half the previous intensity)
-	eff.Density = 0.3
-	eff.DecayTime = 0.9
-	eff.Diffusion = 0.4
-	eff.DryLevel = 0
-	-- Reduce wet mix further (more negative = quieter wet signal)
-	eff.WetLevel = -14
-	return eff
-end
 
-local function setMusicDuck(active)
-	local group = getMusicGroup()
-	local DUCK_DELTA = 0.2
-	local DUCK_TIME = 0.2
-	-- Volume ducking on group if available; else per track (tweened)
-	if active then
-		if not state.musicDuckActive then
-			-- Store prev group volume if exists and tween to ducked level
-			if group then
-				state.prevMusicGroupVolume = group.Volume
-				local target = math.max(0, (group.Volume or 0.5) - DUCK_DELTA)
-				TweenService:Create(
-					group,
-					TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{ Volume = target }
-				):Play()
-			else
-				-- Per track fallback (tween)
-				local folder = getMusicTracksFolder()
-				for _, s in ipairs(folder:GetChildren()) do
-					if s:IsA("Sound") then
-						local target = math.max(0, (s.Volume or 0.5) - DUCK_DELTA)
-						TweenService:Create(
-							s,
-							TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-							{ Volume = target }
-						):Play()
-					end
-				end
-			end
-			-- Enable reverb on all tracks
-			local folder = getMusicTracksFolder()
-			for _, s in ipairs(folder:GetChildren()) do
-				if s:IsA("Sound") then
-					local eff = ensureReverbOnTrack(s)
-					if eff then
-						eff.Enabled = true
-					end
-				end
-			end
-			state.musicDuckActive = true
-		end
+	-- Create blur effect if it doesn't exist
+	if not blurEffect then
+		createBlurEffect()
+	end
+
+	local targetBlurSize = enable and BLUR_SIZE or 0
+
+	-- Animate blur
+	local blurTween = createTween(blurEffect, { Size = targetBlurSize }, CAMERA_EFFECT_DURATION)
+	blurTween:Play()
+
+	-- Set FOV override using ClientState system (integrates with CameraDynamics)
+	if enable then
+		setFovOverride(true, MENU_FOV)
 	else
-		if state.musicDuckActive then
-			-- Restore group volume or per track (tween)
-			if group and state.prevMusicGroupVolume ~= nil then
-				TweenService:Create(
-					group,
-					TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{ Volume = state.prevMusicGroupVolume }
-				):Play()
-				state.prevMusicGroupVolume = nil
-			else
-				local folder = getMusicTracksFolder()
-				for _, s in ipairs(folder:GetChildren()) do
-					if s:IsA("Sound") then
-						local target = math.clamp((s.Volume or 0.5) + DUCK_DELTA, 0, 1)
-						TweenService:Create(
-							s,
-							TweenInfo.new(DUCK_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-							{ Volume = target }
-						):Play()
-					end
-				end
-			end
-			-- Disable reverb effects
-			local folder = getMusicTracksFolder()
-			for _, s in ipairs(folder:GetChildren()) do
-				if s:IsA("Sound") then
-					local eff = s:FindFirstChild("MenuReverb")
-					if eff then
-						eff.Enabled = false
-					end
-				end
-			end
-			state.musicDuckActive = false
-		end
+		setFovOverride(false, DEFAULT_FOV)
 	end
-end
 
--- Immediate click feedback: quick pop + rotate, then settle based on willOpen
-local function playClickFeedback(button, willOpen)
-	if not (button and button:IsA("ImageButton")) then
-		return
-	end
-	local scale = ensureUiScale(button)
-	-- quick pop
-	local popScale = TweenService:Create(
-		scale,
-		TweenInfo.new(0.10, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Scale = 1.15 }
-	)
-	local popRot = TweenService:Create(
-		button,
-		TweenInfo.new(0.10, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Rotation = -18 }
-	)
-	popScale.Completed:Connect(function()
-		local targetScale = willOpen and 1.10 or 1.00
-		local targetRot = willOpen and -10 or 0
-		TweenService
-			:Create(
-				scale,
-				TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Scale = targetScale }
+	-- Store effect state
+	cameraEffectActive = enable
+
+	if _G.DEBUG_CAMERA_EFFECTS then
+		print(
+			string.format(
+				"[Camera Effects] Applied effects: blur=%d, fovOverride=%s",
+				targetBlurSize,
+				enable and "active" or "inactive"
 			)
-			:Play()
-		TweenService
-			:Create(
-				button,
-				TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Rotation = targetRot }
-			)
-			:Play()
-	end)
-	popScale:Play()
-	popRot:Play()
-end
-
-local function setButtonActiveVisual(button, active)
-	if not button or not button:IsA("ImageButton") then
-		return
-	end
-	local scale = ensureUiScale(button)
-	local duration = active and 0.25 or 0.12
-	local targetScale = active and 1.1 or 1.0
-	local targetRot = active and -10 or 0
-	local tScale = TweenService:Create(
-		scale,
-		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Scale = targetScale }
-	)
-	local tRot = TweenService:Create(
-		button,
-		TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Rotation = targetRot }
-	)
-	tScale:Play()
-	tRot:Play()
-end
-
-local function setFovOverrideActive(active, targetFov)
-	local _, activeV, valueV = ensureClientState()
-	activeV.Value = active and true or false
-	if targetFov then
-		valueV.Value = targetFov
-	end
-end
-
-local function applyGlobalOverlays(active, opts)
-	local blur = ensureBlur()
-	if active then
-		-- Blur in
-		tween(
-			blur,
-			{ Size = tonumber(opts.blurSize) or 18 },
-			TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		)
-		-- FOV override (only once)
-		if not state.fovActive then
-			local cur = camera and camera.FieldOfView or 70
-			local delta = tonumber(opts.fovDelta) or -10
-			local target = math.max(10, cur + delta)
-			setFovOverrideActive(true, target)
-			state.fovActive = true
-		end
-		-- Music duck + reverb only if any non-settings menu is open
-		if state.nsOpenCount > 0 then
-			if not state.musicDuckActive then
-				setMusicDuck(true)
-			end
-		else
-			if state.musicDuckActive then
-				setMusicDuck(false)
-			end
-		end
-	else
-		-- Remove blur and release override
-		tween(blur, { Size = 0 }, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
-		setFovOverrideActive(false)
-		state.fovActive = false
-		-- Restore music
-		setMusicDuck(false)
 	end
 end
 
-local function computePositions()
-	local center = UDim2.new(0.5, 0, 0.5, 0)
-	local below = UDim2.new(0.5, 0, 1.2, 0)
-	local overshoot = UDim2.new(0.5, 0, 0.44, 0) -- slightly above center (0.44 < 0.5)
-	return center, below, overshoot
-end
+local function updateCameraEffects()
+	-- Check if any menus are open by checking menu states
+	local hasOpenMenus = false
+	local openMenuCount = 0
+	local totalMenus = 0
+	local openMenuNames = {}
 
--- Generic open/close/toggle for any frame
-local function openFrame(frame, durationSec, opts)
-	if not frame or not frame:IsA("GuiObject") then
-		return
-	end
-	opts = opts or {}
-	durationSec = tonumber(durationSec) or 0.52 -- total bounce time
-	if state.openFrames[frame] then
-		return
-	end
-	state.openFrames[frame] = true
-	state.openCount = state.openCount + 1
-	if not isSettingsFrame(frame) then
-		state.nsOpenCount = (state.nsOpenCount or 0) + 1
-	end
-	if state.openCount == 1 and not opts.noOverlayChange then
-		applyGlobalOverlays(true, opts)
-	end
-	local center, below, overshoot = computePositions()
-	frame.Visible = true
-	frame.Position = below
-	local animType = tostring(opts.animType or "bounce"):lower()
-	if animType == "slide" then
-		tween(frame, { Position = center }, TweenInfo.new(durationSec, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-	else
-		local upTime = math.max(0.1, durationSec * 0.62)
-		local settleTime = math.max(0.08, durationSec - upTime)
-		tween(frame, { Position = overshoot }, TweenInfo.new(upTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)).Completed:Wait()
-		tween(frame, { Position = center }, TweenInfo.new(settleTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-	end
-	-- Token gate: only mark as current if this is the latest action
-	local token = opts._token
-	if token and token ~= state.actionToken then
-		return
-	end
-	state.currentFrame = frame
-	-- Apply active button visuals if mapped
-	local btn = frameToButton[frame]
-	if btn then
-		buttonActiveOverride[btn] = true
-		setButtonActiveVisual(btn, true)
-	end
-	-- If overlays were already active (e.g., Settings open), ensure music duck is toggled according to nsOpenCount
-	if state.openCount > 0 then
-		if state.nsOpenCount > 0 and not state.musicDuckActive then
-			setMusicDuck(true)
-		elseif state.nsOpenCount == 0 and state.musicDuckActive then
-			setMusicDuck(false)
+	for menu, menuState in pairs(menuStates) do
+		totalMenus = totalMenus + 1
+		if menuState.isOpen then
+			hasOpenMenus = true
+			openMenuCount = openMenuCount + 1
+			table.insert(openMenuNames, menu.Name or "UnnamedMenu")
 		end
 	end
-end
 
-local function closeFrame(frame, durationSec, opts)
-	if not frame or not frame:IsA("GuiObject") then
-		return
-	end
-	opts = opts or {}
-	durationSec = tonumber(durationSec) or 0.25
-	if not state.openFrames[frame] then
-		return
-	end
-	-- If this is the last open menu and we are allowed to change overlays, start restoring FOV immediately
-	if state.openCount == 1 and not opts.noOverlayChange then
-		if not opts._token or opts._token == state.actionToken then
-			setFovOverrideActive(false)
-			state.fovActive = false
-		end
-	end
-	-- Track non-settings count
-	if not isSettingsFrame(frame) then
-		state.nsOpenCount = math.max(0, (state.nsOpenCount or 0) - 1)
-	end
-	state.openFrames[frame] = nil
-	state.openCount = math.max(0, state.openCount - 1)
-	local _, below = computePositions()
-	local animType = tostring(opts.animType or "bounce"):lower()
-	local easing = (animType == "slide") and Enum.EasingStyle.Quad or Enum.EasingStyle.Quad
-	tween(frame, { Position = below }, TweenInfo.new(durationSec, easing, Enum.EasingDirection.In)).Completed:Wait()
-	frame.Visible = false
-	if state.currentFrame == frame then
-		state.currentFrame = nil
-	end
-	-- Deactivate button visual if mapped
-	local btn = frameToButton[frame]
-	if btn then
-		buttonActiveOverride[btn] = false
-		setButtonActiveVisual(btn, false)
-	end
-	-- Token gate for overlay changes
-	local token = opts._token
-	if state.openCount == 0 and not opts.noOverlayChange and (not token or token == state.actionToken) then
-		applyGlobalOverlays(false, opts)
-	else
-		-- Overlays still active (e.g., Settings still open). Optionally suppress duck toggle during switch
-		if not opts._suppressDuck then
-			if state.nsOpenCount == 0 and state.musicDuckActive then
-				setMusicDuck(false)
-			elseif state.nsOpenCount > 0 and not state.musicDuckActive then
-				setMusicDuck(true)
-			end
-		end
-	end
-end
+	-- Debug info
+	if _G.DEBUG_CAMERA_EFFECTS then
+		print(
+			string.format(
+				"[Camera Effects] Total menus tracked: %d, Open menus: %d (%s), Effects active: %s",
+				totalMenus,
+				openMenuCount,
+				table.concat(openMenuNames, ", "),
+				cameraEffectActive and "true" or "false"
+			)
+		)
 
-local function toggleFrame(frame, durationSec, opts)
-	opts = opts or {}
-	-- New action token for this toggle
-	state.actionToken = (state.actionToken or 0) + 1
-	local token = state.actionToken
-	if state.openFrames[frame] then
-		opts._token = token
-		closeFrame(frame, (opts and opts.closeDuration) or 0.25, opts)
-	else
-		-- Determine if there was already any open before switching
-		local hadOpen = state.openCount > 0
-		-- Close all other open frames quickly and keep overlays
-		local ignoreSet = opts.ignoreFrames or nil
-		for other in pairs(state.openFrames) do
-			if other ~= frame then
-				if not (ignoreSet and ignoreSet[other]) then
-					closeFrame(other, (opts and opts.switchCloseDuration) or 0.15, {
-						animType = opts.animType or "bounce",
-						noOverlayChange = true,
-						_token = token,
-						_suppressDuck = true,
-					})
+		if openMenuCount > 0 then
+			print("[Camera Effects] Open menu details:")
+			for menu, menuState in pairs(menuStates) do
+				if menuState.isOpen then
+					print(
+						string.format(
+							"  - %s: isOpen=%s",
+							menu.Name or "UnnamedMenu",
+							menuState.isOpen and "true" or "false"
+						)
+					)
 				end
 			end
 		end
-		-- Open target, keep overlays if others were open (hadOpen)
-		local openOpts = {
-			animType = opts.animType or "bounce",
-			noOverlayChange = hadOpen or opts.noOverlayChange or false,
-			fovDelta = opts.fovDelta or -10,
-			blurSize = opts.blurSize or 18,
-			_token = token,
-		}
-		openFrame(frame, durationSec, openOpts)
 	end
-end
 
--- Settings wrappers (use the generic functions)
-local function openSettings()
-	local frame = getSettingsFrame()
-	openFrame(frame, 0.52, { fovDelta = -15, blurSize = 18 })
-end
-
-local function closeSettings()
-	local frame = getSettingsFrame()
-	closeFrame(frame, 0.25, { blurSize = 18 })
-end
-
-local function toggleSettings()
-	local frame = getSettingsFrame()
-	-- Delegate to generic toggle with switch behavior and preserved overlays
-	toggleFrame(frame, 0.35, { animType = "bounce", fovDelta = -15, blurSize = 18, switchCloseDuration = 0.15 })
-end
-
--- Expose simple input bindings: you can wire these to your UI buttons
-local function bindButtons()
-	-- Deprecated explicit bindings removed in favor of tag-based OpenMenu system.
-end
-
--- Optional: expose to _G for quick hooking from other scripts
-_G.MenuAnimator = {
-	open = openSettings,
-	close = closeSettings,
-	toggle = toggleSettings,
-	openFrame = openFrame,
-	closeFrame = closeFrame,
-	toggleFrame = toggleFrame,
-	register = function(button, frame, durationSec, animType, opts)
-		if not (button and button:IsA("GuiButton")) then
-			return
+	-- Apply or remove camera effects based on menu state
+	if hasOpenMenus and not cameraEffectActive then
+		if _G.DEBUG_CAMERA_EFFECTS then
+			print("[Camera Effects] Activating blur and FOV reduction")
 		end
-		frameToButton[frame] = button
-		if button:IsA("ImageButton") then
-			buttonToFrame[button] = frame
+		applyCameraEffects(true)
+	elseif not hasOpenMenus and cameraEffectActive then
+		if _G.DEBUG_CAMERA_EFFECTS then
+			print("[Camera Effects] Deactivating blur and FOV reduction")
 		end
-		button.MouseButton1Click:Connect(function()
-			local options = opts or {}
-			options.animType = animType or options.animType or "bounce"
-			options.switchCloseDuration = options.switchCloseDuration or 0.15
-			local willOpen = not state.openFrames[frame]
-			if button:IsA("ImageButton") then
-				buttonActiveOverride[button] = willOpen
-				playClickFeedback(button, willOpen)
-			end
-			toggleFrame(frame, durationSec, options)
-		end)
-	end,
-}
-
--- Auto-bind
-task.defer(bindButtons)
-
--- Hover animations for UIButtons/CanvasGroup ImageButtons ---------------------
-local function ensureUiScale(inst)
-	local s = inst:FindFirstChildOfClass("UIScale")
-	if not s then
-		s = Instance.new("UIScale")
-		s.Scale = 1
-		s.Parent = inst
+		applyCameraEffects(false)
 	end
-	return s
 end
 
-local function bindHoverAnimations()
-	local pg = player:WaitForChild("PlayerGui")
-	local uiButtons = pg:FindFirstChild("UIButtons") or pg:WaitForChild("UIButtons", 5)
-	if not uiButtons then
-		return
-	end
-	local canvas = uiButtons:FindFirstChild("CanvasGroup") or uiButtons:WaitForChild("CanvasGroup", 5)
-	if not canvas then
-		return
-	end
-
-	local function hook(btn)
-		if not (btn and btn:IsA("ImageButton")) then
-			return
+-- Menu management functions
+local function resetButtonState(button)
+	if buttonStates[button] then
+		local elementState = elementStates[button]
+		if elementState then
+			elementState.isActive = false
+			createHoverTween(button, {
+				Size = elementState.originalSize,
+				Rotation = elementState.originalRotation,
+			}):Play()
 		end
-		local scale = ensureUiScale(btn)
-		local tScale
-		local tRot
-		btn.MouseEnter:Connect(function()
-			if tScale then
-				tScale:Cancel()
-			end
-			if tRot then
-				tRot:Cancel()
-			end
-			-- Hover: scale up; rotation only if active
-			local targetScale = 1.1
-			local targetRot = buttonActiveOverride[btn] and -10 or 0
-			tScale = TweenService:Create(
-				scale,
-				TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Scale = targetScale }
-			)
-			tRot = TweenService:Create(
-				btn,
-				TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Rotation = targetRot }
-			)
-			tScale:Play()
-			tRot:Play()
-		end)
-		btn.MouseLeave:Connect(function()
-			if tScale then
-				tScale:Cancel()
-			end
-			if tRot then
-				tRot:Cancel()
-			end
-			-- If forced active, keep active visuals on leave; else restore normal
-			local targetScale = buttonActiveOverride[btn] and 1.1 or 1.0
-			local targetRot = buttonActiveOverride[btn] and -10 or 0
-			tScale = TweenService:Create(
-				scale,
-				TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Scale = targetScale }
-			)
-			tRot = TweenService:Create(
-				btn,
-				TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Rotation = targetRot }
-			)
-			tScale:Play()
-			tRot:Play()
-		end)
+		buttonStates[button] = false
 	end
+end
 
-	-- Hook nested buttons: look for CanvasGroup/*/Button
-	for _, child in ipairs(canvas:GetChildren()) do
-		local btn = child:FindFirstChild("Button")
-		if btn and btn:IsA("ImageButton") then
-			hook(btn)
+local function setButtonActive(button)
+	if not buttonStates[button] then
+		local elementState = elementStates[button]
+		if elementState then
+			elementState.isActive = true
+			createHoverTween(button, {
+				Size = UDim2.new(
+					elementState.originalSize.X.Scale * ACTIVATE_SCALE,
+					elementState.originalSize.X.Offset * ACTIVATE_SCALE,
+					elementState.originalSize.Y.Scale * ACTIVATE_SCALE,
+					elementState.originalSize.Y.Offset * ACTIVATE_SCALE
+				),
+				Rotation = ACTIVATE_ROTATION,
+			}):Play()
+		end
+		buttonStates[button] = true
+	end
+end
+
+local function getAllTargetMenus(button)
+	local menus = {}
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ObjectValue") and child.Name == "Open" and child.Value then
+			table.insert(menus, child.Value)
 		end
 	end
-	canvas.DescendantAdded:Connect(function(d)
-		if d:IsA("ImageButton") and d.Name == "Button" then
-			hook(d)
-		end
-	end)
+	return menus
 end
 
-task.defer(bindHoverAnimations)
+local function getOpenMenus(button)
+	local openMenusList = {}
+	for menu, associatedButton in pairs(openMenus) do
+		if associatedButton ~= button then
+			table.insert(openMenusList, menu)
+		end
+	end
+	return openMenusList
+end
 
--- Generic binder for tagged menu buttons --------------------------------------
-local function bindOpenMenuButtons()
-	local bound = setmetatable({}, { __mode = "k" })
+local function getIgnoredMenus(button)
+	local ignoredMenus = {}
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ObjectValue") and child.Name == "Ignore" and child.Value then
+			table.insert(ignoredMenus, child.Value)
+		end
+	end
+	return ignoredMenus
+end
 
-	local function collectIgnores(button)
-		local set = {}
-		for _, child in ipairs(button:GetChildren()) do
-			if child:IsA("ObjectValue") and child.Name == "Ignore" then
-				local v = child.Value
-				if v and v:IsA("GuiObject") then
-					set[v] = true
+local function shouldIgnoreMenu(menu, ignoredMenus)
+	for _, ignoredMenu in ipairs(ignoredMenus) do
+		if ignoredMenu == menu then
+			return true
+		end
+	end
+	return false
+end
+
+local function closeAllOtherMenus(exceptMenu, button)
+	local menusToClose = getOpenMenus(button)
+	local ignoredMenus = getIgnoredMenus(button)
+	local firstMenuClosed = false
+
+	for _, menu in ipairs(menusToClose) do
+		if menu ~= exceptMenu and not shouldIgnoreMenu(menu, ignoredMenus) then
+			local associatedButton = openMenus[menu]
+			if associatedButton and menuStates[menu] then
+				-- Mark as closed first
+				local state = menuStates[menu]
+				state.isOpen = false
+				openMenus[menu] = nil
+
+				-- Apply camera effects immediately when first menu is closed
+				if not firstMenuClosed then
+					updateCameraEffects()
+					firstMenuClosed = true
 				end
+
+				-- Close the menu
+				local direction = "Top" -- Default direction, could be enhanced to store direction per menu
+				closeMenu(menu, direction, state)
+
+				-- Reset button state
+				resetButtonState(associatedButton)
 			end
 		end
-		return set
+	end
+end
+
+-- Handle animated elements (Hover, Click, Activate)
+local function setupAnimatedElement(element)
+	local state = {
+		isActive = false,
+		originalSize = element.Size,
+		originalPosition = element.Position,
+		originalRotation = element.Rotation or 0,
+	}
+	elementStates[element] = state
+
+	-- Check for animation types
+	local hasHover = false
+	local hasClick = false
+	local hasActivate = false
+
+	for _, child in ipairs(element:GetChildren()) do
+		if child:IsA("StringValue") then
+			if child.Value == "Hover" then
+				hasHover = true
+			elseif child.Value == "Click" then
+				hasClick = true
+			elseif child.Value == "Activate" then
+				hasActivate = true
+			end
+		end
 	end
 
-	local function tryBind(btn)
-		if bound[btn] then
-			return
-		end
-		if not (btn and (btn:IsA("TextButton") or btn:IsA("ImageButton"))) then
-			return
-		end
-		-- Require ObjectValue child named "Open"
-		local openOv = btn:FindFirstChild("Open")
-		if not (openOv and openOv:IsA("ObjectValue") and openOv.Value and openOv.Value:IsA("GuiObject")) then
-			return
-		end
-		local target = openOv.Value
-		bound[btn] = true
-		-- Map for active visuals if ImageButton
-		if btn:IsA("ImageButton") then
-			frameToButton[target] = btn
-			buttonToFrame[btn] = target
-		end
-		btn.MouseButton1Click:Connect(function()
-			local ignoreSet = collectIgnores(btn)
-			local willOpen = not state.openFrames[target]
-			if btn:IsA("ImageButton") then
-				buttonActiveOverride[btn] = willOpen
-				playClickFeedback(btn, willOpen)
+	print(hasHover, hasClick, hasActivate)
+
+	-- Setup hover animations
+	if hasHover then
+		element.MouseEnter:Connect(function()
+			if not state.isActive then
+				local hoverTween = createHoverTween(element, {
+					Size = UDim2.new(
+						state.originalSize.X.Scale * HOVER_SCALE,
+						state.originalSize.X.Offset * HOVER_SCALE,
+						state.originalSize.Y.Scale * HOVER_SCALE,
+						state.originalSize.Y.Offset * HOVER_SCALE
+					),
+					Rotation = HOVER_ROTATION,
+				})
+				hoverTween:Play()
 			end
-			local opts = {
-				animType = "bounce",
-				fovDelta = -15,
-				blurSize = 18,
-				switchCloseDuration = 0.15,
-				ignoreFrames = ignoreSet,
+		end)
+
+		element.MouseLeave:Connect(function()
+			if not state.isActive then
+				local leaveTween = createHoverTween(element, {
+					Size = state.originalSize,
+					Rotation = state.originalRotation,
+				})
+				leaveTween:Play()
+			end
+		end)
+	end
+
+	-- Setup click animations
+	if hasClick then
+		element.MouseButton1Click:Connect(function()
+			if not state.isActive then
+				-- Click down animation
+				local clickDownTween = createClickTween(element, {
+					Position = UDim2.new(
+						state.originalPosition.X.Scale,
+						state.originalPosition.X.Offset,
+						state.originalPosition.Y.Scale,
+						state.originalPosition.Y.Offset + CLICK_Y_OFFSET
+					),
+					Size = UDim2.new(
+						state.originalSize.X.Scale * CLICK_SCALE,
+						state.originalSize.X.Offset * CLICK_SCALE,
+						state.originalSize.Y.Scale * CLICK_SCALE,
+						state.originalSize.Y.Offset * CLICK_SCALE
+					),
+				})
+
+				clickDownTween:Play()
+				clickDownTween.Completed:Wait()
+
+				-- Click up animation with bounce
+				local clickUpTween = createClickTween(element, {
+					Position = state.originalPosition,
+					Size = state.originalSize,
+				})
+				clickUpTween:Play()
+			end
+		end)
+	end
+
+	-- Setup activate animations
+	if hasActivate then
+		element.MouseButton1Click:Connect(function()
+			state.isActive = not state.isActive
+
+			if state.isActive then
+				-- Activate state with enhanced animation
+				createHoverTween(element, {
+					Size = UDim2.new(
+						state.originalSize.X.Scale * ACTIVATE_SCALE,
+						state.originalSize.X.Offset * ACTIVATE_SCALE,
+						state.originalSize.Y.Scale * ACTIVATE_SCALE,
+						state.originalSize.Y.Offset * ACTIVATE_SCALE
+					),
+					Rotation = ACTIVATE_ROTATION,
+				}):Play()
+			else
+				-- Deactivate state
+				createHoverTween(element, {
+					Size = state.originalSize,
+					Rotation = state.originalRotation,
+				}):Play()
+			end
+		end)
+	end
+end
+
+-- Handle menu opening/closing buttons
+local function setupMenuButton(button)
+	local hasOpen = false
+	local hasClose = false
+
+	-- Check for Open values (can have multiple)
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ObjectValue") and child.Name == "Open" and child.Value then
+			hasOpen = true
+			break
+		end
+	end
+
+	-- Check for Close values (can have multiple)
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ObjectValue") and child.Name == "Close" and child.Value then
+			hasClose = true
+			break
+		end
+	end
+
+	if not hasOpen and not hasClose then
+		return
+	end
+
+	-- Setup for Open functionality
+	if hasOpen then
+		local targetMenus = getAllTargetMenus(button)
+		if #targetMenus == 0 then
+			return
+		end
+
+		-- Check for position override
+		local positionValue = button:FindFirstChild("Position")
+		local animationDirection = "Top" -- Default (from bottom to top)
+		if positionValue and positionValue:IsA("StringValue") then
+			animationDirection = positionValue.Value
+		end
+
+		-- Create menu states for each target menu
+		local menuStatesForButton = {}
+		for _, targetMenu in ipairs(targetMenus) do
+			local menuState = {
+				isOpen = false,
+				originalPosition = targetMenu.Position,
+				canvasGroup = targetMenu,
 			}
-			toggleFrame(target, 0.35, opts)
+			menuStatesForButton[targetMenu] = menuState
+			menuStates[targetMenu] = menuState -- Use targetMenu as key for unique state tracking
+
+			if _G.DEBUG_CAMERA_EFFECTS then
+				print(
+					string.format(
+						"[Setup] Created menu state for %s: isOpen=%s",
+						targetMenu.Name or "UnnamedMenu",
+						menuState.isOpen and "true" or "false"
+					)
+				)
+			end
+		end
+
+		button.MouseButton1Click:Connect(function()
+			local isOpening = false
+
+			-- Check if we're opening or closing
+			for _, targetMenu in ipairs(targetMenus) do
+				local menuState = menuStatesForButton[targetMenu]
+				if not menuState.isOpen then
+					isOpening = true
+					break
+				end
+			end
+
+			if isOpening then
+				-- Close all other menus first
+				for _, targetMenu in ipairs(targetMenus) do
+					closeAllOtherMenus(targetMenu, button)
+				end
+
+				-- Open all target menus
+				local firstMenuOpened = false
+				for _, targetMenu in ipairs(targetMenus) do
+					local menuState = menuStatesForButton[targetMenu]
+					if not menuState.isOpen then
+						if _G.DEBUG_CAMERA_EFFECTS then
+							print(
+								string.format(
+									"[Open] Opening menu %s, current isOpen: %s",
+									targetMenu.Name or "UnnamedMenu",
+									menuState.isOpen and "true" or "false"
+								)
+							)
+						end
+						menuState.isOpen = true
+						openMenus[targetMenu] = button
+
+						-- Apply camera effects immediately when first menu is opened
+						if not firstMenuOpened then
+							updateCameraEffects()
+							firstMenuOpened = true
+						end
+
+						if _G.DEBUG_CAMERA_EFFECTS then
+							print(
+								string.format(
+									"[Open] Menu %s marked as open, isOpen: %s",
+									targetMenu.Name or "UnnamedMenu",
+									menuState.isOpen and "true" or "false"
+								)
+							)
+						end
+						openMenu(targetMenu, animationDirection, menuState)
+					end
+				end
+
+				-- Set button as active
+				setButtonActive(button)
+			else
+				-- Close all target menus
+				local firstMenuClosed = false
+				for _, targetMenu in ipairs(targetMenus) do
+					local menuState = menuStatesForButton[targetMenu]
+					if menuState.isOpen then
+						menuState.isOpen = false
+						openMenus[targetMenu] = nil
+
+						-- Apply camera effects immediately when first menu is closed
+						if not firstMenuClosed then
+							updateCameraEffects()
+							firstMenuClosed = true
+						end
+
+						closeMenu(targetMenu, animationDirection, menuState)
+					end
+				end
+
+				-- Reset button state
+				resetButtonState(button)
+			end
 		end)
 	end
 
-	-- Bind existing tagged instances
-	for _, inst in ipairs(CollectionService:GetTagged("OpenMenu")) do
-		if inst:IsA("GuiButton") then
-			tryBind(inst)
+	-- Setup for Close functionality
+	if hasClose then
+		local closeTargets = {}
+		for _, child in ipairs(button:GetChildren()) do
+			if child:IsA("ObjectValue") and child.Name == "Close" and child.Value then
+				table.insert(closeTargets, child.Value)
+			end
 		end
+
+		button.MouseButton1Click:Connect(function()
+			local effectsUpdated = false
+			for _, target in ipairs(closeTargets) do
+				-- Find the button that opened this menu
+				local openingButton = openMenus[target]
+				if openingButton then
+					local menuState = menuStates[target] -- Use target menu as key
+					if menuState and menuState.isOpen then
+						-- Mark as closed first
+						menuState.isOpen = false
+						openMenus[target] = nil
+
+						-- Update camera effects immediately when first menu is closed
+						if not effectsUpdated then
+							updateCameraEffects()
+							effectsUpdated = true
+						end
+
+						-- Close the menu with animation if it's a CanvasGroup
+						local direction = "Top" -- Default direction
+						closeMenu(target, direction, menuState)
+
+						-- Reset button state
+						resetButtonState(openingButton)
+					else
+						-- If not a CanvasGroup or no animation state, just hide it
+						if target:IsA("CanvasGroup") then
+							target.GroupTransparency = 1
+						else
+							target.Visible = false
+						end
+						-- Update camera effects immediately
+						if not effectsUpdated then
+							updateCameraEffects()
+							effectsUpdated = true
+						end
+					end
+				else
+					-- If no opening button found, just hide it
+					if target:IsA("CanvasGroup") then
+						target.GroupTransparency = 1
+					else
+						target.Visible = false
+					end
+					-- Update camera effects immediately
+					if not effectsUpdated then
+						updateCameraEffects()
+						effectsUpdated = true
+					end
+				end
+			end
+		end)
 	end
-	-- Bind future ones
-	CollectionService:GetInstanceAddedSignal("OpenMenu"):Connect(function(inst)
-		if inst:IsA("GuiButton") then
-			tryBind(inst)
-		end
+end
+
+function openMenu(menu, direction, state)
+	-- Set initial state - handle both CanvasGroup and regular GuiObjects
+	if state.canvasGroup:IsA("CanvasGroup") then
+		state.canvasGroup.GroupTransparency = 1
+	else
+		menu.Visible = false
+	end
+
+	-- Move to center of screen
+	local centerPosition = UDim2.new(0.5, 0, 0.5, 0)
+	local startPosition = getStartPosition(centerPosition, direction)
+	menu.Position = startPosition
+
+	-- Animate in
+	local moveTween = createTween(menu, { Position = centerPosition }, MENU_ANIMATION_DURATION)
+
+	local fadeTween
+	if state.canvasGroup:IsA("CanvasGroup") then
+		fadeTween = createTween(state.canvasGroup, { GroupTransparency = 0 }, MENU_ANIMATION_DURATION)
+	else
+		-- For non-CanvasGroup, just make it visible immediately
+		menu.Visible = true
+	end
+
+	if fadeTween then
+		fadeTween:Play()
+	end
+	moveTween:Play()
+
+	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
+
+	if hasStroke then
+		local fadeStroke = createTween(hasStroke, { Transparency = 0 }, MENU_ANIMATION_DURATION)
+		fadeStroke:Play()
+	end
+
+	-- Bounce effect at the end
+	moveTween.Completed:Wait()
+	createBounceTween(menu, centerPosition):Play()
+end
+
+function closeMenu(menu, direction, state)
+	-- Get the opposite direction for closing animation
+	local closeDirection = getOppositeDirection(direction)
+	local endPosition = getStartPosition(menu.Position, closeDirection)
+
+	-- Animate out
+	local moveTween = createTween(
+		menu,
+		{ Position = endPosition },
+		MENU_CLOSE_ANIMATION_DURATION,
+		Enum.EasingStyle.Exponential,
+		Enum.EasingDirection.Out
+	)
+
+	local fadeTween
+	if state.canvasGroup:IsA("CanvasGroup") then
+		fadeTween = createTween(
+			state.canvasGroup,
+			{ GroupTransparency = 1 },
+			MENU_CLOSE_ANIMATION_DURATION,
+			Enum.EasingStyle.Exponential,
+			Enum.EasingDirection.Out
+		)
+	else
+		-- For non-CanvasGroup, just hide it at the end of movement
+		moveTween.Completed:Connect(function()
+			menu.Visible = false
+		end)
+	end
+
+	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
+
+	if hasStroke then
+		local fadeStroke = createTween(
+			hasStroke,
+			{ Transparency = 1 },
+			MENU_CLOSE_ANIMATION_DURATION,
+			Enum.EasingStyle.Exponential,
+			Enum.EasingDirection.Out
+		)
+		fadeStroke:Play()
+	end
+
+	if fadeTween then
+		fadeTween:Play()
+	end
+	moveTween:Play()
+
+	-- Reset to original position after animation
+	moveTween.Completed:Connect(function()
+		menu.Position = state.originalPosition
 	end)
 end
 
-task.defer(bindOpenMenuButtons)
+function getOppositeDirection(direction)
+	if direction == "Top" then
+		return "Top" -- If it appears from bottom to center, it should disappear from center to bottom
+	elseif direction == "Bottom" then
+		return "Bottom" -- If it appears from top to center, it should disappear from center to top
+	elseif direction == "Left" then
+		return "Left" -- If it appears from right to center, it should disappear from center to right
+	elseif direction == "Right" then
+		return "Right" -- If it appears from left to center, it should disappear from center to left
+	end
+	return "Top" -- Default: appears from bottom, disappears to bottom
+end
+
+function getStartPosition(originalPos, direction)
+	if direction == "Top" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset + 80)
+	elseif direction == "Bottom" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset - 80)
+	elseif direction == "Left" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset - 80, originalPos.Y.Scale, originalPos.Y.Offset)
+	elseif direction == "Right" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset + 80, originalPos.Y.Scale, originalPos.Y.Offset)
+	end
+	return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset + 80) -- Default bottom to top
+end
+
+function getEndPosition(originalPos, direction)
+	if direction == "Top" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset - 80)
+	elseif direction == "Bottom" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset + 80)
+	elseif direction == "Left" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset + 80, originalPos.Y.Scale, originalPos.Y.Offset)
+	elseif direction == "Right" then
+		return UDim2.new(originalPos.X.Scale, originalPos.X.Offset - 80, originalPos.Y.Scale, originalPos.Y.Offset)
+	end
+	return UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset - 80) -- Default bottom to top
+end
+
+-- Initialize system
+local function initialize()
+	-- Wait for PlayerGui to be fully loaded
+	PlayerGui:FindFirstChild("ScreenGui")
+
+	-- Initialize camera settings
+	if camera then
+		-- Set initial FOV override to ensure CameraDynamics integration
+		setFovOverride(false, DEFAULT_FOV)
+	end
+
+	-- Setup animated elements
+	CollectionService:GetInstanceAddedSignal("Animated"):Connect(function(element)
+		if element:IsA("GuiObject") then
+			setupAnimatedElement(element)
+		end
+	end)
+
+	-- Setup existing animated elements
+	for _, element in ipairs(CollectionService:GetTagged("Animated")) do
+		if element:IsA("GuiObject") then
+			setupAnimatedElement(element)
+		end
+	end
+
+	-- Setup menu buttons
+	local function setupButton(button)
+		if button:IsA("TextButton") or button:IsA("ImageButton") then
+			setupMenuButton(button)
+		end
+	end
+
+	-- Check all descendants of PlayerGui
+	for _, descendant in ipairs(PlayerGui:GetDescendants()) do
+		setupButton(descendant)
+	end
+
+	-- Listen for new buttons
+	PlayerGui.DescendantAdded:Connect(function(descendant)
+		setupButton(descendant)
+	end)
+end
+
+-- Debug mode (enable by setting _G.DEBUG_CAMERA_EFFECTS = true in console)
+_G.DEBUG_CAMERA_EFFECTS = true -- Debug enabled by default for troubleshooting
+
+-- Quick test function to verify camera effects
+_G.TestCameraEffects = function()
+	print("=== Camera Effects Test ===")
+	print("Total menus tracked:", #menuStates)
+	print("Camera effect active:", cameraEffectActive)
+
+	local openCount = 0
+	for menu, state in pairs(menuStates) do
+		if state.isOpen then
+			openCount = openCount + 1
+			print("Open menu:", menu.Name or "Unnamed", "- isOpen:", state.isOpen)
+		end
+	end
+
+	print("Open menus count:", openCount)
+	print("Should have effects:", openCount > 0)
+	print("=== End Test ===")
+end
+
+-- Force camera effects test
+_G.ForceCameraEffects = function(enable)
+	if enable then
+		print("Forcing camera effects ON")
+		applyCameraEffects(true)
+	else
+		print("Forcing camera effects OFF")
+		applyCameraEffects(false)
+	end
+end
+
+-- Test FOV override system
+_G.TestFovOverride = function(enable, fovValue)
+	if enable then
+		print(string.format("Testing FOV override: active=true, value=%d", fovValue))
+		setFovOverride(true, fovValue)
+	else
+		print("Testing FOV override: active=false")
+		setFovOverride(false, 70)
+	end
+end
+
+-- Start the system
+initialize()
