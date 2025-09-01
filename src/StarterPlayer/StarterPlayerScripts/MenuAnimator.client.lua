@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+local PlayerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
 
 -- Configuration constants
 local HOVER_SCALE = 1.08
@@ -39,6 +40,16 @@ local buttonStates = {} -- Track button active states {button = isActive}
 local camera = Workspace.CurrentCamera
 local blurEffect = nil
 local cameraEffectActive = false
+
+-- Sound effects system
+local backgroundMusicGroup = nil
+local sfxGroup = nil
+local soundEffectActive = false
+local originalVolumesCaptured = false -- Flag to track if we captured original volumes
+local isRestoringVolumes = false -- Flag to prevent listener updates during volume restoration
+local originalMusicVolumes = {} -- Store original volumes (captured once)
+local originalSFXVolume = 0.5
+local originalBGVolume = 0.5 -- Separate variable for BG Music when it's a SoundGroup
 
 -- Utility functions
 local function createTween(instance, properties, duration, easingStyle, easingDirection)
@@ -157,6 +168,281 @@ local function updateCameraEffects()
 	end
 end
 
+-- Sound effects functions
+local function initializeSoundGroups()
+	if not PlayerScripts then
+		return
+	end
+
+	local soundsFolder = PlayerScripts:FindFirstChild("Sounds")
+	if not soundsFolder then
+		return
+	end
+
+	backgroundMusicGroup = soundsFolder:FindFirstChild("BackgroundMusic")
+	sfxGroup = soundsFolder:FindFirstChild("SFX")
+
+	-- Add listeners for volume changes to capture dynamic volume updates
+	if backgroundMusicGroup then
+		if backgroundMusicGroup:IsA("SoundGroup") then
+			backgroundMusicGroup:GetPropertyChangedSignal("Volume"):Connect(function()
+				-- Only update original volume if:
+				-- 1. Effects are not active (no system changes happening)
+				-- 2. Volumes haven't been captured yet (initial setup)
+				-- 3. We're not in the middle of restoring volumes
+				if not soundEffectActive and not originalVolumesCaptured and not isRestoringVolumes then
+					-- Update original volume when user changes it BEFORE we capture (for next effect application)
+					local oldValue = originalBGVolume
+					originalBGVolume = backgroundMusicGroup.Volume
+					print(string.format("[Sound] Updated BG Music original: %.2f -> %.2f", oldValue, originalBGVolume))
+				end
+			end)
+		elseif backgroundMusicGroup:IsA("Folder") then
+			for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+				if sound:IsA("Sound") then
+					sound:GetPropertyChangedSignal("Volume"):Connect(function()
+						if not soundEffectActive and not originalVolumesCaptured and not isRestoringVolumes then
+							local oldValue = originalMusicVolumes[sound] or 0
+							originalMusicVolumes[sound] = sound.Volume
+							print(
+								string.format(
+									"[Sound] Updated %s original: %.2f -> %.2f",
+									sound.Name,
+									oldValue,
+									sound.Volume
+								)
+							)
+						end
+					end)
+				end
+			end
+		end
+	end
+
+	if sfxGroup and sfxGroup:IsA("SoundGroup") then
+		sfxGroup:GetPropertyChangedSignal("Volume"):Connect(function()
+			if not soundEffectActive and not originalVolumesCaptured and not isRestoringVolumes then
+				local oldValue = originalSFXVolume
+				originalSFXVolume = sfxGroup.Volume
+				print(string.format("[Sound] Updated SFX original: %.2f -> %.2f", oldValue, originalSFXVolume))
+			end
+		end)
+	end
+
+	-- Sound groups are now initialized but volumes are captured dynamically when effects are applied
+end
+
+local function applyClubEffects(enable)
+	if not backgroundMusicGroup and not sfxGroup then
+		print("[Sound] No sound groups found")
+		return
+	end
+
+	print(
+		string.format(
+			"[Sound] applyClubEffects called with enable=%s, currently active=%s",
+			enable and "true" or "false",
+			soundEffectActive and "true" or "false"
+		)
+	)
+
+	if enable and not soundEffectActive then
+		-- Enable existing MenuOpened equalizer effects
+		local function enableMenuEffect(soundGroup)
+			if not soundGroup then
+				return
+			end
+
+			local menuEffect = soundGroup:FindFirstChild("MenuOpened")
+			if menuEffect and menuEffect:IsA("EqualizerSoundEffect") then
+				menuEffect.Enabled = true
+			end
+		end
+
+		-- Enable effects on both groups
+		enableMenuEffect(backgroundMusicGroup)
+		enableMenuEffect(sfxGroup)
+
+		-- CAPTURE ORIGINAL VOLUMES ONLY ONCE (like blur/FOV system)
+		-- Only capture if we haven't captured them before (first time EVER activating effects)
+		print(
+			string.format("[Sound] DEBUG: originalVolumesCaptured = %s", originalVolumesCaptured and "true" or "false")
+		)
+
+		if not originalVolumesCaptured then
+			print("[Sound] FIRST TIME: Capturing original volumes")
+			if backgroundMusicGroup then
+				if backgroundMusicGroup:IsA("SoundGroup") then
+					originalBGVolume = backgroundMusicGroup.Volume
+					print(string.format("[Sound] Captured BG Music original: %.2f", originalBGVolume))
+				elseif backgroundMusicGroup:IsA("Folder") then
+					for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+						if sound:IsA("Sound") then
+							originalMusicVolumes[sound] = sound.Volume
+							print(string.format("[Sound] Captured %s original: %.2f", sound.Name, sound.Volume))
+						end
+					end
+				end
+			end
+
+			if sfxGroup and sfxGroup:IsA("SoundGroup") then
+				originalSFXVolume = sfxGroup.Volume
+				print(string.format("[Sound] Captured SFX original: %.2f", originalSFXVolume))
+			end
+
+			originalVolumesCaptured = true -- Mark as captured for this session
+			print("[Sound] MARKED originalVolumesCaptured = true")
+		else
+			print("[Sound] SUBSEQUENT TIME: Using previously captured original volumes")
+			print(string.format("[Sound] Current stored BG original: %.2f", originalBGVolume))
+			print(string.format("[Sound] Current stored SFX original: %.2f", originalSFXVolume))
+		end
+
+		-- Reduce volume by 0.2 (less reduction for more noticeable effects) from ORIGINAL values with smooth transition
+		local volumeTweenDuration = 0.5 -- Duration for volume transitions
+
+		if backgroundMusicGroup then
+			if backgroundMusicGroup:IsA("SoundGroup") then
+				local targetVolume = math.max(0, originalBGVolume - 0.2)
+				print(string.format("[Sound] Reducing BG Music: %.2f -> %.2f", originalBGVolume, targetVolume))
+				local volumeTween = createTween(backgroundMusicGroup, { Volume = targetVolume }, volumeTweenDuration)
+				volumeTween:Play()
+			elseif backgroundMusicGroup:IsA("Folder") then
+				for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+					if sound:IsA("Sound") and originalMusicVolumes[sound] then
+						local targetVolume = math.max(0, originalMusicVolumes[sound] - 0.2)
+						local volumeTween = createTween(sound, { Volume = targetVolume }, volumeTweenDuration)
+						volumeTween:Play()
+					end
+				end
+			end
+		end
+
+		if sfxGroup and sfxGroup:IsA("SoundGroup") then
+			local targetVolume = math.max(0, originalSFXVolume - 0.2)
+			print(string.format("[Sound] Reducing SFX: %.2f -> %.2f", originalSFXVolume, targetVolume))
+			local volumeTween = createTween(sfxGroup, { Volume = targetVolume }, volumeTweenDuration)
+			volumeTween:Play()
+		end
+
+		soundEffectActive = true
+	elseif not enable and soundEffectActive then
+		-- Disable existing MenuOpened equalizer effects
+		local function disableMenuEffect(soundGroup)
+			if not soundGroup then
+				return
+			end
+
+			local menuEffect = soundGroup:FindFirstChild("MenuOpened")
+			if menuEffect and menuEffect:IsA("EqualizerSoundEffect") then
+				menuEffect.Enabled = false
+			end
+		end
+
+		disableMenuEffect(backgroundMusicGroup)
+		disableMenuEffect(sfxGroup)
+
+		-- Set flag to prevent listeners from updating during restoration
+		isRestoringVolumes = true
+
+		-- Restore ORIGINAL volumes (the volumes before effects were applied) with smooth transition
+		local volumeTweenDuration = 0.5 -- Duration for volume transitions
+		print("[Sound] Restoring original volumes")
+
+		if backgroundMusicGroup then
+			if backgroundMusicGroup:IsA("SoundGroup") then
+				print(
+					string.format(
+						"[Sound] BG Music restore: %.2f -> %.2f",
+						backgroundMusicGroup.Volume,
+						originalBGVolume
+					)
+				)
+				local volumeTween =
+					createTween(backgroundMusicGroup, { Volume = originalBGVolume }, volumeTweenDuration)
+				volumeTween:Play()
+			elseif backgroundMusicGroup:IsA("Folder") then
+				for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+					if sound:IsA("Sound") and originalMusicVolumes[sound] then
+						print(
+							string.format(
+								"[Sound] %s restore: %.2f -> %.2f",
+								sound.Name,
+								sound.Volume,
+								originalMusicVolumes[sound]
+							)
+						)
+						local volumeTween =
+							createTween(sound, { Volume = originalMusicVolumes[sound] }, volumeTweenDuration)
+						volumeTween:Play()
+					end
+				end
+			end
+		end
+
+		if sfxGroup and sfxGroup:IsA("SoundGroup") then
+			print(string.format("[Sound] SFX restore: %.2f -> %.2f", sfxGroup.Volume, originalSFXVolume))
+			local volumeTween = createTween(sfxGroup, { Volume = originalSFXVolume }, volumeTweenDuration)
+			volumeTween:Play()
+		end
+
+		-- Clear original music volumes (individual sounds)
+		originalMusicVolumes = {}
+		-- NOTE: originalSFXVolume and originalBGVolume stay as captured values
+		-- NOTE: originalVolumesCaptured stays true so we keep the captured state across menu transitions
+
+		-- Reset restoration flag
+		isRestoringVolumes = false
+
+		soundEffectActive = false
+	end
+end
+
+local function isSettingsMenu(menu)
+	if not menu then
+		return false
+	end
+
+	-- Check if the menu's parent is named "Settings" (ScreenGui)
+	local parent = menu.Parent
+	if parent and parent.Name == "Settings" then
+		return true
+	end
+
+	-- Fallback: check menu name for backward compatibility
+	return menu.Name == "Settings" or menu.Name:lower():find("settings")
+end
+
+local function updateSoundEffects()
+	-- Check if any menus are open (excluding settings) using menuStates instead of openMenus
+	-- This ensures we count all menus that are considered "open" regardless of UI state
+	local hasNonSettingsMenus = false
+	local openMenuCount = 0
+	for menu, state in pairs(menuStates) do
+		if state.isOpen and not isSettingsMenu(menu) then
+			hasNonSettingsMenus = true
+			openMenuCount = openMenuCount + 1
+		end
+	end
+
+	print(
+		string.format(
+			"[Sound] Checking: %d non-settings menus, effects active: %s",
+			openMenuCount,
+			soundEffectActive and "true" or "false"
+		)
+	)
+
+	-- Apply or remove sound effects based on menu state
+	if hasNonSettingsMenus and not soundEffectActive then
+		print("[Sound] Activating club effects")
+		applyClubEffects(true)
+	elseif not hasNonSettingsMenus and soundEffectActive then
+		print("[Sound] Deactivating club effects")
+		applyClubEffects(false)
+	end
+end
+
 -- Menu management functions
 local function resetButtonState(button)
 	if buttonStates[button] then
@@ -250,9 +536,10 @@ local function closeAllOtherMenus(exceptMenu, button)
 				state.isOpen = false
 				openMenus[menu] = nil
 
-				-- Apply camera effects immediately when first menu is closed
+				-- Apply camera and sound effects immediately when first menu is closed
 				if not firstMenuClosed then
 					updateCameraEffects()
+					updateSoundEffects()
 					firstMenuClosed = true
 				end
 
@@ -472,9 +759,10 @@ local function setupMenuButton(button)
 						menuState.isOpen = true
 						openMenus[targetMenu] = button
 
-						-- Apply camera effects immediately when first menu is opened
+						-- Apply camera and sound effects immediately when first menu is opened
 						if not firstMenuOpened then
 							updateCameraEffects()
+							updateSoundEffects()
 							firstMenuOpened = true
 						end
 						openMenu(targetMenu, animationDirection, menuState)
@@ -492,9 +780,10 @@ local function setupMenuButton(button)
 						menuState.isOpen = false
 						openMenus[targetMenu] = nil
 
-						-- Apply camera effects immediately when first menu is closed
+						-- Apply camera and sound effects immediately when first menu is closed
 						if not firstMenuClosed then
 							updateCameraEffects()
+							updateSoundEffects()
 							firstMenuClosed = true
 						end
 
@@ -529,9 +818,10 @@ local function setupMenuButton(button)
 						menuState.isOpen = false
 						openMenus[target] = nil
 
-						-- Update camera effects immediately when first menu is closed
+						-- Update camera and sound effects immediately when first menu is closed
 						if not effectsUpdated then
 							updateCameraEffects()
+							updateSoundEffects()
 							effectsUpdated = true
 						end
 
@@ -548,9 +838,10 @@ local function setupMenuButton(button)
 						else
 							target.Visible = false
 						end
-						-- Update camera effects immediately
+						-- Update camera and sound effects immediately
 						if not effectsUpdated then
 							updateCameraEffects()
+							updateSoundEffects()
 							effectsUpdated = true
 						end
 					end
@@ -561,9 +852,10 @@ local function setupMenuButton(button)
 					else
 						target.Visible = false
 					end
-					-- Update camera effects immediately
+					-- Update camera and sound effects immediately
 					if not effectsUpdated then
 						updateCameraEffects()
+						updateSoundEffects()
 						effectsUpdated = true
 					end
 				end
@@ -717,6 +1009,9 @@ local function initialize()
 		setFovOverride(false, DEFAULT_FOV)
 	end
 
+	-- Initialize sound groups
+	initializeSoundGroups()
+
 	-- Setup animated elements
 	CollectionService:GetInstanceAddedSignal("Animated"):Connect(function(element)
 		if element:IsA("GuiObject") then
@@ -765,6 +1060,114 @@ _G.TestFovOverride = function(enable, fovValue)
 	else
 		setFovOverride(false, 70)
 	end
+end
+
+-- Test sound effects
+_G.TestSoundEffects = function(enable)
+	if enable then
+		print("Testing sound effects ON (volume -0.3, club effect)")
+		print("Current volumes will be saved and reduced by 0.3 with smooth transition")
+		applyClubEffects(true)
+	else
+		print("Testing sound effects OFF (restore saved volumes)")
+		print("Volumes will be restored to their values before effects were applied with smooth transition")
+		applyClubEffects(false)
+	end
+end
+
+-- Show current volume status
+_G.ShowVolumeStatus = function()
+	print("=== Volume Status ===")
+	print("Sound effects active:", soundEffectActive)
+
+	if backgroundMusicGroup then
+		if backgroundMusicGroup:IsA("SoundGroup") then
+			print(string.format("BackgroundMusic current volume: %.2f", backgroundMusicGroup.Volume))
+			print(string.format("BackgroundMusic original volume: %.2f", originalSFXVolume))
+		elseif backgroundMusicGroup:IsA("Folder") then
+			for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+				if sound:IsA("Sound") then
+					local originalVol = originalMusicVolumes[sound] or 0
+					print(
+						string.format(
+							"BackgroundMusic sound '%s': current=%.2f, original=%.2f",
+							sound.Name,
+							sound.Volume,
+							originalVol
+						)
+					)
+				end
+			end
+		end
+	end
+
+	if sfxGroup and sfxGroup:IsA("SoundGroup") then
+		print(string.format("SFX current volume: %.2f", sfxGroup.Volume))
+		print(string.format("SFX original volume: %.2f", originalSFXVolume))
+	end
+
+	print("=== End Status ===")
+end
+
+-- Test Settings menu detection
+_G.TestSettingsDetection = function()
+	print("=== Settings Menu Detection Test ===")
+	for menu, _ in pairs(openMenus) do
+		local isSettings = isSettingsMenu(menu)
+		local parentName = menu.Parent and menu.Parent.Name or "No Parent"
+		print(
+			string.format(
+				"Menu '%s' -> Parent: '%s' -> Is Settings: %s",
+				menu.Name or "UnnamedMenu",
+				parentName,
+				isSettings and "YES" or "NO"
+			)
+		)
+	end
+
+	local nonSettingsCount = 0
+	for menu, _ in pairs(openMenus) do
+		if not isSettingsMenu(menu) then
+			nonSettingsCount = nonSettingsCount + 1
+		end
+	end
+
+	print(string.format("Non-settings menus open: %d", nonSettingsCount))
+	print("Sound effects should be active:", nonSettingsCount > 0)
+	print("=== End Test ===")
+end
+
+-- Quick sound system status
+_G.SoundStatus = function()
+	print("=== SOUND SYSTEM STATUS ===")
+	print("Sound effects active:", soundEffectActive)
+	print("Original volumes captured:", originalVolumesCaptured)
+	print("Is restoring volumes:", isRestoringVolumes)
+	print("BackgroundMusic group found:", backgroundMusicGroup ~= nil)
+	print("SFX group found:", sfxGroup ~= nil)
+
+	if backgroundMusicGroup then
+		if backgroundMusicGroup:IsA("SoundGroup") then
+			print("BackgroundMusic type: SoundGroup")
+			print("Current BG volume:", backgroundMusicGroup.Volume)
+			print("Original BG volume:", originalBGVolume)
+		else
+			print("BackgroundMusic type: Folder with", #backgroundMusicGroup:GetChildren(), "sounds")
+			for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
+				if sound:IsA("Sound") then
+					local origVol = originalMusicVolumes[sound] or 0
+					print(string.format("  %s: current=%.2f, original=%.2f", sound.Name, sound.Volume, origVol))
+				end
+			end
+		end
+	end
+
+	if sfxGroup and sfxGroup:IsA("SoundGroup") then
+		print("Current SFX volume:", sfxGroup.Volume)
+		print("Original SFX volume:", originalSFXVolume)
+	end
+
+	print("=== END STATUS ===")
 end
 
 -- Start the system
