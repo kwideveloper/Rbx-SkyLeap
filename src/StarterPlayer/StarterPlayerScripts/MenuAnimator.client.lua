@@ -104,10 +104,6 @@ local function setFovOverride(enable, fovValue)
 		fovOverrideValue.Parent = cs
 	end
 	fovOverrideValue.Value = fovValue
-
-	if _G.DEBUG_CAMERA_EFFECTS then
-		print(string.format("[FOV Override] Set active=%s, value=%d", enable and "true" or "false", fovValue))
-	end
 end
 
 local function applyCameraEffects(enable)
@@ -135,16 +131,6 @@ local function applyCameraEffects(enable)
 
 	-- Store effect state
 	cameraEffectActive = enable
-
-	if _G.DEBUG_CAMERA_EFFECTS then
-		print(
-			string.format(
-				"[Camera Effects] Applied effects: blur=%d, fovOverride=%s",
-				targetBlurSize,
-				enable and "active" or "inactive"
-			)
-		)
-	end
 end
 
 local function updateCameraEffects()
@@ -163,44 +149,10 @@ local function updateCameraEffects()
 		end
 	end
 
-	-- Debug info
-	if _G.DEBUG_CAMERA_EFFECTS then
-		print(
-			string.format(
-				"[Camera Effects] Total menus tracked: %d, Open menus: %d (%s), Effects active: %s",
-				totalMenus,
-				openMenuCount,
-				table.concat(openMenuNames, ", "),
-				cameraEffectActive and "true" or "false"
-			)
-		)
-
-		if openMenuCount > 0 then
-			print("[Camera Effects] Open menu details:")
-			for menu, menuState in pairs(menuStates) do
-				if menuState.isOpen then
-					print(
-						string.format(
-							"  - %s: isOpen=%s",
-							menu.Name or "UnnamedMenu",
-							menuState.isOpen and "true" or "false"
-						)
-					)
-				end
-			end
-		end
-	end
-
 	-- Apply or remove camera effects based on menu state
 	if hasOpenMenus and not cameraEffectActive then
-		if _G.DEBUG_CAMERA_EFFECTS then
-			print("[Camera Effects] Activating blur and FOV reduction")
-		end
 		applyCameraEffects(true)
 	elseif not hasOpenMenus and cameraEffectActive then
-		if _G.DEBUG_CAMERA_EFFECTS then
-			print("[Camera Effects] Deactivating blur and FOV reduction")
-		end
 		applyCameraEffects(false)
 	end
 end
@@ -215,6 +167,9 @@ local function resetButtonState(button)
 				Size = elementState.originalSize,
 				Rotation = elementState.originalRotation,
 			}):Play()
+
+			-- Restore original ZIndex
+			button.ZIndex = elementState.originalZIndex
 		end
 		buttonStates[button] = false
 	end
@@ -234,6 +189,9 @@ local function setButtonActive(button)
 				),
 				Rotation = ACTIVATE_ROTATION,
 			}):Play()
+
+			-- Set ZIndex to 100 for active state
+			button.ZIndex = 100
 		end
 		buttonStates[button] = true
 	end
@@ -316,6 +274,7 @@ local function setupAnimatedElement(element)
 		originalSize = element.Size,
 		originalPosition = element.Position,
 		originalRotation = element.Rotation or 0,
+		originalZIndex = element.Parent.ZIndex,
 	}
 	elementStates[element] = state
 
@@ -336,8 +295,6 @@ local function setupAnimatedElement(element)
 		end
 	end
 
-	print(hasHover, hasClick, hasActivate)
-
 	-- Setup hover animations
 	if hasHover then
 		element.MouseEnter:Connect(function()
@@ -352,6 +309,9 @@ local function setupAnimatedElement(element)
 					Rotation = HOVER_ROTATION,
 				})
 				hoverTween:Play()
+
+				-- Set ZIndex to 100 for hover effect
+				element.Parent.ZIndex = 100
 			end
 		end)
 
@@ -362,6 +322,9 @@ local function setupAnimatedElement(element)
 					Rotation = state.originalRotation,
 				})
 				leaveTween:Play()
+
+				-- Restore original ZIndex
+				element.Parent.ZIndex = state.originalZIndex
 			end
 		end)
 	end
@@ -415,12 +378,18 @@ local function setupAnimatedElement(element)
 					),
 					Rotation = ACTIVATE_ROTATION,
 				}):Play()
+
+				-- Set ZIndex to 100 for active state
+				element.ZIndex = 100
 			else
 				-- Deactivate state
 				createHoverTween(element, {
 					Size = state.originalSize,
 					Rotation = state.originalRotation,
 				}):Play()
+
+				-- Restore original ZIndex
+				element.ZIndex = state.originalZIndex
 			end
 		end)
 	end
@@ -475,16 +444,6 @@ local function setupMenuButton(button)
 			}
 			menuStatesForButton[targetMenu] = menuState
 			menuStates[targetMenu] = menuState -- Use targetMenu as key for unique state tracking
-
-			if _G.DEBUG_CAMERA_EFFECTS then
-				print(
-					string.format(
-						"[Setup] Created menu state for %s: isOpen=%s",
-						targetMenu.Name or "UnnamedMenu",
-						menuState.isOpen and "true" or "false"
-					)
-				)
-			end
 		end
 
 		button.MouseButton1Click:Connect(function()
@@ -510,15 +469,6 @@ local function setupMenuButton(button)
 				for _, targetMenu in ipairs(targetMenus) do
 					local menuState = menuStatesForButton[targetMenu]
 					if not menuState.isOpen then
-						if _G.DEBUG_CAMERA_EFFECTS then
-							print(
-								string.format(
-									"[Open] Opening menu %s, current isOpen: %s",
-									targetMenu.Name or "UnnamedMenu",
-									menuState.isOpen and "true" or "false"
-								)
-							)
-						end
 						menuState.isOpen = true
 						openMenus[targetMenu] = button
 
@@ -526,16 +476,6 @@ local function setupMenuButton(button)
 						if not firstMenuOpened then
 							updateCameraEffects()
 							firstMenuOpened = true
-						end
-
-						if _G.DEBUG_CAMERA_EFFECTS then
-							print(
-								string.format(
-									"[Open] Menu %s marked as open, isOpen: %s",
-									targetMenu.Name or "UnnamedMenu",
-									menuState.isOpen and "true" or "false"
-								)
-							)
 						end
 						openMenu(targetMenu, animationDirection, menuState)
 					end
@@ -809,35 +749,11 @@ local function initialize()
 	end)
 end
 
--- Debug mode (enable by setting _G.DEBUG_CAMERA_EFFECTS = true in console)
-_G.DEBUG_CAMERA_EFFECTS = true -- Debug enabled by default for troubleshooting
-
--- Quick test function to verify camera effects
-_G.TestCameraEffects = function()
-	print("=== Camera Effects Test ===")
-	print("Total menus tracked:", #menuStates)
-	print("Camera effect active:", cameraEffectActive)
-
-	local openCount = 0
-	for menu, state in pairs(menuStates) do
-		if state.isOpen then
-			openCount = openCount + 1
-			print("Open menu:", menu.Name or "Unnamed", "- isOpen:", state.isOpen)
-		end
-	end
-
-	print("Open menus count:", openCount)
-	print("Should have effects:", openCount > 0)
-	print("=== End Test ===")
-end
-
 -- Force camera effects test
 _G.ForceCameraEffects = function(enable)
 	if enable then
-		print("Forcing camera effects ON")
 		applyCameraEffects(true)
 	else
-		print("Forcing camera effects OFF")
 		applyCameraEffects(false)
 	end
 end
@@ -845,10 +761,8 @@ end
 -- Test FOV override system
 _G.TestFovOverride = function(enable, fovValue)
 	if enable then
-		print(string.format("Testing FOV override: active=true, value=%d", fovValue))
 		setFovOverride(true, fovValue)
 	else
-		print("Testing FOV override: active=false")
 		setFovOverride(false, 70)
 	end
 end
