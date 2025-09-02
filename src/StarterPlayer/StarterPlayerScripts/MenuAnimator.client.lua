@@ -1,7 +1,6 @@
 -- MenuAnimator.client.lua
--- Handles UI animations and interactions for elements with specific tags and values
+-- Handles UI animations and interactions for buttons with ObjectValue "Open" and StringValue "Animate" children
 local TweenService = game:GetService("TweenService")
-local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -473,7 +472,7 @@ local function closeAllOtherMenus(exceptMenu, button)
 	end
 end
 
--- Handle animated elements (Hover, Click, Activate)
+-- Handle animated elements (Hover, Click, Active)
 local function setupAnimatedElement(element)
 	local state = {
 		isActive = false,
@@ -484,19 +483,20 @@ local function setupAnimatedElement(element)
 	}
 	elementStates[element] = state
 
-	-- Check for animation types
+	-- Check for animation types by looking for StringValue children named "Animate"
 	local hasHover = false
 	local hasClick = false
-	local hasActivate = false
+	local hasActive = false
+	local icon = element:FindFirstChild("Icon")
 
 	for _, child in ipairs(element:GetChildren()) do
-		if child:IsA("StringValue") then
+		if child:IsA("StringValue") and child.Name == "Animate" then
 			if child.Value == "Hover" then
 				hasHover = true
 			elseif child.Value == "Click" then
 				hasClick = true
-			elseif child.Value == "Activate" then
-				hasActivate = true
+			elseif child.Value == "Active" then
+				hasActive = true
 			end
 		end
 	end
@@ -515,7 +515,18 @@ local function setupAnimatedElement(element)
 					Rotation = HOVER_ROTATION,
 				})
 				hoverTween:Play()
-
+				-- Animate icon (If exists)
+				if icon then
+					local tween = createTween(
+						icon.UIGradient,
+						{ Offset = Vector2.new(0, 0.5) },
+						0.2,
+						Enum.EasingStyle.Sine,
+						Enum.EasingDirection.InOut
+					)
+					tween:Play()
+				end
+				---
 				-- Set ZIndex to 100 for hover effect
 				element.Parent.ZIndex = 100
 			end
@@ -528,8 +539,20 @@ local function setupAnimatedElement(element)
 					Rotation = state.originalRotation,
 				})
 				leaveTween:Play()
-
 				-- Restore original ZIndex
+
+				-- Animate icon (If exists)
+				if icon then
+					local tween = createTween(
+						icon.UIGradient,
+						{ Offset = Vector2.new(1, 1) },
+						0.2,
+						Enum.EasingStyle.Sine,
+						Enum.EasingDirection.Out
+					)
+					tween:Play()
+				end
+				--`
 				element.Parent.ZIndex = state.originalZIndex
 			end
 		end)
@@ -568,13 +591,13 @@ local function setupAnimatedElement(element)
 		end)
 	end
 
-	-- Setup activate animations
-	if hasActivate then
+	-- Setup active animations
+	if hasActive then
 		element.MouseButton1Click:Connect(function()
 			state.isActive = not state.isActive
 
 			if state.isActive then
-				-- Activate state with enhanced animation
+				-- Active state with enhanced animation
 				createHoverTween(element, {
 					Size = UDim2.new(
 						state.originalSize.X.Scale * ACTIVATE_SCALE,
@@ -585,6 +608,11 @@ local function setupAnimatedElement(element)
 					Rotation = ACTIVATE_ROTATION,
 				}):Play()
 
+				-- Setting hover State for Icon
+				if icon then
+					icon.UIGradient.Offset = Vector2.new(0, 0.5)
+				end
+
 				-- Set ZIndex to 100 for active state
 				element.ZIndex = 100
 			else
@@ -593,6 +621,11 @@ local function setupAnimatedElement(element)
 					Size = state.originalSize,
 					Rotation = state.originalRotation,
 				}):Play()
+
+				if icon then
+					-- Restore hover State for Icon
+					icon.UIGradient.Offset = Vector2.new(1, 1)
+				end
 
 				-- Restore original ZIndex
 				element.ZIndex = state.originalZIndex
@@ -931,24 +964,36 @@ local function initialize()
 	-- Initialize sound groups
 	initializeSoundGroups()
 
-	-- Setup animated elements
-	CollectionService:GetInstanceAddedSignal("Animated"):Connect(function(element)
-		if element:IsA("GuiObject") then
-			setupAnimatedElement(element)
-		end
-	end)
-
-	-- Setup existing animated elements
-	for _, element in ipairs(CollectionService:GetTagged("Animated")) do
-		if element:IsA("GuiObject") then
-			setupAnimatedElement(element)
-		end
-	end
-
-	-- Setup menu buttons
+	-- Setup buttons with menu functionality and animations
 	local function setupButton(button)
 		if button:IsA("TextButton") or button:IsA("ImageButton") then
-			setupMenuButton(button)
+			-- Check if button has ObjectValue "Open" for menu functionality
+			local hasOpen = false
+			for _, child in ipairs(button:GetChildren()) do
+				if child:IsA("ObjectValue") and child.Name == "Open" and child.Value then
+					hasOpen = true
+					break
+				end
+			end
+
+			-- Check if button has StringValue "Animate" for animations
+			local hasAnimate = false
+			for _, child in ipairs(button:GetChildren()) do
+				if child:IsA("StringValue") and child.Name == "Animate" then
+					hasAnimate = true
+					break
+				end
+			end
+
+			-- Setup menu functionality if it has Open ObjectValue
+			if hasOpen then
+				setupMenuButton(button)
+			end
+
+			-- Setup animations if it has Animate StringValue
+			if hasAnimate then
+				setupAnimatedElement(button)
+			end
 		end
 	end
 

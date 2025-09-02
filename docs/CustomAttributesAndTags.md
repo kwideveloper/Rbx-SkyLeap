@@ -208,14 +208,21 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 
 ---
 
-## 11. Menu System Tags
+## 11. Menu System Components
 
 **Interactive UI Elements (TextButton/ImageButton):**
-- `OpenMenu` (Tag) - Makes button automatically open/close associated menu frame
+- Buttons automatically detected by their internal structure (no tags required)
+- System looks for specific child objects to determine functionality
 
-**Required Children for OpenMenu buttons:**
+**Required Children for Menu Buttons:**
 - `Open` (ObjectValue) - Points to the Frame/GuiObject to open/close
 - `Ignore` (ObjectValue, optional) - Points to frames that should stay open when this menu opens
+- `Position` (StringValue, optional) - Animation direction: "Top", "Bottom", "Left", "Right" (default: "Top")
+
+**Animation Children (StringValue named "Animate"):**
+- `Animate` (StringValue) with Value: "Hover" - Enables hover animations (scale + rotation)
+- `Animate` (StringValue) with Value: "Click" - Enables click animations (position + scale bounce)
+- `Animate` (StringValue) with Value: "Active" - Enables active state animations (toggle state)
 
 **Features:**
 - Automatic menu switching (closes other menus when opening new ones)
@@ -223,6 +230,7 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 - FOV changes and blur effects
 - Music ducking and reverb effects
 - Supports nested menu hierarchies
+- No CollectionService tags required - fully automatic detection
 
 **Example Setup:**
 ```lua
@@ -230,15 +238,99 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 local button = -- your TextButton or ImageButton
 local targetFrame = -- the Frame you want to open/close
 
--- Create ObjectValue pointing to target frame
+-- Create ObjectValue pointing to target frame (REQUIRED for menu functionality)
 local openValue = Instance.new("ObjectValue")
 openValue.Name = "Open"
 openValue.Value = targetFrame
 openValue.Parent = button
 
--- Add the tag
-CollectionService:AddTag(button, "OpenMenu")
+-- Create animation StringValues (OPTIONAL - only if you want animations)
+local hoverAnimate = Instance.new("StringValue")
+hoverAnimate.Name = "Animate"
+hoverAnimate.Value = "Hover"
+hoverAnimate.Parent = button
+
+local clickAnimate = Instance.new("StringValue")
+clickAnimate.Name = "Animate"
+clickAnimate.Value = "Click"
+clickAnimate.Parent = button
+
+local activeAnimate = Instance.new("StringValue")
+activeAnimate.Name = "Animate"
+activeAnimate.Value = "Active"
+activeAnimate.Parent = button
+
+-- Optional: Set animation direction
+local positionValue = Instance.new("StringValue")
+positionValue.Name = "Position"
+positionValue.Value = "Top" -- or "Bottom", "Left", "Right"
+positionValue.Parent = button
 ```
+
+**Animation Types Explained:**
+- **Hover**: Scales button to 1.08x and rotates 2° when mouse enters, returns to normal when mouse leaves
+- **Click**: Creates bounce effect with position offset and scale reduction when clicked
+- **Active**: Toggles between normal and active state (1.12x scale, -8° rotation) when clicked
+
+**Common Use Cases:**
+
+1. **Simple Menu Button (No Animations):**
+```lua
+-- Just add the Open ObjectValue - no animations
+local openValue = Instance.new("ObjectValue")
+openValue.Name = "Open"
+openValue.Value = targetFrame
+openValue.Parent = button
+```
+
+2. **Animated Menu Button (All Animations):**
+```lua
+-- Add menu functionality
+local openValue = Instance.new("ObjectValue")
+openValue.Name = "Open"
+openValue.Value = targetFrame
+openValue.Parent = button
+
+-- Add all animation types
+local animations = {"Hover", "Click", "Active"}
+for _, animType in ipairs(animations) do
+    local animateValue = Instance.new("StringValue")
+    animateValue.Name = "Animate"
+    animateValue.Value = animType
+    animateValue.Parent = button
+end
+```
+
+3. **Close Button (No Menu Opening):**
+```lua
+-- Close buttons don't need Open ObjectValue, just Close ObjectValue
+local closeValue = Instance.new("ObjectValue")
+closeValue.Name = "Close"
+closeValue.Value = targetFrame
+closeValue.Parent = button
+
+-- Optional: Add click animation for feedback
+local clickAnimate = Instance.new("StringValue")
+clickAnimate.Name = "Animate"
+clickAnimate.Value = "Click"
+clickAnimate.Parent = button
+```
+
+4. **Toggle Button (Active State Only):**
+```lua
+-- For buttons that toggle states but don't open menus
+local activeAnimate = Instance.new("StringValue")
+activeAnimate.Name = "Animate"
+activeAnimate.Value = "Active"
+activeAnimate.Parent = button
+```
+
+**System Behavior:**
+- Buttons are automatically detected when PlayerGui loads or when new UI elements are added
+- No manual setup required - just add the appropriate child objects
+- System handles all menu management, camera effects, and sound effects automatically
+- Multiple buttons can open the same menu
+- Menus automatically close when opening new ones (unless in Ignore list)
 
 ---
 
