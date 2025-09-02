@@ -21,6 +21,7 @@ local ANIMATION_DURATION = 0.25
 local MENU_ANIMATION_DURATION = 0.4 -- 0.4
 local MENU_CLOSE_ANIMATION_DURATION = 0.25 -- Tiempo más rápido para cerrar el menú
 local BOUNCE_DURATION = 0.15
+local VOLUME_TO_REDUCE = 0.1
 
 -- Camera effects constants
 local BLUR_SIZE = 15 -- Maximum blur size when menu is open
@@ -251,12 +252,6 @@ local function applyClubEffects(enable)
 			if backgroundMusicGroup then
 				if backgroundMusicGroup:IsA("SoundGroup") then
 					originalBGVolume = backgroundMusicGroup.Volume
-				elseif backgroundMusicGroup:IsA("Folder") then
-					for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
-						if sound:IsA("Sound") then
-							originalMusicVolumes[sound] = sound.Volume
-						end
-					end
 				end
 			end
 
@@ -272,22 +267,14 @@ local function applyClubEffects(enable)
 
 		if backgroundMusicGroup then
 			if backgroundMusicGroup:IsA("SoundGroup") then
-				local targetVolume = math.max(0, originalBGVolume - 0.2)
+				local targetVolume = math.max(0, originalBGVolume - VOLUME_TO_REDUCE)
 				local volumeTween = createTween(backgroundMusicGroup, { Volume = targetVolume }, volumeTweenDuration)
 				volumeTween:Play()
-			elseif backgroundMusicGroup:IsA("Folder") then
-				for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
-					if sound:IsA("Sound") and originalMusicVolumes[sound] then
-						local targetVolume = math.max(0, originalMusicVolumes[sound] - 0.2)
-						local volumeTween = createTween(sound, { Volume = targetVolume }, volumeTweenDuration)
-						volumeTween:Play()
-					end
-				end
 			end
 		end
 
 		if sfxGroup and sfxGroup:IsA("SoundGroup") then
-			local targetVolume = math.max(0, originalSFXVolume - 0.2)
+			local targetVolume = math.max(0, originalSFXVolume - VOLUME_TO_REDUCE)
 			local volumeTween = createTween(sfxGroup, { Volume = targetVolume }, volumeTweenDuration)
 			volumeTween:Play()
 		end
@@ -320,14 +307,6 @@ local function applyClubEffects(enable)
 				local volumeTween =
 					createTween(backgroundMusicGroup, { Volume = originalBGVolume }, volumeTweenDuration)
 				volumeTween:Play()
-			elseif backgroundMusicGroup:IsA("Folder") then
-				for _, sound in ipairs(backgroundMusicGroup:GetChildren()) do
-					if sound:IsA("Sound") and originalMusicVolumes[sound] then
-						local volumeTween =
-							createTween(sound, { Volume = originalMusicVolumes[sound] }, volumeTweenDuration)
-						volumeTween:Play()
-					end
-				end
 			end
 		end
 
