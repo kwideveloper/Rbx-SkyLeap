@@ -3,6 +3,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Movement.Config)
 local Animations = require(ReplicatedStorage.Movement.Animations)
+local SharedUtils = require(ReplicatedStorage.SharedUtils)
 
 local VerticalClimb = {}
 
@@ -26,7 +27,7 @@ end
 local function findFrontWall(root)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
+	params.FilterDescendantsInstances = SharedUtils.createParkourRaycastParams(root.Parent).FilterDescendantsInstances
 	params.IgnoreWater = Config.RaycastIgnoreWater
 	local dist = Config.VerticalClimbDetectionDistance or 3.5
 	local look = root.CFrame.LookVector

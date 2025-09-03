@@ -163,6 +163,52 @@ function SharedUtils.debugPrint(module, message, level)
 	print(string.format("[%s] [%s] %s", module, level, message))
 end
 
+-- Get all player characters in the workspace
+function getAllPlayerCharacters()
+	local characters = {}
+	local players = game:GetService("Players"):GetPlayers()
+	for _, player in ipairs(players) do
+		if player.Character then
+			table.insert(characters, player.Character)
+		end
+	end
+	return characters
+end
+
+-- Create RaycastParams that excludes all players (for parkour systems)
+function SharedUtils.createParkourRaycastParams(character, additionalExclusions)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = true
+
+	-- Get all player characters to exclude
+	local playerCharacters = getAllPlayerCharacters()
+
+	-- Combine player characters with character and any additional exclusions
+	local exclusions = {}
+	if character then
+		table.insert(exclusions, character)
+	end
+	for _, char in ipairs(playerCharacters) do
+		table.insert(exclusions, char)
+	end
+
+	if additionalExclusions then
+		for _, exclusion in ipairs(additionalExclusions) do
+			table.insert(exclusions, exclusion)
+		end
+	end
+
+	params.FilterDescendantsInstances = exclusions
+	return params
+end
+
+-- Perform a raycast for parkour systems that ignores all players
+function SharedUtils.raycastForParkour(character, origin, direction, additionalExclusions)
+	local params = SharedUtils.createParkourRaycastParams(character, additionalExclusions)
+	return workspace:Raycast(origin, direction, params)
+end
+
 -- Cleanup function for memory management
 function SharedUtils.cleanup()
 	tagCache = {}

@@ -2,6 +2,7 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
+local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 local RunService = game:GetService("RunService")
 local OverlapParams = OverlapParams
 
@@ -25,10 +26,7 @@ end
 -- Check if there's enough clearance above for a full mantle
 -- Uses same logic as ParkourController to ensure consistency
 local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection, hitPoint)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 
 	local requiredHeight = Config.LedgeHangMinClearance or 5.0
 	local inwardDistance = 1.5 -- How far inward from edge to check
@@ -144,10 +142,7 @@ end
 
 -- Vault helpers
 local function raycastForward(root, distance)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 	local origin = root.Position + Vector3.new(0, (root.Size and root.Size.Y or 2) * 0.25, 0)
 	return workspace:Raycast(origin, root.CFrame.LookVector * distance, params)
 end
@@ -927,10 +922,7 @@ function Abilities.isMantleCandidate(character)
 		return true
 	end
 	-- Fallback: quick velocity-facing sweep like in detectLedgeForMantle extended branch
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 	local halfH = (root.Size and root.Size.Y or 2) * 0.5
 	local baseDir
 	local vel = root.AssemblyLinearVelocity
@@ -1627,10 +1619,7 @@ function Abilities.tryMantle(character)
 end
 
 sampleObstacleTopY = function(root, distance)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 	local samples = Config.VaultSampleHeights or { 0.15, 0.35, 0.55, 0.75, 0.9 }
 	local bestY = nil
 	local bestRes = nil
@@ -1660,10 +1649,7 @@ end
 
 -- Three-ray detector: feet, mid, and head
 detectObstacleWithThreeRays = function(root, distance)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 
 	local halfH = (root.Size and root.Size.Y or 2) * 0.5
 	local look = root.CFrame.LookVector
@@ -1691,7 +1677,7 @@ end
 boxDetectFrontTopY = function(root, distance)
 	local overlap = OverlapParams.new()
 	overlap.FilterType = Enum.RaycastFilterType.Exclude
-	overlap.FilterDescendantsInstances = { root.Parent }
+	overlap.FilterDescendantsInstances = SharedUtils.createParkourRaycastParams(root.Parent).FilterDescendantsInstances
 	overlap.RespectCanCollide = false
 	local forward = root.CFrame.LookVector
 	local height = (root.Size and root.Size.Y or 2)

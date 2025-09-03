@@ -2,6 +2,7 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local WallMemory = require(game:GetService("ReplicatedStorage").Movement.WallMemory)
+local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 
 local Climb = {}
 
@@ -65,10 +66,7 @@ local function getParts(character)
 end
 
 local function findClimbable(root)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 
 	local directions = {
 		root.CFrame.RightVector,
@@ -88,10 +86,7 @@ end
 
 -- Find ground level below the player using raycast
 local function findGroundLevel(root)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 
 	-- Cast ray downward to find ground
 	local raycastDistance = 10 -- Maximum distance to search for ground
@@ -462,7 +457,7 @@ function Climb.maintain(character, input)
 								and (not onlyWhenDescending or inputV < 0)
 
 							-- If we don't want immediate auto-disable after adjustment, add a small delay
-							if not Config.ClimbAutoDisableImmediateAfterAdjust and isOnGround then
+							if not Config.ClimbAutoDisableImmediateAfterAdjust then
 								-- Add a small delay to prevent immediate auto-disable after auto-adjustment
 								shouldAutoDisable = false
 								if Config.DebugClimb then

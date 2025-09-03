@@ -3,6 +3,7 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
+local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 local RunService = game:GetService("RunService")
 
 local LedgeHang = {}
@@ -17,10 +18,7 @@ end
 
 -- Check if there's enough clearance above for a full mantle
 local function hasEnoughClearanceAbove(root, ledgeY, forwardDirection)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { root.Parent }
-	params.IgnoreWater = true
+	local params = SharedUtils.createParkourRaycastParams(root.Parent)
 
 	local halfHeight = (root.Size and root.Size.Y or 2) * 0.5
 	local requiredClearance = Config.LedgeHangMinClearance or 3.5 -- studs above ledge
@@ -55,7 +53,7 @@ function LedgeHang.detectLedgeForHang(character)
 	-- Use similar detection as mantle but check clearance
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character }
+	params.FilterDescendantsInstances = SharedUtils.createParkourRaycastParams(character).FilterDescendantsInstances
 	params.IgnoreWater = Config.RaycastIgnoreWater
 
 	local origin = root.Position
@@ -1233,7 +1231,8 @@ function LedgeHang.tryMantleUp(character)
 			if root then
 				local params = RaycastParams.new()
 				params.FilterType = Enum.RaycastFilterType.Exclude
-				params.FilterDescendantsInstances = { character }
+				params.FilterDescendantsInstances =
+					SharedUtils.createParkourRaycastParams(character).FilterDescendantsInstances
 				params.IgnoreWater = true
 				-- Cast straight up from current ledge x/z
 				local start = Vector3.new(root.Position.X, hangData.ledgeY + 0.1, root.Position.Z)
@@ -1928,7 +1927,7 @@ local function getWallInstanceFromHang(character)
 	-- Try multiple approaches to find the wall
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character }
+	params.FilterDescendantsInstances = SharedUtils.createParkourRaycastParams(character).FilterDescendantsInstances
 	params.IgnoreWater = true
 
 	-- Method 1: Cast from player position toward ledge
