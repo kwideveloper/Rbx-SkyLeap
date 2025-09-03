@@ -38,7 +38,7 @@ local function isInRangeOptimized(character, part, range)
 	-- Get custom range for this hookable part (in studs)
 	local customRange = part and part:GetAttribute("HookRange")
 	local effectiveRange = (typeof(customRange) == "number" and customRange > 0) and customRange
-		or (range or Config.HookAutoRange or 90)
+		or (range or Config.HookDefaultRange or 90)
 	return distance <= effectiveRange
 end
 
@@ -50,7 +50,7 @@ local function getBestTargetInRangeOptimized(character, hooks)
 		-- Get custom range for this hookable part (in studs)
 		local customRange = part and part:GetAttribute("HookRange")
 		local range = (typeof(customRange) == "number" and customRange > 0) and customRange
-			or (Config.HookAutoRange or 90)
+			or (Config.HookDefaultRange or 90)
 
 		if isInRangeOptimized(character, part, range) then
 			local root = character:FindFirstChild("HumanoidRootPart")
@@ -74,7 +74,7 @@ local function getHooksInRangeOptimized(character)
 		-- Get custom range for this hookable part (in studs)
 		local customRange = part and part:GetAttribute("HookRange")
 		local range = (typeof(customRange) == "number" and customRange > 0) and customRange
-			or (Config.HookAutoRange or 90)
+			or (Config.HookDefaultRange or 90)
 
 		if isInRangeOptimized(character, part, range) then
 			table.insert(hooksInRange, part)

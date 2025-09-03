@@ -244,11 +244,12 @@ function findAutoTarget(character)
 		return nil, nil, nil
 	end
 	local tag = Config.HookTag or "Hookable"
-	local range = Config.HookAutoRange or 90
 	local candidate, candDist -- nearest visible ignoring cooldown (for UI)
 	local ready, readyDist -- nearest visible that is not on cooldown (usable)
 	for _, inst in ipairs(CollectionService:GetTagged(tag)) do
 		if inst and inst:IsA("BasePart") and inst:IsDescendantOf(workspace) then
+			-- Read HookRange attribute from each individual hookable part
+			local range = (inst and tonumber(inst:GetAttribute("HookRange"))) or (Config.HookDefaultRange or 90)
 			local d = (inst.Position - root.Position).Magnitude
 			if d <= range then
 				local requireLOS = (Config.HookRequireLineOfSight ~= false)
@@ -383,23 +384,16 @@ function Grapple.tryFire(character, cameraCFrame)
 	if Config.DebugHookCooldownLogs then
 		print("[Hook] Starting hook execution for character:", character.Name, "target:", candidatePart:GetFullName())
 	end
-	local origin = autoCam.Position
-	local dir = autoCam.LookVector * maxDist
-	local ray = workspace:Raycast(origin, dir, params)
-	if not (ray and validHit(ray)) then
-		return false
-	end
-	local hookTag = Config.HookTag or "Hookable"
-	local hookablePart = findTaggedAncestor(ray.Instance, hookTag)
-	-- Must hit the same candidate
-	if not hookablePart or hookablePart ~= candidatePart then
-		return false
-	end
+
+	-- Since we already found a valid candidate in range, use it directly
+	-- No need for additional raycast - just use the candidate's position
 	local attachA = ensureRootAttachment(character)
 	if not attachA then
 		return false
 	end
-	local anchor, attachB = createAnchorAt(ray.Position)
+
+	-- Use the candidate part's position directly for the anchor
+	local anchor, attachB = createAnchorAt(candidatePart.Position)
 	local rope = Instance.new("RopeConstraint")
 	rope.Attachment0 = attachA
 	rope.Attachment1 = attachB
@@ -415,11 +409,11 @@ function Grapple.tryFire(character, cameraCFrame)
 	force.RelativeTo = Enum.ActuatorRelativeTo.World
 	force.Attachment0 = attachA
 	force.Parent = attachA
-	local maxApproachSpeed = (hookablePart and tonumber(hookablePart:GetAttribute("HookMaxApproachSpeed")))
+	local maxApproachSpeed = (candidatePart and tonumber(candidatePart:GetAttribute("HookMaxApproachSpeed")))
 	if not maxApproachSpeed or maxApproachSpeed <= 0 then
 		maxApproachSpeed = Config.HookMaxApproachSpeed or 120
 	end
-	local autoDetachDistance = (hookablePart and tonumber(hookablePart:GetAttribute("HookAutoDetachDistance")))
+	local autoDetachDistance = (candidatePart and tonumber(candidatePart:GetAttribute("HookAutoDetachDistance")))
 	if not autoDetachDistance or autoDetachDistance <= 0 then
 		autoDetachDistance = Config.HookAutoDetachDistance or 10
 	end
@@ -449,7 +443,7 @@ function Grapple.tryFire(character, cameraCFrame)
 				rope = rope,
 				force = force,
 				reel = 0,
-				targetPart = hookablePart,
+				targetPart = candidatePart,
 				maxApproachSpeed = maxApproachSpeed,
 				autoDetachDistance = autoDetachDistance,
 				animTrack = animTrack,
@@ -463,7 +457,7 @@ function Grapple.tryFire(character, cameraCFrame)
 				rope = rope,
 				force = force,
 				reel = 0,
-				targetPart = hookablePart,
+				targetPart = candidatePart,
 				maxApproachSpeed = maxApproachSpeed,
 				autoDetachDistance = autoDetachDistance,
 				startAnimationPlayed = true, -- Mark start animation as played
@@ -475,7 +469,7 @@ function Grapple.tryFire(character, cameraCFrame)
 			rope = rope,
 			force = force,
 			reel = 0,
-			targetPart = hookablePart,
+			targetPart = candidatePart,
 			maxApproachSpeed = maxApproachSpeed,
 			autoDetachDistance = autoDetachDistance,
 			startAnimationPlayed = true, -- Mark start animation as played

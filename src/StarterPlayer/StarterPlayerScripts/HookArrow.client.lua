@@ -35,7 +35,8 @@ local function isInRange(character, part)
 	if not (root and part and part:IsA("BasePart") and part:IsDescendantOf(workspace)) then
 		return false
 	end
-	local range = Config.HookAutoRange or 90
+	-- Read HookRange attribute from the specific hookable part
+	local range = (part and tonumber(part:GetAttribute("HookRange"))) or (Config.HookDefaultRange or 90)
 	return (part.Position - root.Position).Magnitude <= range
 end
 
@@ -193,11 +194,13 @@ local function getBestTargetInRange(character)
 	end
 
 	local best, bestDist
-	local range = Config.HookAutoRange or 90
-	local rangeSquared = range * range -- Use squared distance for performance
 
 	for _, part in ipairs(CollectionService:GetTagged(Config.HookTag or "Hookable")) do
 		if part:IsDescendantOf(workspace) and part:IsA("BasePart") then
+			-- Read HookRange attribute from each individual hookable part
+			local range = (part and tonumber(part:GetAttribute("HookRange"))) or (Config.HookDefaultRange or 90)
+			local rangeSquared = range * range -- Use squared distance for performance
+
 			local delta = part.Position - root.Position
 			local distSquared = delta.X * delta.X + delta.Y * delta.Y + delta.Z * delta.Z
 

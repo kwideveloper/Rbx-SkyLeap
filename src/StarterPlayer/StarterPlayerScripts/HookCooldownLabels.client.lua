@@ -172,7 +172,7 @@ local function updateCooldownLabels()
 			local root = character:FindFirstChild("HumanoidRootPart")
 			if root then
 				local distance = (hookPart.Position - root.Position).Magnitude
-				local range = Config.HookAutoRange or 90
+				local range = Config.HookDefaultRange or 90
 				local isInRange = (distance <= range)
 
 				-- Check if hook should show label (either in range OR on cooldown)
@@ -203,7 +203,7 @@ local function updateCooldownLabels()
 			local isInRange = false
 			if root then
 				local distance = (hookPart.Position - root.Position).Magnitude
-				local range = Config.HookAutoRange or 90
+				local range = Config.HookDefaultRange or 90
 				isInRange = (distance <= range)
 			end
 
@@ -255,7 +255,7 @@ local function isHookInRange(hookPart)
 	end
 
 	local distance = (hookPart.Position - root.Position).Magnitude
-	local range = Config.HookAutoRange or 90
+	local range = Config.HookDefaultRange or 90
 
 	return distance <= range
 end

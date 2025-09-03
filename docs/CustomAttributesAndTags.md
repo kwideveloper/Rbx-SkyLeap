@@ -175,14 +175,14 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 **Hook Cooldown Labels System:**
 - **Template**: Uses BillboardGui from ReplicatedStorage/UI/Hook/BillboardGui
 - **Animation**: Bounce-in effect (0.4s), smooth fade-out (0.3s)
-- **Range**: Only shows for hooks within Config.HookAutoRange (default: 90 studs)
+- **Range**: Only shows for hooks within Config.HookDefaultRange (default: 90 studs)
 - **Formatting**: Smart time display (seconds, minutes, "Ready!")
 - **Performance**: Updates every 0.1 seconds to avoid constant text changes
 - **Auto-cleanup**: Removes labels when hooks are destroyed or out of range
 
 **Configuration Options:**
 - **Config.HookCooldownLabels** (bool): Enable/disable the entire system
-- **Config.HookAutoRange** (number): Maximum distance to show labels
+- **Config.HookDefaultRange** (number): Maximum distance to show labels
 - **Config.HookTag** (string): Tag to identify hookable objects (default: "Hookable")
 
 **Customization:**
@@ -203,7 +203,7 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 
 ### Per-Hook Range Configuration:
 - `HookRange` (number) **NEW**
-  *Custom hook range in studs (radius from hook center). Overrides Config.HookAutoRange.*
+  *Custom hook range in studs (radius from hook center). Overrides Config.HookDefaultRange.*
   *Example: 120 (longer range) or 50 (shorter range)*
 
 ### Per-Hook Detach Configuration:
@@ -232,7 +232,7 @@ hookPart:SetAttribute("HookCooldownSeconds", 2.0) -- Quick cooldown
 
 **Default Values (from Config.lua):**
 - `HookMaxApproachSpeed`: 120 studs/second
-- `HookAutoRange`: 90 studs radius
+- `HookDefaultRange`: 90 studs radius
 - `HookAutoDetachDistance`: 30 studs
 - `HookCooldownSeconds`: 5.5 seconds
 
@@ -456,7 +456,7 @@ activeAnimate.Parent = button
 - Animates in with bounce effect when cooldown starts
 - Animates out with smooth transition when cooldown ends
 - Shows formatted time (e.g., "5.5s", "1m 30s", "Ready!")
-- Only visible for hooks within range (Config.HookAutoRange)
+- Only visible for hooks within range (Config.HookDefaultRange)
 - Automatically clones and manages labels for all hookable objects
 
 ---
@@ -586,7 +586,7 @@ attachment1.Parent = ziplineModel -- Can be anywhere in the hierarchy
 
 2. **Hook Setup:**
    - Create BaseParts with the "Hookable" tag
-   - Position them within range of the player (Config.HookAutoRange = 90 studs)
+   - Position them within range of the player (Config.HookDefaultRange = 90 studs)
 
 3. **Expected Behavior:**
    - When a hook is used, it goes on cooldown (Config.HookCooldownSeconds = 5.5s)
@@ -618,7 +618,7 @@ CollectionService:AddTag(hookPart, "Hookable")
 - Check that Config.HookCooldownLabels = true in Movement/Config.lua
 - Verify the BillboardGui template exists in ReplicatedStorage/UI/Hook/
 - Ensure hooks have the "Hookable" tag
-- Check that hooks are within Config.HookAutoRange distance
+- Check that hooks are within Config.HookDefaultRange distance
 
 ---
 

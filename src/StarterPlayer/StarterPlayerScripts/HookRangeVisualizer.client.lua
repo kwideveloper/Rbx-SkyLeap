@@ -17,7 +17,7 @@ local visualParts = {}
 local function getEffectiveRange(hookPart, rangeType)
 	if rangeType == "detection" then
 		local customRange = hookPart:GetAttribute("HookRange")
-		return (typeof(customRange) == "number" and customRange > 0) and customRange or (Config.HookAutoRange or 90)
+		return (typeof(customRange) == "number" and customRange > 0) and customRange or (Config.HookDefaultRange or 90)
 	elseif rangeType == "detach" then
 		local customRange = hookPart:GetAttribute("HookAutoDetachDistance")
 		return (typeof(customRange) == "number" and customRange > 0) and customRange

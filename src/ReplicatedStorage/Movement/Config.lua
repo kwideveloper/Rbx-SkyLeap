@@ -529,13 +529,11 @@ Config.GrappleRopeVisible = true
 Config.GrappleRopeThickness = 0.06
 -- Hook targeting
 Config.HookTag = "Hookable"
-Config.HookAutoRange = 90
+Config.HookDefaultRange = 90 -- studs radius from hookable center where hook can be used (default)
 Config.HookCooldownSeconds = 5.5
 -- Hook approach controls
 Config.HookMaxApproachSpeed = 120 -- studs/s clamp for approach speed (default)
 Config.HookAutoDetachDistance = 30 -- studs from target to auto-detach (default)
--- Hook range controls (in studs)
-Config.HookAutoRange = 90 -- studs radius from hookable center where hook can be used (default)
 -- Hook line-of-sight controls
 Config.HookRequireLineOfSight = true -- require clear LOS to the hookable target
 Config.HookIgnoreTag = "HookIgnoreLOS" -- parts/models with this tag will be ignored for Line Of Sight (LOS) blocking
