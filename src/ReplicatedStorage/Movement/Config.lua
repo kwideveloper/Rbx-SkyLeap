@@ -514,7 +514,8 @@ Config.TrailBaseTransparency = 0.6
 Config.TrailMinTransparency = 0.2
 Config.TrailColorMin = Color3.fromRGB(90, 170, 255)
 Config.TrailColorMax = Color3.fromRGB(255, 100, 180)
-Config.TrailLifeTime = 0.30 -- 0.25
+-- Config.TrailLifeTime = 0.30 -- 0.25
+Config.TrailLifeTime = 0.5
 Config.TrailWidth = 0.3 -- 0.3
 Config.TrailSpeedMin = 10 -- 10
 Config.TrailSpeedMax = 80 -- 80
@@ -531,14 +532,17 @@ Config.HookTag = "Hookable"
 Config.HookAutoRange = 90
 Config.HookCooldownSeconds = 5.5
 -- Hook approach controls
-Config.HookMaxApproachSpeed = 120 -- studs/s clamp for approach speed
-Config.HookAutoDetachDistance = 30 -- studs from target to auto-detach
+Config.HookMaxApproachSpeed = 120 -- studs/s clamp for approach speed (default)
+Config.HookAutoDetachDistance = 30 -- studs from target to auto-detach (default)
+-- Hook range controls (in studs)
+Config.HookAutoRange = 90 -- studs radius from hookable center where hook can be used (default)
 -- Hook line-of-sight controls
 Config.HookRequireLineOfSight = true -- require clear LOS to the hookable target
 Config.HookIgnoreTag = "HookIgnoreLOS" -- parts/models with this tag will be ignored for Line Of Sight (LOS) blocking
 -- Hook labels / logging
 Config.HookCooldownLabels = true -- show user-facing per-hookable cooldown labels (client-side)
 Config.DebugHookCooldownLogs = false -- print cooldown debug logs to the output
+Config.DebugRaycast = false -- enable debug prints for raycast system (DISABLED - causes lag)
 
 -- Vertical wall climb (sprint into wall to climb up briefly)
 Config.VerticalClimbEnabled = true

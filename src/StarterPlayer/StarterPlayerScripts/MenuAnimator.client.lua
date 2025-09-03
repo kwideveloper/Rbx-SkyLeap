@@ -11,10 +11,10 @@ local PlayerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
 
 -- Configuration constants
 local HOVER_SCALE = 1.08
-local HOVER_ROTATION = 2
+local HOVER_ROTATION = 3
 local CLICK_Y_OFFSET = 3
 local CLICK_SCALE = 0.95
-local ACTIVATE_ROTATION = -8
+local ACTIVATE_ROTATION = -3
 local ACTIVATE_SCALE = 1.12
 local ANIMATION_DURATION = 0.25
 local MENU_ANIMATION_DURATION = 0.4 -- 0.4
@@ -52,10 +52,10 @@ local originalSFXVolume = 0.5
 local originalBGVolume = 0.5 -- Separate variable for BG Music when it's a SoundGroup
 
 -- Utility functions
-local function createTween(instance, properties, duration, easingStyle, easingDirection)
+local function createTween(instance, properties, duration, easingStyle, easingDirection, repeatCount)
 	easingStyle = easingStyle or Enum.EasingStyle.Back
 	easingDirection = easingDirection or Enum.EasingDirection.Out
-	local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
+	local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection, repeatCount or 0)
 	return TweenService:Create(instance, tweenInfo, properties)
 end
 
@@ -527,6 +527,7 @@ local function setupAnimatedElement(element)
 					tween:Play()
 				end
 				---
+
 				-- Set ZIndex to 100 for hover effect
 				element.Parent.ZIndex = 100
 			end
@@ -552,7 +553,7 @@ local function setupAnimatedElement(element)
 					)
 					tween:Play()
 				end
-				--`
+				--
 				element.Parent.ZIndex = state.originalZIndex
 			end
 		end)
@@ -591,6 +592,15 @@ local function setupAnimatedElement(element)
 		end)
 	end
 
+	local activeGradientTween = createTween(
+		element.UIStroke.UIGradient,
+		{ Rotation = 180 },
+		3,
+		Enum.EasingStyle.Linear,
+		Enum.EasingDirection.InOut,
+		-1
+	)
+
 	-- Setup active animations
 	if hasActive then
 		element.MouseButton1Click:Connect(function()
@@ -613,6 +623,11 @@ local function setupAnimatedElement(element)
 					icon.UIGradient.Offset = Vector2.new(0, 0.5)
 				end
 
+				-- Active Gradient
+				element.UIStroke.UIGradient.Enabled = true
+				activeGradientTween:Play()
+				--
+
 				-- Set ZIndex to 100 for active state
 				element.ZIndex = 100
 			else
@@ -626,6 +641,9 @@ local function setupAnimatedElement(element)
 					-- Restore hover State for Icon
 					icon.UIGradient.Offset = Vector2.new(1, 1)
 				end
+
+				element.UIStroke.UIGradient.Enabled = false
+				activeGradientTween:Cancel()
 
 				-- Restore original ZIndex
 				element.ZIndex = state.originalZIndex

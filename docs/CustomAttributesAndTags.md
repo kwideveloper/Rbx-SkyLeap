@@ -50,15 +50,15 @@ This document lists all Attributes and CollectionService Tags used in SkyLeap to
 ## 2. Floor & Volume Attributes
 
 **Parts (floor/volumes):**
-- `Stamina` (bool)  
-  *If true, standing/touching this part enables stamina regeneration even if airborne.*
+- `Stamina` (Tag) **UPDATED: Now uses CollectionService tag instead of attribute**
+  *If tagged, standing/touching this part enables stamina regeneration even if airborne.*
 
 ---
 
 ## 3. LaunchPad Attributes
 
 **Pads (BasePart) - Attributes:**
-- `LaunchPad` (bool)  
+- `LaunchPad` (Tag)  
   *Enables launch behavior on touch/overlap.*
 
 - `UpSpeed` (number)  
@@ -67,14 +67,14 @@ This document lists all Attributes and CollectionService Tags used in SkyLeap to
 - `ForwardSpeed` (number)  
   *Horizontal forward speed component along pad's LookVector.*
 
+- `CooldownSeconds` (number)  
+  *Per-character cooldown between triggers.*
+
 - `CarryFactor` (number 0..1)  
   *Fraction of current velocity preserved when launching.*
 
 - `UpLift` (number)  
   *Minimum upward impulse to ensure detaching from ground.*
-
-- `CooldownSeconds` (number)  
-  *Per-character cooldown between triggers.*
 
 ---
 
@@ -120,13 +120,13 @@ part:SetAttribute("Cooldown", 5)
 CollectionService:AddTag(part, "AddStamina")
 ```
 
----
+--- 
 
 ## 6. Breakable Platform Attributes
 
 **Breakable Platforms (BasePart):**
-- `Breakable` (bool)
-  *If true, enables breakable platform behavior on touch.*
+- `Breakable` (Tag) **UPDATED: Now uses CollectionService tag instead of attribute**
+  *If tagged, enables breakable platform behavior on touch.*
 
 - `TimeToDissapear` (number)
   *Fade-out duration in seconds when breaking.*
@@ -192,9 +192,111 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 
 ---
 
+## 10. Hook Custom Attributes (Per-Object Configuration)
+
+**Hookable Objects (BasePart/Model with "Hookable" Tag) - Custom Attributes:**
+
+### Per-Hook Speed Configuration:
+- `HookMaxApproachSpeed` (number) **NEW**
+  *Custom approach speed in studs/second for this specific hook. Overrides Config.HookMaxApproachSpeed.*
+  *Example: 150 (faster approach) or 80 (slower approach)*
+
+### Per-Hook Range Configuration:
+- `HookRange` (number) **NEW**
+  *Custom hook range in studs (radius from hook center). Overrides Config.HookAutoRange.*
+  *Example: 120 (longer range) or 50 (shorter range)*
+
+### Per-Hook Detach Configuration:
+- `HookAutoDetachDistance` (number) **NEW**
+  *Custom auto-detach distance in studs from hook target. Overrides Config.HookAutoDetachDistance.*
+  *Example: 40 (detach farther) or 20 (detach closer)*
+
+### Per-Hook Cooldown Configuration:
+- `HookCooldownSeconds` (number) **NEW**
+  *Custom cooldown time in seconds for this specific hook. Overrides Config.HookCooldownSeconds.*
+  *Example: 3.0 (shorter cooldown) or 10.0 (longer cooldown)*
+
+**Example Setup for Custom Hook:**
+```lua
+-- Create a fast-approach, short-range hook
+local hookPart = Instance.new("Part")
+hookPart.Name = "FastHook"
+CollectionService:AddTag(hookPart, "Hookable")
+
+-- Set custom attributes
+hookPart:SetAttribute("HookMaxApproachSpeed", 200) -- Fast approach
+hookPart:SetAttribute("HookRange", 60) -- Short range
+hookPart:SetAttribute("HookAutoDetachDistance", 25) -- Close detach
+hookPart:SetAttribute("HookCooldownSeconds", 2.0) -- Quick cooldown
+```
+
+**Default Values (from Config.lua):**
+- `HookMaxApproachSpeed`: 120 studs/second
+- `HookAutoRange`: 90 studs radius
+- `HookAutoDetachDistance`: 30 studs
+- `HookCooldownSeconds`: 5.5 seconds
+
+**Debug Configuration:**
+- Enable `Config.DebugHookCooldownLogs = true` in Movement/Config.lua to see detailed logging
+- Debug logs will show distance calculations, custom vs default values, and range checks
+
+**Range Visualization System:**
+The hook system includes an automatic range visualization system that works through CollectionService tags. Simply add the appropriate tags to your hookable parts to see their ranges in real-time.
+
+**Visualization Tags:**
+- **ShowRanges**: Shows both detection and detach ranges
+- **ShowRange**: Shows only the detection range (where hook can be activated)
+- **ShowDetach**: Shows only the detach range (where hook auto-disconnects)
+
+**How to Use:**
+1. Add the "Hookable" tag to your part
+2. Add one of the visualization tags:
+   - `ShowRanges` - Shows both ranges
+   - `ShowRange` - Shows only detection range
+   - `ShowDetach` - Shows only detach range
+3. The ranges will appear automatically as colored areas
+
+**Visual Appearance:**
+- **Detection Range**: Blue neon sphere (shows where hook can be activated)
+- **Detach Range**: Red neon sphere (shows where hook will auto-disconnect)
+- **Perfect Spheres**: Each range is a perfect 3D sphere centered exactly on the hookable part
+- **Exact Studs**: The sphere radius matches exactly the stud values in attributes
+- **Real-time Updates**: Ranges update automatically when you change attributes in play mode
+
+**Example Setup:**
+```lua
+-- In Roblox Studio, select your hookable part and add these tags:
+-- 1. "Hookable" (required for hook functionality)
+-- 2. "ShowRanges" (shows both detection and detach ranges)
+
+-- Or use CollectionService in a script:
+local CollectionService = game:GetService("CollectionService")
+local myHookPart = workspace.MyHookPart
+
+CollectionService:AddTag(myHookPart, "Hookable")
+CollectionService:AddTag(myHookPart, "ShowRanges")
+```
+
+**Example debug output:**
+```
+[Hook] Custom range check - Hook: MyHook, Distance: 45.20, CustomRange: 50.00, DefaultRange: 90.00, InRange: YES
+[Hook] Approach speed - Hook: MyHook, CustomSpeed: 200, FinalSpeed: 200.00
+[Hook] Detach distance - Hook: MyHook, CustomDistance: 25, FinalDistance: 25.00
+[Hook] Detach check - Distance: 24.50, AutoDetachDistance: 25.00, ShouldDetach: NO
+```
+
+**Notes:**
+- All custom attributes are optional - if not set, system uses Config defaults
+- Values must be positive numbers greater than 0
+- Custom attributes are read from the hookable part itself (not ancestors)
+- System prioritizes per-hook attributes over global Config values
+- Enable debug logging to verify distance calculations are working correctly
+
+---
+
 # UI Tags & Components
 
-## 10. Currency Display Tags
+## 11. Currency Display Tags
 
 **UI Elements (TextLabel/TextButton):**
 - `Coin` (Tag)  - Automatically displays and updates player's coin balance
@@ -208,7 +310,7 @@ HookHighlightConfig.Performance.CULLING_DISTANCE = 150
 
 ---
 
-## 11. Menu System Components
+## 12. Menu System Components
 
 **Interactive UI Elements (TextButton/ImageButton):**
 - Buttons automatically detected by their internal structure (no tags required)
@@ -334,7 +436,7 @@ activeAnimate.Parent = button
 
 ---
 
-## 12. Special Movement Tags
+## 13. Special Movement Tags
 
 **Parts/Models for Enhanced Movement:**
 - `Ledge` (Tag) - Enables automatic ledge hang detection
@@ -356,6 +458,33 @@ activeAnimate.Parent = button
 - Shows formatted time (e.g., "5.5s", "1m 30s", "Ready!")
 - Only visible for hooks within range (Config.HookAutoRange)
 - Automatically clones and manages labels for all hookable objects
+
+---
+
+## 14. Tag vs Attribute Migration Guide
+
+**Recent Updates - Tags vs Attributes:**
+
+### Migrated to Tags (Better Performance):
+- **`Stamina`** (Tag) - Was: `Stamina = true` attribute → Now: CollectionService tag
+- **`Breakable`** (Tag) - Was: `Breakable = true` attribute → Now: CollectionService tag
+
+### Migration Instructions:
+```lua
+-- OLD WAY (Attributes) - No longer supported
+part:SetAttribute("Stamina", true) -- ❌ Don't use
+part:SetAttribute("Breakable", true) -- ❌ Don't use
+
+-- NEW WAY (Tags) - Recommended
+CollectionService:AddTag(part, "Stamina") -- ✅ Use this
+CollectionService:AddTag(part, "Breakable") -- ✅ Use this
+```
+
+### Why Tags are Better:
+- **Performance**: Faster lookups, less memory usage
+- **Consistency**: Same system as Hookable, Zipline, etc.
+- **Flexibility**: Can be managed from CollectionService window
+- **Future-proof**: Easier to extend and maintain
 
 ---
 
@@ -382,21 +511,45 @@ Many systems support debug flags in `Movement/Config.lua`:
 
 ---
 
-## Testing the Zipline Tag System
+## Testing the Updated Tag System
 
 **How to Test:**
-1. **Create a Zipline Object:**
+1. **Create a Stamina Object:**
+   ```lua
+   -- Create a stamina restoration object
+   local staminaPart = Instance.new("Part")
+   staminaPart.Name = "StaminaPad"
+   staminaPart.Position = Vector3.new(0, 5, 0)
+   staminaPart.Size = Vector3.new(10, 1, 10)
+   staminaPart.Anchored = true
+   staminaPart.Parent = workspace
+   CollectionService:AddTag(staminaPart, "Stamina") -- Add Stamina tag
+   ```
+
+2. **Create a Breakable Platform:**
+   ```lua
+   -- Create a breakable platform
+   local breakablePart = Instance.new("Part")
+   breakablePart.Name = "BreakablePlatform"
+   breakablePart.Position = Vector3.new(0, 10, 0)
+   breakablePart.Size = Vector3.new(8, 1, 8)
+   breakablePart.Anchored = true
+   breakablePart.Parent = workspace
+   CollectionService:AddTag(breakablePart, "Breakable") -- Add Breakable tag
+   ```
+
+3. **Create a Zipline Object:**
    - Create a Model, Folder, or BasePart in your workspace
    - Add the "Zipline" tag using CollectionService or Studio tools
    - Add at least 2 Attachment objects as children (anywhere in the hierarchy)
 
-2. **Server Initialization:**
+4. **Server Initialization:**
    - The ZiplineInitializer.server.lua script will automatically:
      - Find the 2 attachments within the tagged object (anywhere in hierarchy)
      - Create a RopeConstraint in the root object (where the tag is) with Visible = true
      - Set Attachment0 and Attachment1 properties to link the found attachments
 
-3. **Expected Behavior:**
+5. **Expected Behavior:**
    - RopeConstraint appears automatically in the root object (where the tag is)
    - Players can use E to zipline when near the rope
    - Custom Speed and HeadOffset attributes work as before
@@ -471,6 +624,11 @@ CollectionService:AddTag(hookPart, "Hookable")
 
 ### Notes
 
+- **Tags vs Attributes**: New systems prefer CollectionService tags over attributes for better performance
+- **Migrated Systems**: Stamina and Breakable now use tags instead of boolean attributes
+- **Hook Customization**: Per-hook attributes allow fine-tuned control of hook behavior
+- **Backward Compatibility**: Old attribute-based systems still work but tags are preferred
+- **Performance**: Tags are more efficient than attributes for boolean checks
 - Attributes are read on the touched/cast Part and up to a few ancestors (Models) where relevant
 - Surfaces must also satisfy global rules (e.g., near-vertical normal for wallrun/walljump/mantle)
 - UI tags are automatically detected and bound by respective client scripts

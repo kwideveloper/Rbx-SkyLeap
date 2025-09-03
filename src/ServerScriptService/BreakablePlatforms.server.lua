@@ -5,9 +5,11 @@
 
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SharedUtils = require(ReplicatedStorage.SharedUtils)
 
 local function setupBreakable(part)
-	if not part:GetAttribute("Breakable") then
+	if not SharedUtils.isBreakable(part) then
 		return
 	end
 
@@ -308,7 +310,7 @@ local function setupBreakable(part)
 		if not character or not character:FindFirstChildOfClass("Humanoid") then
 			return
 		end
-		if not part:GetAttribute("Breakable") then
+		if not SharedUtils.isBreakable(part) then
 			return
 		end
 		active = true
@@ -342,7 +344,7 @@ local function setupBreakable(part)
 		return false
 	end
 
-	if not active and part:GetAttribute("Breakable") and hasHumanoidInBounds() then
+	if not active and SharedUtils.isBreakable(part) and hasHumanoidInBounds() then
 		active = true
 		stagedDisappearWhileTouched()
 	end
