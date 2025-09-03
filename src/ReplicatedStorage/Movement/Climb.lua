@@ -77,8 +77,12 @@ local function findClimbable(root)
 
 	for _, dir in ipairs(directions) do
 		local result = workspace:Raycast(root.Position, dir * Config.ClimbDetectionDistance, params)
-		if result and result.Instance and result.Instance:GetAttribute("Climbable") == true then
-			return result
+		if result and result.Instance then
+			-- Check if the part has the "Climbable" tag
+			local CollectionService = game:GetService("CollectionService")
+			if CollectionService:HasTag(result.Instance, "Climbable") then
+				return result
+			end
 		end
 	end
 	return nil

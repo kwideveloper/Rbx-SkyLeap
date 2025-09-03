@@ -611,10 +611,13 @@ local function setupCharacter(character)
 	state.touchConns = {}
 
 	local function onTouched(other)
-		if other and typeof(other.GetAttribute) == "function" and other:GetAttribute("Stamina") == true then
-			if not state.staminaTouched[other] then
-				state.staminaTouched[other] = 1
-				state.staminaTouchCount = state.staminaTouchCount + 1
+		if other and other:IsA("BasePart") then
+			local CollectionService = game:GetService("CollectionService")
+			if CollectionService:HasTag(other, "Stamina") then
+				if not state.staminaTouched[other] then
+					state.staminaTouched[other] = 1
+					state.staminaTouchCount = state.staminaTouchCount + 1
+				end
 			end
 		end
 		-- Publish last collidable touch for vault fallback detection (handles CanQuery=false parts)
@@ -1952,8 +1955,9 @@ RunService.RenderStepped:Connect(function(dt)
 			local expand = Vector3.new(2, 3, 2)
 			local parts =
 				workspace:GetPartBoundsInBox(root.CFrame, (root.Size or Vector3.new(2, 2, 1)) + expand, overlapParams)
+			local CollectionService = game:GetService("CollectionService")
 			for _, p in ipairs(parts) do
-				if p and typeof(p.GetAttribute) == "function" and p:GetAttribute("Stamina") == true then
+				if p and p:IsA("BasePart") and CollectionService:HasTag(p, "Stamina") then
 					allowRegen = true
 					break
 				end

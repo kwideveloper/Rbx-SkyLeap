@@ -33,7 +33,8 @@ local function findWall(rootPart)
 			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
 			if verticalDot <= allowedDot then
 				local inst = result.Instance
-				local isClimbable = inst:GetAttribute("Climbable") == true or inst:GetAttribute("climbable") == true
+				local CollectionService = game:GetService("CollectionService")
+				local isClimbable = CollectionService:HasTag(inst, "Climbable")
 				local wallRunOverride = inst:GetAttribute("WallRun") == true
 				-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
 				local allowedByClimbableRule = (not isClimbable) or wallRunOverride
