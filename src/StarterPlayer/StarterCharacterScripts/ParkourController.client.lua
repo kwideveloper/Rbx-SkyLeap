@@ -210,6 +210,7 @@ local state = {
 	styleComboValue = nil,
 	styleMultiplierValue = nil,
 	styleLastMult = 1,
+
 	maxComboSession = 0,
 	styleCommitFlashValue = nil,
 	styleCommitAmountValue = nil,
@@ -2099,7 +2100,27 @@ RunService.RenderStepped:Connect(function(dt)
 	-- Vertical climb: sprinting straight into a wall grants a brief upward run
 	if humanoid.FloorMaterial == Enum.Material.Air and state.sprintHeld and state.stamina.isSprinting then
 		if VerticalClimb.isActive(character) then
-			VerticalClimb.maintain(character, dt)
+			-- Check if other abilities are active before maintaining vertical climb
+			local cs = ReplicatedStorage:FindFirstChild("ClientState")
+			local isVaulting = cs and cs:FindFirstChild("IsVaulting") and cs:FindFirstChild("IsVaulting").Value
+			local isMantling = cs and cs:FindFirstChild("IsMantling") and cs:FindFirstChild("IsMantling").Value
+
+			-- Don't maintain vertical climb if other abilities are active
+			if
+				not (
+					isVaulting
+					or isMantling
+					or LedgeHang.isActive(character)
+					or Climb.isActive(character)
+					or WallRun.isActive(character)
+					or Grapple.isActive(character)
+				)
+			then
+				VerticalClimb.maintain(character, dt)
+			else
+				-- Stop vertical climb if other abilities are active
+				VerticalClimb.stop(character)
+			end
 		else
 			-- Stop conflicting animations before starting vertical climb
 			stopConflictingAnimations(character, "verticalclimb")

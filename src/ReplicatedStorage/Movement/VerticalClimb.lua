@@ -61,6 +61,17 @@ function VerticalClimb.isActive(character)
 	return active[character] ~= nil
 end
 
+function VerticalClimb.stop(character)
+	local st = active[character]
+	if st then
+		stopVerticalClimbAnimation(character)
+		active[character] = nil
+		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
+		return true
+	end
+	return false
+end
+
 function VerticalClimb.tryStart(character)
 	if not (Config.VerticalClimbEnabled ~= false) then
 		return false
@@ -72,6 +83,36 @@ function VerticalClimb.tryStart(character)
 	if cooldownUntil[character] and os.clock() < cooldownUntil[character] then
 		return false
 	end
+
+	-- Check if other parkour abilities are active to prevent conflicts
+	local Abilities = require(ReplicatedStorage.Movement.Abilities)
+	local LedgeHang = require(ReplicatedStorage.Movement.LedgeHang)
+	local Climb = require(ReplicatedStorage.Movement.Climb)
+	local WallRun = require(ReplicatedStorage.Movement.WallRun)
+	local Grapple = require(ReplicatedStorage.Movement.Grapple)
+
+	-- Don't start vertical climb if other abilities are active
+	if
+		(Abilities and Abilities.isVaulting and Abilities.isVaulting(character))
+		or (Abilities and Abilities.isMantling and Abilities.isMantling(character))
+		or (LedgeHang and LedgeHang.isActive and LedgeHang.isActive(character))
+		or (Climb and Climb.isActive and Climb.isActive(character))
+		or (WallRun and WallRun.isActive and WallRun.isActive(character))
+		or (Grapple and Grapple.isActive and Grapple.isActive(character))
+	then
+		return false
+	end
+
+	-- Check ClientState for additional conflicts
+	local cs = ReplicatedStorage:FindFirstChild("ClientState")
+	if cs then
+		local isVaulting = cs:FindFirstChild("IsVaulting")
+		local isMantling = cs:FindFirstChild("IsMantling")
+		if (isVaulting and isVaulting.Value) or (isMantling and isMantling.Value) then
+			return false
+		end
+	end
+
 	local speed = root.AssemblyLinearVelocity.Magnitude
 	if speed < (Config.VerticalClimbMinSpeed or 18) then
 		return false
