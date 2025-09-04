@@ -1,12 +1,26 @@
--- Handles platforms with attributes:
---  Breakable: boolean (true to enable)
+-- Handles platforms with CollectionService "Breakable" tag and attributes:
 --  TimeToDissapear: number seconds (fade-out duration)
 --  TimeToAppear: number seconds (delay before reappear + fade-in duration)
+--  Cooldown: number seconds (delay before platform can be broken again)
 
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local SharedUtils = require(ReplicatedStorage.SharedUtils)
+
+-- Check if a platform is on cooldown
+local function isPlatformOnCooldown(part)
+	local partId = tostring(part)
+	local cooldownTime = SharedUtils.getAttributeOrDefault(part, "Cooldown", 0.6)
+	return SharedUtils.isOnCooldown(partId, cooldownTime)
+end
+
+-- Set platform cooldown
+local function setPlatformCooldown(part)
+	local partId = tostring(part)
+	SharedUtils.setCooldown(partId)
+end
 
 local function setupBreakable(part)
 	if not SharedUtils.isBreakable(part) then
@@ -313,7 +327,12 @@ local function setupBreakable(part)
 		if not SharedUtils.isBreakable(part) then
 			return
 		end
+		-- Check if platform is on cooldown
+		if isPlatformOnCooldown(part) then
+			return
+		end
 		active = true
+		setPlatformCooldown(part) -- Set cooldown when platform starts breaking
 		stagedDisappearWhileTouched()
 		-- Do not reset 'active' here; loop handles destroy/respawn
 	end)
@@ -344,23 +363,36 @@ local function setupBreakable(part)
 		return false
 	end
 
-	if not active and SharedUtils.isBreakable(part) and hasHumanoidInBounds() then
+	if not active and SharedUtils.isBreakable(part) and hasHumanoidInBounds() and not isPlatformOnCooldown(part) then
 		active = true
+		setPlatformCooldown(part) -- Set cooldown when platform starts breaking
 		stagedDisappearWhileTouched()
 	end
 end
 
-local function scanWorkspace(container)
-	for _, inst in ipairs(container:GetDescendants()) do
-		if inst:IsA("BasePart") then
-			setupBreakable(inst)
+-- Setup breakable platforms using CollectionService
+local function setupExistingBreakables()
+	local breakableParts = CollectionService:GetTagged("Breakable")
+	for _, part in ipairs(breakableParts) do
+		if part:IsA("BasePart") then
+			setupBreakable(part)
 		end
 	end
 end
 
-scanWorkspace(workspace)
-workspace.DescendantAdded:Connect(function(inst)
-	if inst:IsA("BasePart") then
-		setupBreakable(inst)
+-- Connect to CollectionService events for dynamic tag management
+CollectionService:GetInstanceAddedSignal("Breakable"):Connect(function(part)
+	if part:IsA("BasePart") then
+		setupBreakable(part)
 	end
 end)
+
+CollectionService:GetInstanceRemovedSignal("Breakable"):Connect(function(part)
+	-- Clean up any breakable-specific attributes when tag is removed
+	if part:IsA("BasePart") then
+		part:SetAttribute("_BreakableWired", nil)
+	end
+end)
+
+-- Initialize existing breakable platforms
+setupExistingBreakables()

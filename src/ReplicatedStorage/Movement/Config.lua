@@ -484,7 +484,7 @@ Config.VaultForwardUseHeight = false -- if true, adds VaultForwardGainPerHeight 
 Config.MantleEnabled = true
 Config.MantleDetectionDistance = 4 -- 4.5 -- forward ray distance to detect a ledge
 -- Height window relative to root (waist): if obstacle top is within [min, max], allow mantle
-Config.MantleMinAboveWaist = 4 -- 0
+Config.MantleMinAboveWaist = 1 -- 0
 Config.MantleMaxAboveWaist = 10
 Config.MantleAboveWaistWhileClimbing = 6
 Config.MantleForwardOffset = 0.5 -- 1.2 -- how far onto the platform to place the character

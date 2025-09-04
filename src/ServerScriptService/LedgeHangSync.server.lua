@@ -179,8 +179,6 @@ LedgeHangStart.OnServerEvent:Connect(
 				)
 			end
 		end
-
-		print("[LedgeHangSync] Player", player.Name, "started ledge hang at", actualHangPosition)
 	end
 )
 
@@ -262,8 +260,6 @@ LedgeHangStop.OnServerEvent:Connect(function(player, isManualRelease)
 			LedgeHangStop:FireClient(otherPlayer, player, isManualRelease)
 		end
 	end
-
-	print("[LedgeHangSync] Player", player.Name, "stopped ledge hang (manual:", isManualRelease, ")")
 end)
 
 -- Cleanup when player leaves
@@ -319,8 +315,6 @@ RunService.Heartbeat:Connect(function(dt)
 			for _, otherPlayer in ipairs(Players:GetPlayers()) do
 				LedgeHangStop:FireClient(otherPlayer, player, true) -- true = stamina depletion release
 			end
-
-			print("[LedgeHangSync] Player", player.Name, "auto-released due to stamina depletion")
 		end
 	end
 end)
@@ -332,9 +326,6 @@ RunService.Heartbeat:Connect(function()
 		-- Clean up if no movement for 10 seconds (likely disconnected)
 		if currentTime - hangData.lastMoveTime > 10 then
 			activeHangs[player] = nil
-			print("[LedgeHangSync] Cleaned up orphaned hang state for", player.Name)
 		end
 	end
 end)
-
-print("[LedgeHangSync] Server-side LedgeHang synchronization system loaded")

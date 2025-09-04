@@ -213,8 +213,6 @@ local function initialize()
 		-- Create visualizers for existing hooks
 		createVisualizers(hookPart)
 	end
-
-	print("[HookRangeVisualizer] Initialized - Hook range visualization system active")
 end
 
 -- Start the system

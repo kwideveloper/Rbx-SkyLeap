@@ -209,6 +209,14 @@ function SharedUtils.raycastForParkour(character, origin, direction, additionalE
 	return workspace:Raycast(origin, direction, params)
 end
 
+-- Check if a part is breakable based on CollectionService "Breakable" tag
+function SharedUtils.isBreakable(part)
+	if not part then
+		return false
+	end
+	return CollectionService:HasTag(part, "Breakable")
+end
+
 -- Cleanup function for memory management
 function SharedUtils.cleanup()
 	tagCache = {}
