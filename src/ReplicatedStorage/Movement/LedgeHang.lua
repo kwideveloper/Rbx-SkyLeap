@@ -18,6 +18,34 @@ local LedgeHang = {}
 local activeHangs = {} -- [character] = hangData
 local otherPlayersHangs = {} -- [player] = hangData (for other players' ledge hangs)
 
+-- Ledge-specific cooldown system
+local ledgeCooldowns = {} -- [character][ledgeInstance] = cooldownTime
+
+-- Clean up old cooldowns for ledges that are far away
+local function cleanupOldCooldowns(character)
+	if not ledgeCooldowns[character] then
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+
+	local currentTime = os.clock()
+	local cleanupDistance = 20 -- studs
+
+	for ledgeInstance, cooldownTime in pairs(ledgeCooldowns[character]) do
+		-- Clean up if cooldown expired or ledge is far away
+		if
+			cooldownTime < currentTime
+			or (ledgeInstance.Parent and (root.Position - ledgeInstance.Position).Magnitude > cleanupDistance)
+		then
+			ledgeCooldowns[character][ledgeInstance] = nil
+		end
+	end
+end
+
 -- Handle other players' ledge hang synchronization
 local function handleOtherPlayerHangStart(player, hangPosition, ledgeY, forwardDirection, surfaceNormal)
 	local character = player.Character
@@ -263,28 +291,23 @@ function LedgeHang.tryStartFromMantleData(character, hitRes, ledgeY)
 		return false
 	end
 
-	-- Check global cooldown (especially for manual releases)
-	local globalCooldownActive = false
-	pcall(function()
-		local rs = game:GetService("ReplicatedStorage")
-		local cs = rs:FindFirstChild("ClientState")
-		local lastHangTime = cs and cs:FindFirstChild("LastLedgeHangTime")
-		if lastHangTime and lastHangTime.Value > os.clock() then
-			globalCooldownActive = true
-			if Config.DebugLedgeHang then
-				local remaining = lastHangTime.Value - os.clock()
-				print(
-					string.format(
-						"[LedgeHang] Global cooldown active in tryStartFromMantleData: %.2fs remaining",
-						remaining
-					)
-				)
-			end
-		end
-	end)
+	-- Clean up old cooldowns
+	cleanupOldCooldowns(character)
 
-	if globalCooldownActive then
-		return false
+	-- Check ledge-specific cooldown
+	local ledgeInstance = hitRes.Instance
+	if ledgeInstance then
+		-- Initialize character cooldowns if needed
+		if not ledgeCooldowns[character] then
+			ledgeCooldowns[character] = {}
+		end
+
+		-- Check if this specific ledge is on cooldown
+		local cooldownTime = ledgeCooldowns[character][ledgeInstance]
+		if cooldownTime and cooldownTime > os.clock() then
+			-- Don't spam debug logs for cooldown checks
+			return false
+		end
 	end
 
 	-- Check wall-specific cooldown
@@ -354,9 +377,28 @@ function LedgeHang.tryStart(character)
 		return false
 	end
 
+	-- Clean up old cooldowns
+	cleanupOldCooldowns(character)
+
 	local ok, hitRes, ledgeY, forwardDir = LedgeHang.detectLedgeForHang(character)
 	if not ok then
 		return false
+	end
+
+	-- Check ledge-specific cooldown
+	local ledgeInstance = hitRes.Instance
+	if ledgeInstance then
+		-- Initialize character cooldowns if needed
+		if not ledgeCooldowns[character] then
+			ledgeCooldowns[character] = {}
+		end
+
+		-- Check if this specific ledge is on cooldown
+		local cooldownTime = ledgeCooldowns[character][ledgeInstance]
+		if cooldownTime and cooldownTime > os.clock() then
+			-- Don't spam debug logs for cooldown checks
+			return false
+		end
 	end
 
 	-- Check wall-specific cooldown
@@ -801,10 +843,37 @@ function LedgeHang.stop(character, isManualRelease)
 		print(string.format("[LedgeHang] Stopping ledge hang (manual release: %s)", tostring(isManualRelease)))
 	end
 
+	-- Capture ledge instance before clearing hang data
+	local ledgeInstance = nil
+	if isManualRelease and hangData and hangData.ledgeInstance then
+		ledgeInstance = hangData.ledgeInstance
+	end
+
 	-- Proactively clear active state so maintain() won't run next frame
 	activeHangs[character] = nil
 
-	-- If this is a manual release (C key), set a longer cooldown to prevent immediate reattachment
+	-- If this is a manual release (C key), set ledge-specific cooldown
+	if isManualRelease and ledgeInstance then
+		-- Initialize character cooldowns if needed
+		if not ledgeCooldowns[character] then
+			ledgeCooldowns[character] = {}
+		end
+
+		-- Set cooldown for this specific ledge
+		ledgeCooldowns[character][ledgeInstance] = os.clock() + (Config.LedgeHangCooldown or 0.5)
+
+		if Config.DebugLedgeHang then
+			print(
+				string.format(
+					"[LedgeHang] Set cooldown for ledge '%s' (%.1fs)",
+					ledgeInstance.Name or "Unknown",
+					Config.LedgeHangCooldown or 0.5
+				)
+			)
+		end
+	end
+
+	-- If this is a manual release (C key), set a shorter cooldown to allow auto-detection of lower ledges
 	if isManualRelease then
 		pcall(function()
 			local rs = game:GetService("ReplicatedStorage")
@@ -820,8 +889,8 @@ function LedgeHang.stop(character, isManualRelease)
 				lastHangTime.Value = 0
 				lastHangTime.Parent = cs
 			end
-			-- Set a 1.5 second cooldown for manual releases
-			lastHangTime.Value = os.clock() + 1.5
+			-- Set a shorter cooldown for manual releases to allow auto-detection of lower ledges
+			lastHangTime.Value = os.clock() + 0.3
 
 			-- Also suppress wall slide globally for a configurable window
 			local suppressFlag = cs:FindFirstChild("SuppressWallSlide")

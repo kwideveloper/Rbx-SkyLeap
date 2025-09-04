@@ -2171,7 +2171,7 @@ RunService.RenderStepped:Connect(function(dt)
 
 		-- Auto-release if no stamina
 		if state.stamina.current <= 0 then
-			LedgeHang.stop(character, true) -- true = manual release (same as C key)
+			LedgeHang.stop(character, false) -- false = stamina depletion release
 			-- Set a temporary cooldown to prevent immediate re-hang due to stamina depletion
 			state._staminaDepletedHangCooldown = os.clock() + (Config.LedgeHangStaminaDepletionCooldown or 2.0)
 		else
@@ -2191,6 +2191,25 @@ RunService.RenderStepped:Connect(function(dt)
 			local range = Config.LedgeTagAutoHangRange or 3.5
 			local vertRange = Config.LedgeTagAutoVerticalRange or 4.0
 			local nearest, nearestDist, nearestTopY
+
+			-- Pre-check: avoid processing ledges that are likely on cooldown
+			local recentLedgeCooldowns = {}
+			pcall(function()
+				local rs = game:GetService("ReplicatedStorage")
+				local cs = rs:FindFirstChild("ClientState")
+				if cs then
+					-- This is a simplified check - we'll let LedgeHang module handle the detailed cooldown logic
+					local lastHangTime = cs:FindFirstChild("LastLedgeHangTime")
+					if lastHangTime and lastHangTime.Value > os.clock() then
+						-- If we just released a ledge, reduce detection frequency
+						local timeSinceRelease = os.clock() - (lastHangTime.Value - 0.3)
+						if timeSinceRelease < 0.1 then -- Only check every 0.1 seconds for first 0.1 seconds after release
+							return
+						end
+					end
+				end
+			end)
+
 			for _, inst in ipairs(CollectionService:GetTagged(Config.LedgeTagName or "Ledge")) do
 				if inst:IsA("BasePart") and inst.Parent then
 					-- Create expanded AABB around the part
