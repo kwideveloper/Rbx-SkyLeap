@@ -741,9 +741,17 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
 		animator.Parent = humanoid
 
-		-- Stop any mantle animations that might be playing
+		-- Stop any conflicting animations that might be playing
 		for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-			if track.Name and string.find(track.Name:lower(), "mantle") then
+			if
+				track.Name
+				and (
+					string.find(track.Name:lower(), "mantle")
+					or string.find(track.Name:lower(), "wallslide")
+					or string.find(track.Name:lower(), "wallrun")
+					or string.find(track.Name:lower(), "climb")
+				)
+			then
 				track:Stop(0.1)
 			end
 		end
@@ -753,7 +761,7 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		if startAnim then
 			startTrack = animator:LoadAnimation(startAnim)
 			if startTrack then
-				startTrack.Priority = Enum.AnimationPriority.Action
+				startTrack.Priority = Enum.AnimationPriority.Action2 -- Maximum priority
 				startTrack.Looped = false
 				startTrack:Play()
 
@@ -783,7 +791,7 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 						if loopAnim then
 							loopTrack = animator:LoadAnimation(loopAnim)
 							if loopTrack then
-								loopTrack.Priority = Enum.AnimationPriority.Action
+								loopTrack.Priority = Enum.AnimationPriority.Action2 -- Maximum priority
 								loopTrack.Looped = true
 								loopTrack:Play()
 							end
@@ -1267,7 +1275,7 @@ function LedgeHang.maintain(character, moveDirection)
 				if moveAnim and animator then
 					hangData.moveTrack = animator:LoadAnimation(moveAnim)
 					if hangData.moveTrack then
-						hangData.moveTrack.Priority = Enum.AnimationPriority.Action
+						hangData.moveTrack.Priority = Enum.AnimationPriority.Action2 -- Maximum priority
 						hangData.moveTrack.Looped = true
 						hangData.moveTrack:Play()
 						hangData.isPlayingMoveAnim = true
@@ -1283,7 +1291,7 @@ function LedgeHang.maintain(character, moveDirection)
 					if fallbackAnim and animator then
 						hangData.moveTrack = animator:LoadAnimation(fallbackAnim)
 						if hangData.moveTrack then
-							hangData.moveTrack.Priority = Enum.AnimationPriority.Action
+							hangData.moveTrack.Priority = Enum.AnimationPriority.Action2 -- Maximum priority
 							hangData.moveTrack.Looped = true
 							hangData.moveTrack:Play()
 							hangData.isPlayingMoveAnim = true
