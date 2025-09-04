@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Config = require(ReplicatedStorage.Movement.Config)
 
 -- Wait for remotes
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -13,6 +14,19 @@ local LedgeHangStop = Remotes:WaitForChild("LedgeHangStop")
 
 -- Store active ledge hangs for each player
 local activeHangs = {} -- [player] = hangData
+
+-- Store player stamina for server-side management
+local playerStamina = {} -- [player] = {current = number, max = number}
+
+-- Initialize player stamina
+local function initializePlayerStamina(player)
+	if not playerStamina[player] then
+		playerStamina[player] = {
+			current = Config.StaminaMax or 300,
+			max = Config.StaminaMax or 300,
+		}
+	end
+end
 
 -- LedgeHang data structure
 local function createHangData(character, hangPosition, ledgeY, forwardDirection, surfaceNormal, ledgeInstance)
@@ -52,6 +66,19 @@ LedgeHangStart.OnServerEvent:Connect(
 		if not hangPosition or not ledgeY or not forwardDirection then
 			return
 		end
+
+		-- Initialize player stamina if not exists
+		initializePlayerStamina(player)
+
+		-- Check if player has enough stamina to start hanging
+		local staminaCost = Config.LedgeHangStaminaCost or 5
+		if playerStamina[player].current < staminaCost then
+			warn("[LedgeHangSync] Player", player.Name, "doesn't have enough stamina to start hanging")
+			return
+		end
+
+		-- Deduct stamina cost
+		playerStamina[player].current = math.max(0, playerStamina[player].current - staminaCost)
 
 		-- Calculate precise ledge edge position using the character's approach position
 		-- This ensures the character grabs exactly at the edge where they reached the ledge
@@ -242,13 +269,60 @@ end)
 -- Cleanup when player leaves
 Players.PlayerRemoving:Connect(function(player)
 	activeHangs[player] = nil
+	playerStamina[player] = nil
 end)
 
 -- Cleanup when character is removed
 Players.PlayerAdded:Connect(function(player)
 	player.CharacterRemoving:Connect(function(character)
 		activeHangs[player] = nil
+		playerStamina[player] = nil
 	end)
+end)
+
+-- Server-side stamina management and auto-release
+local RunService = game:GetService("RunService")
+RunService.Heartbeat:Connect(function(dt)
+	for player, hangData in pairs(activeHangs) do
+		-- Initialize stamina if not exists
+		initializePlayerStamina(player)
+
+		-- Drain stamina while hanging
+		local drainRate = Config.LedgeHangStaminaDrainPerSecond or 5
+		playerStamina[player].current = math.max(0, playerStamina[player].current - drainRate * dt)
+
+		-- Auto-release if no stamina
+		if playerStamina[player].current <= 0 then
+			-- Stop the hang on server side
+			local character = player.Character
+			if character then
+				local root = character:FindFirstChild("HumanoidRootPart")
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if root and humanoid then
+					-- Restore character state
+					humanoid.AutoRotate = true
+					root.Anchored = false
+
+					-- Restore collisions
+					for _, part in ipairs(character:GetChildren()) do
+						if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+							part.CanCollide = true
+						end
+					end
+				end
+			end
+
+			-- Clear hang data
+			activeHangs[player] = nil
+
+			-- Broadcast stop to all clients
+			for _, otherPlayer in ipairs(Players:GetPlayers()) do
+				LedgeHangStop:FireClient(otherPlayer, player, true) -- true = stamina depletion release
+			end
+
+			print("[LedgeHangSync] Player", player.Name, "auto-released due to stamina depletion")
+		end
+	end
 end)
 
 -- Periodic cleanup for orphaned hang states
