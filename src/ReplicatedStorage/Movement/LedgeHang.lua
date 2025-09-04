@@ -117,6 +117,15 @@ local function handleOtherPlayerHangMove(player, newPosition, forwardDirection)
 end
 
 local function handleOtherPlayerHangStop(player, isManualRelease)
+	-- Check if this is the local player being released by server
+	local localPlayer = game:GetService("Players").LocalPlayer
+	if player == localPlayer then
+		-- This is the local player being released by server (e.g., stamina depletion)
+		-- Force stop the local hang
+		LedgeHang.stop(localPlayer.Character, isManualRelease)
+		return
+	end
+
 	local hangData = otherPlayersHangs[player]
 	if not hangData then
 		return

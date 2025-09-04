@@ -315,7 +315,7 @@ RunService.Heartbeat:Connect(function(dt)
 			-- Clear hang data
 			activeHangs[player] = nil
 
-			-- Broadcast stop to all clients
+			-- Broadcast stop to all clients (including the player being released)
 			for _, otherPlayer in ipairs(Players:GetPlayers()) do
 				LedgeHangStop:FireClient(otherPlayer, player, true) -- true = stamina depletion release
 			end
