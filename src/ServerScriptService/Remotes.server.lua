@@ -47,6 +47,11 @@ ensureRemoteEvent(remotesFolder, "RopeRelease")
 ensureRemoteEvent(remotesFolder, "PowerupTouched")
 ensureRemoteEvent(remotesFolder, "PowerupActivated")
 
+-- LedgeHang system remotes
+ensureRemoteEvent(remotesFolder, "LedgeHangStart")
+ensureRemoteEvent(remotesFolder, "LedgeHangMove")
+ensureRemoteEvent(remotesFolder, "LedgeHangStop")
+
 -- Audio settings remotes
 ensureRemoteEvent(remotesFolder, "AudioSettingsLoaded")
 ensureRemoteEvent(remotesFolder, "SetAudioSettings")

@@ -6,9 +6,130 @@ local Animations = require(game:GetService("ReplicatedStorage").Movement.Animati
 local SharedUtils = require(game:GetService("ReplicatedStorage").SharedUtils)
 local RunService = game:GetService("RunService")
 
+-- Get remotes for server synchronization
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local LedgeHangStart = Remotes:WaitForChild("LedgeHangStart")
+local LedgeHangMove = Remotes:WaitForChild("LedgeHangMove")
+local LedgeHangStop = Remotes:WaitForChild("LedgeHangStop")
+
 local LedgeHang = {}
 
 local activeHangs = {} -- [character] = hangData
+local otherPlayersHangs = {} -- [player] = hangData (for other players' ledge hangs)
+
+-- Handle other players' ledge hang synchronization
+local function handleOtherPlayerHangStart(player, hangPosition, ledgeY, forwardDirection, surfaceNormal)
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return
+	end
+
+	-- Store other player's hang data
+	otherPlayersHangs[player] = {
+		character = character,
+		hangPosition = hangPosition,
+		ledgeY = ledgeY,
+		forwardDirection = forwardDirection,
+		surfaceNormal = surfaceNormal,
+		startTime = os.clock(),
+	}
+
+	-- Set character state for other players
+	humanoid.AutoRotate = false
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+	-- Position character
+	root.CFrame = CFrame.lookAt(hangPosition, hangPosition + forwardDirection)
+	root.AssemblyLinearVelocity = Vector3.new()
+	root.Anchored = true
+
+	-- Disable collisions for other parts
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.CanCollide = false
+		end
+	end
+
+	if Config.DebugLedgeHang then
+		print("[LedgeHang] Other player", player.Name, "started ledge hang")
+	end
+end
+
+local function handleOtherPlayerHangMove(player, newPosition, forwardDirection)
+	local hangData = otherPlayersHangs[player]
+	if not hangData then
+		return
+	end
+
+	local character = hangData.character
+	if not character then
+		otherPlayersHangs[player] = nil
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		otherPlayersHangs[player] = nil
+		return
+	end
+
+	-- Update hang data
+	hangData.hangPosition = newPosition
+	hangData.forwardDirection = forwardDirection
+
+	-- Update character position
+	root.CFrame = CFrame.lookAt(newPosition, newPosition + forwardDirection)
+end
+
+local function handleOtherPlayerHangStop(player, isManualRelease)
+	local hangData = otherPlayersHangs[player]
+	if not hangData then
+		return
+	end
+
+	local character = hangData.character
+	if not character then
+		otherPlayersHangs[player] = nil
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		otherPlayersHangs[player] = nil
+		return
+	end
+
+	-- Restore character state
+	humanoid.AutoRotate = true
+	root.Anchored = false
+
+	-- Restore collisions
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+			part.CanCollide = true
+		end
+	end
+
+	-- Clear hang data
+	otherPlayersHangs[player] = nil
+
+	if Config.DebugLedgeHang then
+		print("[LedgeHang] Other player", player.Name, "stopped ledge hang")
+	end
+end
+
+-- Connect to remote events for other players' synchronization
+LedgeHangStart.OnClientEvent:Connect(handleOtherPlayerHangStart)
+LedgeHangMove.OnClientEvent:Connect(handleOtherPlayerHangMove)
+LedgeHangStop.OnClientEvent:Connect(handleOtherPlayerHangStop)
 
 local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -89,8 +210,25 @@ function LedgeHang.detectLedgeForHang(character)
 
 	-- Check if there's insufficient clearance above (this makes it a hang candidate)
 	local forwardDir = Vector3.new(forward.X, 0, forward.Z).Unit
-	if hasEnoughClearanceAbove(root, topY, forwardDir) then
-		return false -- enough clearance, should use mantle instead
+	local hasClearance = hasEnoughClearanceAbove(root, topY, forwardDir)
+
+	if hasClearance then
+		-- Enough clearance, try mantle instead
+		if Config.DebugLedgeHang then
+			print("[LedgeHang] Sufficient clearance detected, attempting mantle instead of hang")
+		end
+
+		-- Try mantle first
+		local Abilities = require(game:GetService("ReplicatedStorage").Movement.Abilities)
+		if Abilities and Abilities.tryMantle then
+			local mantleResult = Abilities.tryMantle(character)
+			if mantleResult then
+				return false -- Mantle succeeded, don't do ledge hang
+			end
+		end
+
+		-- If mantle failed, still return false to avoid ledge hang
+		return false
 	end
 
 	return true, hit, topY, forwardDir
@@ -230,6 +368,54 @@ function LedgeHang.tryStart(character)
 	return LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 end
 
+-- Check if there's space above the ledge for movement
+local function checkLedgeSpace(ledgePos, normal, raycastParams)
+	local spaceCheck = workspace:Raycast(ledgePos + normal * 1, Vector3.new(0, 3, 0), raycastParams)
+	return spaceCheck == nil -- Return true if there's space above
+end
+
+-- Check for corner movement (left/right)
+local function checkCornerMovement(character, direction, raycastParams)
+	local head = character:FindFirstChild("Head")
+	if not head then
+		return false
+	end
+
+	local moveRay = workspace:Raycast(
+		head.CFrame.Position,
+		head.CFrame.RightVector * direction + head.CFrame.LookVector * 8,
+		raycastParams
+	)
+	if moveRay and moveRay.Instance then
+		-- Check if there's space above this new ledge
+		local localPos = moveRay.Instance.CFrame:PointToObjectSpace(moveRay.Position)
+		local localLedgePos = Vector3.new(localPos.X, moveRay.Instance.Size.Y / 2, localPos.Z)
+		local newLedgePos = moveRay.Instance.CFrame:PointToWorldSpace(localLedgePos)
+
+		if checkLedgeSpace(newLedgePos, moveRay.Normal, raycastParams) then
+			return true, moveRay, newLedgePos
+		end
+	else
+		-- Check for turn around corner
+		local turnRay = workspace:Raycast(
+			head.CFrame.Position + Vector3.new(0, -1, 0) + head.CFrame.RightVector * direction,
+			head.CFrame.RightVector * -direction + head.CFrame.LookVector * 2,
+			raycastParams
+		)
+		if turnRay and turnRay.Instance then
+			local localPos = turnRay.Instance.CFrame:PointToObjectSpace(turnRay.Position)
+			local localLedgePos = Vector3.new(localPos.X, turnRay.Instance.Size.Y / 2, localPos.Z)
+			local newLedgePos = turnRay.Instance.CFrame:PointToWorldSpace(localLedgePos)
+
+			if checkLedgeSpace(newLedgePos, turnRay.Normal, raycastParams) then
+				return true, turnRay, newLedgePos
+			end
+		end
+	end
+
+	return false
+end
+
 -- Setup IK for hands positioning on ledge
 local function setupLedgeHandIK(character, hitRes, ledgeY)
 	-- Check if IK is enabled
@@ -336,16 +522,64 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		print(string.format("[LedgeHang] Starting hang at ledgeY=%.2f", ledgeY))
 	end
 
-	-- Position character hanging from ledge
-	local halfHeight = (root.Size and root.Size.Y or 2) * 0.5
-	local hangDistance = Config.LedgeHangDistance or 1.2
-	local hangY = ledgeY - halfHeight - (Config.LedgeHangDropDistance or 0.8)
+	-- Calculate precise ledge edge position using the character's approach position
+	-- This ensures the character grabs exactly at the edge where they reached the ledge
+	local characterHalfHeight = (root.Size and root.Size.Y or 2) * 0.5
+	-- Use the ledgeY passed as parameter (already calculated correctly in detection)
+	-- Don't recalculate as it might use wall position instead of ledge position
 
-	local hangPos = Vector3.new(
-		hitRes.Position.X - forwardDir.X * hangDistance,
-		hangY,
-		hitRes.Position.Z - forwardDir.Z * hangDistance
-	)
+	local characterPos = root.Position
+	local ledgeSize = hitRes.Instance.Size
+	local ledgeCFrame = hitRes.Instance.CFrame
+
+	-- Calculate ledge edge position based on LedgeFace attribute
+	local hangPos = Vector3.new(characterPos.X, characterPos.Y, characterPos.Z)
+	local ledgeFace = hitRes.Instance:GetAttribute("LedgeFace")
+
+	if ledgeFace then
+		local localPos = ledgeCFrame:PointToObjectSpace(characterPos)
+		local localLedgePos
+
+		if ledgeFace == "Front" then
+			localLedgePos = Vector3.new(localPos.X, ledgeSize.Y / 2, ledgeSize.Z / 2)
+		elseif ledgeFace == "Back" then
+			localLedgePos = Vector3.new(localPos.X, ledgeSize.Y / 2, -ledgeSize.Z / 2)
+		elseif ledgeFace == "Left" then
+			localLedgePos = Vector3.new(-ledgeSize.X / 2, ledgeSize.Y / 2, localPos.Z)
+		elseif ledgeFace == "Right" then
+			localLedgePos = Vector3.new(ledgeSize.X / 2, ledgeSize.Y / 2, localPos.Z)
+		else
+			localLedgePos = Vector3.new(localPos.X, ledgeSize.Y / 2, localPos.Z)
+		end
+
+		local ledgePos = ledgeCFrame:PointToWorldSpace(localLedgePos)
+		-- Apply LedgeHangDistance to move away from wall and LedgeHangDropDistance to position below ledge
+		local hangDistance = Config.LedgeHangDistance or 1.2
+		local dropDistance = Config.LedgeHangDropDistance or 0.8
+		local awayFromWall = hitRes.Normal * hangDistance
+		hangPos = Vector3.new(
+			ledgePos.X + awayFromWall.X,
+			ledgeY - characterHalfHeight - dropDistance,
+			ledgePos.Z + awayFromWall.Z
+		)
+	else
+		-- Fallback: use hit position if no LedgeFace attribute
+		local localPos = ledgeCFrame:PointToObjectSpace(hitRes.Position)
+		local localLedgePos = Vector3.new(localPos.X, ledgeSize.Y / 2, localPos.Z)
+		local ledgePos = ledgeCFrame:PointToWorldSpace(localLedgePos)
+		-- Apply LedgeHangDistance to move away from wall and LedgeHangDropDistance to position below ledge
+		local hangDistance = Config.LedgeHangDistance or 1.2
+		local dropDistance = Config.LedgeHangDropDistance or 0.8
+		local awayFromWall = hitRes.Normal * hangDistance
+		hangPos = Vector3.new(
+			ledgePos.X + awayFromWall.X,
+			ledgeY - characterHalfHeight - dropDistance,
+			ledgePos.Z + awayFromWall.Z
+		)
+	end
+
+	-- Calculate ledge offset for proper orientation
+	local ledgeOffset = CFrame.lookAt(hangPos, hangPos - hitRes.Normal)
 
 	-- Store original collision settings
 	local originalCanCollide = {}
@@ -356,8 +590,20 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		end
 	end
 
-	-- Setup IK for hands on ledge
-	local ikL, ikR, leftPart, rightPart = setupLedgeHandIK(character, hitRes, ledgeY)
+	-- Create invisible ledge part for smooth movement tracking
+	local ledgePart = Instance.new("Part")
+	ledgePart.Name = "LedgePart_" .. character.Name
+	ledgePart.Parent = workspace
+	ledgePart.Anchored = true
+	ledgePart.Size = Vector3.one
+	ledgePart.CFrame = ledgeOffset + Vector3.new(0, -2, 0) + ledgeOffset.LookVector * -1
+	ledgePart.CanQuery = false
+	ledgePart.CanCollide = false
+	ledgePart.CanTouch = false
+	ledgePart.Transparency = 1
+
+	-- No IK system - only animations are used
+	local ikL, ikR, leftPart, rightPart = nil, nil, nil, nil
 
 	-- Create hang state (use normalized forward direction for consistency)
 	local normalizedForwardDir = Vector3.new(forwardDir.X, 0, forwardDir.Z).Unit
@@ -371,10 +617,8 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		originalCanCollide = originalCanCollide,
 		startTime = os.clock(),
 		ledgeInstance = hitRes.Instance, -- Store the ledge part for boundary checking
-		ikL = ikL, -- Store IK references for cleanup
-		ikR = ikR,
-		leftTargetPart = leftPart,
-		rightTargetPart = rightPart,
+		ledgePart = ledgePart, -- Store the invisible ledge part for movement tracking
+		ledgeOffset = ledgeOffset, -- Store the ledge offset for positioning
 	}
 
 	activeHangs[character] = hangData
@@ -535,6 +779,11 @@ function LedgeHang.startHang(character, hitRes, ledgeY, forwardDir)
 		flag.Value = true
 	end)
 
+	-- Notify server about ledge hang start
+	pcall(function()
+		LedgeHangStart:FireServer(hangPos, ledgeY, normalizedForwardDir, hitRes.Normal, hitRes.Instance)
+	end)
+
 	return true
 end
 
@@ -644,29 +893,14 @@ function LedgeHang.stop(character, isManualRelease)
 		end
 	end
 
-	-- Cleanup IK
-	if hangData.ikL then
+	-- Cleanup ledge part
+	if hangData.ledgePart then
 		pcall(function()
-			hangData.ikL.Enabled = false
-			hangData.ikL:Destroy()
+			hangData.ledgePart:Destroy()
 		end)
 	end
-	if hangData.ikR then
-		pcall(function()
-			hangData.ikR.Enabled = false
-			hangData.ikR:Destroy()
-		end)
-	end
-	if hangData.leftTargetPart then
-		pcall(function()
-			hangData.leftTargetPart:Destroy()
-		end)
-	end
-	if hangData.rightTargetPart then
-		pcall(function()
-			hangData.rightTargetPart:Destroy()
-		end)
-	end
+
+	-- No IK system to clean up - only animations are used
 
 	-- Restore humanoid settings without changing state immediately
 	if humanoid then
@@ -892,6 +1126,11 @@ function LedgeHang.stop(character, isManualRelease)
 			print("[LedgeHang] Engaged anti-bounce clamp for 0.25s")
 		end
 	end
+
+	-- Notify server about ledge hang stop
+	pcall(function()
+		LedgeHangStop:FireServer(isManualRelease)
+	end)
 end
 
 function LedgeHang.isActive(character)
@@ -1123,30 +1362,14 @@ function LedgeHang.maintain(character, moveDirection)
 	root.CFrame = properCFrame
 	root.AssemblyLinearVelocity = Vector3.new()
 
-	-- Update IK hand positions only if character actually moved
-	if hangData.leftTargetPart and hangData.rightTargetPart and horizontalInput.Magnitude > 0.01 then
-		-- Calculate actual movement that occurred by comparing positions
-		local actualMovement = Vector3.new(newPos.X - currentPos.X, 0, newPos.Z - currentPos.Z)
-
-		-- Only move hand targets if character actually moved (not blocked by boundary)
-		if actualMovement.Magnitude > 0.001 then
-			hangData.leftTargetPart.Position = hangData.leftTargetPart.Position + actualMovement
-			hangData.rightTargetPart.Position = hangData.rightTargetPart.Position + actualMovement
-
-			if Config.DebugLedgeHang then
-				print(
-					string.format(
-						"[LedgeHang] Updated hand IK targets - actual movement: (%.2f,%.2f,%.2f)",
-						actualMovement.X,
-						actualMovement.Y,
-						actualMovement.Z
-					)
-				)
-			end
-		elseif Config.DebugLedgeHang and horizontalInput.Magnitude > 0.01 then
-			print("[LedgeHang] Hand IK not updated - character at boundary limit")
-		end
+	-- Notify server about movement (only if actually moving)
+	if horizontalInput.Magnitude > 0.01 then
+		pcall(function()
+			LedgeHangMove:FireServer(newPos, hangData.forwardDirection)
+		end)
 	end
+
+	-- No IK system - only animations are used for hand positioning
 
 	if Config.DebugLedgeHang and horizontalInput.Magnitude > 0.1 then
 		print(
