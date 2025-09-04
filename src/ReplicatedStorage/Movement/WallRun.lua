@@ -2,11 +2,15 @@
 
 local Config = require(game:GetService("ReplicatedStorage").Movement.Config)
 local WallMemory = require(game:GetService("ReplicatedStorage").Movement.WallMemory)
+local Animations = require(game:GetService("ReplicatedStorage").Movement.Animations)
 
 local WallRun = {}
 local active = {}
 local cooldownUntil = {}
 local WallMemory = require(game:GetService("ReplicatedStorage").Movement.WallMemory)
+
+-- Animation management
+local wallrunAnimationTracks = {} -- Track wallrun animations per character
 
 local function getCharacterParts(character)
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -53,6 +57,123 @@ local function findWall(rootPart)
 	end
 
 	return nil
+end
+
+-- Determine which side of the character the wall is on
+local function getWallDirection(rootPart, wallNormal)
+	local rightVector = rootPart.CFrame.RightVector
+	local dotProduct = rightVector:Dot(wallNormal)
+
+	-- If dot product is positive, wall normal points toward right side of character
+	-- This means the wall is on the LEFT side of the character
+	-- If dot product is negative, wall normal points toward left side of character
+	-- This means the wall is on the RIGHT side of the character
+	if dotProduct > 0 then
+		return "left" -- Wall is on the left side
+	else
+		return "right" -- Wall is on the right side
+	end
+end
+
+-- Play appropriate wallrun animation based on wall direction and movement
+local function playWallrunAnimation(character, wallNormal, forceChange)
+	local rootPart, humanoid = getCharacterParts(character)
+	if not rootPart or not humanoid then
+		return
+	end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+
+	-- Calculate effective wall direction based on both wall normal and movement direction
+	local function getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
+		-- Project movement direction onto the wall plane
+		local projectedMove = moveDirection - (moveDirection:Dot(wallNormal)) * wallNormal
+		if projectedMove.Magnitude < 0.05 then
+			projectedMove = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(wallNormal)) * wallNormal
+		end
+		if projectedMove.Magnitude < 0.05 then
+			projectedMove = wallNormal:Cross(Vector3.yAxis)
+		end
+		projectedMove = projectedMove.Unit
+
+		-- Determine which side of the character the movement is going
+		local rightVector = rootPart.CFrame.RightVector
+		local dotProduct = rightVector:Dot(projectedMove)
+
+		-- If dot product is positive, movement is toward right side of character
+		-- This means the wall is on the LEFT side of the character
+		-- If dot product is negative, movement is toward left side of character
+		-- This means the wall is on the RIGHT side of the character
+		if dotProduct > 0 then
+			return "left" -- Wall is on the left side
+		else
+			return "right" -- Wall is on the right side
+		end
+	end
+
+	-- Determine effective wall direction based on current movement
+	local moveDirection = humanoid.MoveDirection
+	if moveDirection.Magnitude < 0.05 then
+		moveDirection = rootPart.CFrame.LookVector
+	end
+
+	local direction = getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
+	local animationName = direction == "right" and "WallRunRight" or "WallRunLeft"
+
+	-- Check if we're already playing the correct animation
+	local currentTrack = wallrunAnimationTracks[character]
+	if currentTrack and currentTrack.IsPlaying and not forceChange then
+		-- Check if the current animation matches the desired direction
+		local currentAnimId = currentTrack.Animation and currentTrack.Animation.AnimationId or ""
+		local desiredAnimId = ""
+
+		local desiredAnimInst = Animations.get(animationName) or Animations.get("WallRunLoop")
+		if desiredAnimInst then
+			desiredAnimId = desiredAnimInst.AnimationId
+		end
+
+		-- If we're already playing the correct animation, don't change it
+		if currentAnimId == desiredAnimId then
+			return
+		end
+	end
+
+	-- Stop any existing wallrun animation
+	if currentTrack then
+		pcall(function()
+			currentTrack:Stop(0.1)
+		end)
+		wallrunAnimationTracks[character] = nil
+	end
+
+	-- Try to get the directional animation first, fallback to general WallRunLoop
+	local animInst = Animations.get(animationName) or Animations.get("WallRunLoop")
+	if not animInst then
+		return -- No animation configured
+	end
+
+	-- Load and play the animation
+	local track = animator:LoadAnimation(animInst)
+	if track then
+		track.Priority = Enum.AnimationPriority.Action
+		track.Looped = true
+		track:Play(0.1, 1, 1.0)
+		wallrunAnimationTracks[character] = track
+	end
+end
+
+-- Stop wallrun animation
+local function stopWallrunAnimation(character)
+	if wallrunAnimationTracks[character] then
+		pcall(function()
+			wallrunAnimationTracks[character]:Stop(0.1)
+		end)
+		wallrunAnimationTracks[character] = nil
+	end
 end
 
 function WallRun.tryStart(character)
@@ -117,10 +238,14 @@ function WallRun.tryStart(character)
 		originalAutoRotate = originalAutoRotate,
 		token = token,
 		lastWallNormal = hit.normal,
+		lastMoveDirection = humanoid.MoveDirection,
 		wallInstance = hit.instance,
 		speedMult = hit.speedMult or 1,
 		targetSpeed = targetSpeed,
 	}
+
+	-- Play appropriate wallrun animation based on wall direction
+	playWallrunAnimation(character, hit.normal, true) -- Force change on start
 
 	task.delay(Config.WallRunMaxDurationSeconds, function()
 		local data = active[character]
@@ -149,6 +274,10 @@ function WallRun.stop(character)
 		data.humanoid.AutoRotate = data.originalAutoRotate ~= nil and data.originalAutoRotate or true
 		data.humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
 	end
+
+	-- Stop wallrun animation
+	stopWallrunAnimation(character)
+
 	active[character] = nil
 end
 
@@ -180,7 +309,71 @@ function WallRun.maintain(character)
 		WallRun.stop(character)
 		return false
 	end
+	-- Check if wall direction changed and update animation if needed
+	local previousNormal = data.lastWallNormal
 	data.lastWallNormal = hit.normal
+
+	-- Check if player movement direction changed (same wall, different movement direction)
+	local previousMoveDirection = data.lastMoveDirection
+	local currentMoveDirection = humanoid.MoveDirection
+	data.lastMoveDirection = currentMoveDirection
+
+	-- Calculate the effective wall direction based on both wall normal and movement direction
+	local function getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
+		-- Project movement direction onto the wall plane
+		local projectedMove = moveDirection - (moveDirection:Dot(wallNormal)) * wallNormal
+		if projectedMove.Magnitude < 0.05 then
+			projectedMove = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(wallNormal)) * wallNormal
+		end
+		if projectedMove.Magnitude < 0.05 then
+			projectedMove = wallNormal:Cross(Vector3.yAxis)
+		end
+		projectedMove = projectedMove.Unit
+
+		-- Determine which side of the character the movement is going
+		local rightVector = rootPart.CFrame.RightVector
+		local dotProduct = rightVector:Dot(projectedMove)
+
+		-- If dot product is positive, movement is toward right side of character
+		-- This means the wall is on the LEFT side of the character
+		-- If dot product is negative, movement is toward left side of character
+		-- This means the wall is on the RIGHT side of the character
+		if dotProduct > 0 then
+			return "left" -- Wall is on the left side
+		else
+			return "right" -- Wall is on the right side
+		end
+	end
+
+	-- Check if we need to update animation
+	local shouldUpdateAnimation = false
+
+	-- Check if wall changed (different wall)
+	if previousNormal then
+		local normalDifference = (previousNormal - hit.normal).Magnitude
+		local previousDirection = getWallDirection(rootPart, previousNormal)
+		local currentDirection = getWallDirection(rootPart, hit.normal)
+
+		if previousDirection ~= currentDirection or normalDifference > 0.05 then
+			shouldUpdateAnimation = true
+		end
+	end
+
+	-- Check if movement direction changed on the same wall
+	if not shouldUpdateAnimation and previousMoveDirection and currentMoveDirection.Magnitude > 0.05 then
+		local previousEffectiveDirection = getEffectiveWallDirection(rootPart, hit.normal, previousMoveDirection)
+		local currentEffectiveDirection = getEffectiveWallDirection(rootPart, hit.normal, currentMoveDirection)
+
+		if previousEffectiveDirection ~= currentEffectiveDirection then
+			shouldUpdateAnimation = true
+		end
+	end
+
+	-- Update animation if needed
+	if shouldUpdateAnimation then
+		playWallrunAnimation(character, hit.normal, false) -- Don't force, let it check if change is needed
+	end
+
 	-- Compute tangent along the wall to move forward while sticking slightly and falling slowly
 	local normal = hit.normal
 	local move = humanoid.MoveDirection

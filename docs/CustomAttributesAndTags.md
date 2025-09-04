@@ -614,24 +614,11 @@ CollectionService:AddTag(hookPart, "Hookable")
 -- - Clean up when the hook is destroyed or out of range
 ```
 
-**Troubleshooting:**
-- Check that Config.HookCooldownLabels = true in Movement/Config.lua
-- Verify the BillboardGui template exists in ReplicatedStorage/UI/Hook/
-- Ensure hooks have the "Hookable" tag
-- Check that hooks are within Config.HookDefaultRange distance
 
 ---
 
 ### Notes
 
-- **Tags vs Attributes**: New systems prefer CollectionService tags over attributes for better performance
-- **Migrated Systems**: Stamina and Breakable now use tags instead of boolean attributes
-- **Hook Customization**: Per-hook attributes allow fine-tuned control of hook behavior
 - **Backward Compatibility**: Old attribute-based systems still work but tags are preferred
-- **Performance**: Tags are more efficient than attributes for boolean checks
-- Attributes are read on the touched/cast Part and up to a few ancestors (Models) where relevant
-- Surfaces must also satisfy global rules (e.g., near-vertical normal for wallrun/walljump/mantle)
-- UI tags are automatically detected and bound by respective client scripts
-- All numeric attributes support decimal values unless otherwise specified
 - CollectionService tags are case-sensitive
-- Use `SharedUtils.getAttributeOrDefault()` in custom scripts for consistent attribute reading
+

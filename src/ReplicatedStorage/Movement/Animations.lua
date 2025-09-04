@@ -26,32 +26,39 @@ local Animations = {
 	JumpStart = "", -- custom jump start animation
 	Jump = "",
 	-- Fall = "rbxassetid://128424180385734", -- optional fall animation (when falling without jumping)
-	Fall = "", -- optional fall animation (when falling without jumping)
+	Fall = "rbxassetid://86469067910082", -- optional fall animation (when falling without jumping)
 	Rise = "", -- optional rise animation (when going up after jump or on launch pads)
 	LandRoll = "rbxassetid://138804567004011", -- landing roll after high fall
-	DoubleJump = "", -- optional; fallback to Jump if empty
+	-- Jump: 129493509839673
+	DoubleJump = "rbxassetid://75232104377563", -- optional; fallback to Jump if empty
+
+	Run = "rbxassetid://91478114539329", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/run
 
 	-- Run / Locomotion
+	-- Default Run: 91478114539329
 	-- Fast run: 123068310096943
 	-- Normal run: 104728963373684
 	-- Naruto run: 122746804022977
 	-- Weird run: 77511870808805
 
-	Run = "rbxassetid://123068310096943", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/run
+	Walk = "rbxassetid://101897812185829", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/walk
 
+	-- Default Walk: 101897812185829
 	-- Normal walk: 95528593238099
 	-- Weird Walk: 89764452033789
 	-- Zombie Walk: 81321492147665
 	-- Lady walk: 104181332449335
 
-	Walk = "rbxassetid://95528593238099", -- Replace in the Animate file found in: StarterPlayer/StarterCharacterScripts/Animate/walk
-
 	-- Wall interactions
 	WallRunLoop = "",
+	WallRunLeft = "rbxassetid://90977169166235", -- Wall running on left wall
+	WallRunRight = "rbxassetid://100356862362375", -- Wall running on right wall
 	WallJump = "rbxassetid://125842455228311", -- Preparation animation for Wall Jump
 
 	-- Vertical Climb
-	VerticalClimb = "rbxassetid://74696284153822", -- vertical wall climbing animation
+	VerticalClimb = "rbxassetid://107697509448004", -- vertical wall climbing animation
+	-- Default: 107697509448004
+	-- Original: 74696284153822
 
 	-- Vaults
 	Vault_Monkey = "rbxassetid://117183115010634",
@@ -84,7 +91,7 @@ local Animations = {
 	ClimbRight = "", -- climbing right animation
 	ClimbIdle = "", -- idle climbing animation (when not moving)
 
-	-- Crawl / Prone (hold Z)
+	-- Crawl / Prone (Press Z)
 	Crawl = "rbxassetid://75303378392203",
 	-- Optional split variants; if left empty, code will fallback to `Crawl`
 	CrawlIdle = "rbxassetid://122469032691633",

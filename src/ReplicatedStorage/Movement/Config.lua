@@ -161,7 +161,7 @@ Config.WallJumpImpulseUp = 50
 Config.WallJumpImpulseAway = 100 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
-Config.WallJumpCarryFactor = 0.25
+Config.WallJumpCarryFactor = 1
 Config.WallRunLockAfterWallJumpSeconds = 0
 Config.AirControlUnlockAfterWallJumpSeconds = 0
 -- Camera nudge assists
