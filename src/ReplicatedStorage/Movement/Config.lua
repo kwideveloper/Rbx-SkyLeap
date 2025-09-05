@@ -160,7 +160,7 @@ Config.WallHopForwardBoost = 18
 -- Config.WallJumpImpulseUp = 110
 -- Config.WallJumpImpulseAway = 160 -- 65
 Config.WallJumpImpulseUp = 50
-Config.WallJumpImpulseAway = 75 -- 65
+Config.WallJumpImpulseAway = 85 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 Config.WallJumpCarryFactor = 1
@@ -380,7 +380,7 @@ Config.WallJumpAirControlSuppressSeconds = 1.0
 -- Vault (parkour over low obstacles)
 Config.VaultEnabled = true
 Config.VaultDetectionDistance = 4.5
-Config.VaultMinHeight = 3 -- studs above feet
+Config.VaultMinHeight = 2 -- studs above feet
 Config.VaultMaxHeight = 5 -- studs above feet
 Config.VaultMinSpeed = 24 -- require decent speed (sprinting)
 Config.VaultUpBoost = 0
