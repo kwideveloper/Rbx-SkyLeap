@@ -9,6 +9,8 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
 local PlayerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
 
+local allCloseButtons = PlayerGui:GetChildren()
+
 -- Configuration constants
 local HOVER_SCALE = 1.08
 local HOVER_ROTATION = 3
@@ -371,16 +373,10 @@ end
 -- Menu management functions
 -- Function to deactivate button's "Active" style (for when menu closes externally)
 local function deactivateButtonActiveStyle(button)
-	print("[MenuAnimator] Attempting to deactivate button:", button and button.Name or "nil")
 	local elementState = elementStates[button]
-	print("[MenuAnimator] elementState found:", elementState ~= nil)
-	if elementState then
-		print("[MenuAnimator] isActive value:", elementState.isActive)
-	end
 
 	-- Always try to deactivate, regardless of current isActive state
 	if elementState then
-		print("[MenuAnimator] Deactivating active style for button:", button.Name)
 		elementState.isActive = false
 
 		-- Apply deactivate animation
@@ -394,23 +390,16 @@ local function deactivateButtonActiveStyle(button)
 		local uiStroke = button:FindFirstChild("UIStroke")
 
 		if icon then
-			print("[MenuAnimator] Restoring icon gradient")
 			-- Restore hover State for Icon
 			icon.UIGradient.Offset = Vector2.new(1, 1)
 		end
 
 		if uiStroke then
-			print("[MenuAnimator] Disabling UIStroke UIGradient")
 			button.UIStroke.UIGradient.Enabled = false
-			print("[MenuAnimator] UIGradient disabled successfully")
-		else
-			print("[MenuAnimator] UIStroke not found")
 		end
 
 		-- Restore original ZIndex
 		button.ZIndex = elementState.originalZIndex
-	else
-		print("[MenuAnimator] No elementState found for button")
 	end
 end
 
@@ -834,44 +823,56 @@ local function setupMenuButton(button)
 		button.MouseButton1Click:Connect(function()
 			local effectsUpdated = false
 			for _, target in ipairs(closeTargets) do
-				-- Find the button that opened this menu
-				local openingButton = openMenus[target]
-				if openingButton then
-					local menuState = menuStates[target] -- Use target menu as key
-					if menuState and menuState.isOpen then
-						-- Mark as closed first
+				-- Check if menu is currently open (either in menuStates or visible)
+				local isMenuOpen = false
+				local menuState = menuStates[target] -- Use target menu as key
+
+				if menuState and menuState.isOpen then
+					isMenuOpen = true
+				elseif target:IsA("CanvasGroup") then
+					isMenuOpen = target.GroupTransparency < 1
+				else
+					isMenuOpen = target.Visible
+				end
+
+				if isMenuOpen then
+					-- Find the button that opened this menu (if any)
+					local openingButton = openMenus[target]
+
+					-- Mark as closed first
+					if menuState then
 						menuState.isOpen = false
-						openMenus[target] = nil
+					end
+					openMenus[target] = nil
 
-						-- Update camera and sound effects immediately when first menu is closed
-						if not effectsUpdated then
-							updateCameraEffects()
-							updateSoundEffects()
-							effectsUpdated = true
-						end
+					-- Update camera and sound effects immediately when first menu is closed
+					if not effectsUpdated then
+						updateCameraEffects()
+						updateSoundEffects()
+						effectsUpdated = true
+					end
 
-						-- Close the menu with animation if it's a CanvasGroup
+					-- Close the menu with animation
+					if menuState then
+						-- Use existing menu state for animation
 						local direction = "Top" -- Default direction
 						closeMenu(target, direction, menuState)
-
-						-- Reset button state
-						resetButtonState(openingButton)
 					else
-						-- If not a CanvasGroup or no animation state, just hide it
-						if target:IsA("CanvasGroup") then
-							target.GroupTransparency = 1
-						else
-							target.Visible = false
-						end
-						-- Update camera and sound effects immediately
-						if not effectsUpdated then
-							updateCameraEffects()
-							updateSoundEffects()
-							effectsUpdated = true
-						end
+						-- Create temporary state for animation if none exists
+						local tempState = {
+							canvasGroup = target:IsA("CanvasGroup") and target or target,
+							originalPosition = target.Position,
+						}
+						local direction = "Top" -- Default direction
+						closeMenu(target, direction, tempState)
+					end
+
+					-- Reset button state if we found the opening button
+					if openingButton then
+						resetButtonState(openingButton)
 					end
 				else
-					-- If no opening button found, just hide it
+					-- If menu is not open, just ensure it's hidden
 					if target:IsA("CanvasGroup") then
 						target.GroupTransparency = 1
 					else
@@ -945,9 +946,18 @@ function closeMenu(menu, direction, state)
 	)
 
 	local fadeTween
-	if state.canvasGroup:IsA("CanvasGroup") then
+	if state and state.canvasGroup and state.canvasGroup:IsA("CanvasGroup") then
 		fadeTween = createTween(
 			state.canvasGroup,
+			{ GroupTransparency = 1 },
+			MENU_CLOSE_ANIMATION_DURATION,
+			Enum.EasingStyle.Exponential,
+			Enum.EasingDirection.Out
+		)
+	elseif menu:IsA("CanvasGroup") then
+		-- If no state but menu is CanvasGroup, animate it directly
+		fadeTween = createTween(
+			menu,
 			{ GroupTransparency = 1 },
 			MENU_CLOSE_ANIMATION_DURATION,
 			Enum.EasingStyle.Exponential,
@@ -960,7 +970,7 @@ function closeMenu(menu, direction, state)
 		end)
 	end
 
-	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
+	local hasStroke = menu:FindFirstChild("UIStroke")
 
 	if hasStroke then
 		local fadeStroke = createTween(
@@ -980,7 +990,9 @@ function closeMenu(menu, direction, state)
 
 	-- Reset to original position after animation
 	moveTween.Completed:Connect(function()
-		menu.Position = state.originalPosition
+		if state and state.originalPosition then
+			menu.Position = state.originalPosition
+		end
 	end)
 end
 
@@ -1027,6 +1039,11 @@ end
 local function initialize()
 	-- Wait for PlayerGui to be fully loaded
 	PlayerGui:FindFirstChild("ScreenGui")
+	for _, button in ipairs(allCloseButtons) do
+		if button:IsA("TextButton") or button:IsA("ImageButton") and button.Name == "Close" then
+			print("Close button found:", button)
+		end
+	end
 
 	-- Initialize camera settings
 	if camera then
@@ -1049,6 +1066,15 @@ local function initialize()
 				end
 			end
 
+			-- Check if button has ObjectValue "Close" for menu functionality
+			local hasClose = false
+			for _, child in ipairs(button:GetChildren()) do
+				if child:IsA("ObjectValue") and child.Name == "Close" and child.Value then
+					hasClose = true
+					break
+				end
+			end
+
 			-- Check if button has StringValue "Animate" for animations
 			local hasAnimate = false
 			for _, child in ipairs(button:GetChildren()) do
@@ -1058,8 +1084,8 @@ local function initialize()
 				end
 			end
 
-			-- Setup menu functionality if it has Open ObjectValue
-			if hasOpen then
+			-- Setup menu functionality if it has Open or Close ObjectValue
+			if hasOpen or hasClose then
 				setupMenuButton(button)
 			end
 
