@@ -219,6 +219,15 @@ local function initializeSoundGroups()
 		end)
 	end
 
+	-- Capture initial volumes to ensure we have the correct baseline
+	if backgroundMusicGroup and backgroundMusicGroup:IsA("SoundGroup") and not originalVolumesCaptured then
+		originalBGVolume = backgroundMusicGroup.Volume
+	end
+
+	if sfxGroup and sfxGroup:IsA("SoundGroup") and not originalVolumesCaptured then
+		originalSFXVolume = sfxGroup.Volume
+	end
+
 	-- Sound groups are now initialized but volumes are captured dynamically when effects are applied
 end
 
@@ -342,18 +351,16 @@ local function isSettingsMenu(menu)
 end
 
 local function updateSoundEffects()
-	-- Check if any menus are open (excluding settings) using menuStates instead of openMenus
-	-- This ensures we count all menus that are considered "open" regardless of UI state
+	-- Check if any non-settings menus are open - apply effects for any menu except settings
 	local hasNonSettingsMenus = false
-	local openMenuCount = 0
 	for menu, state in pairs(menuStates) do
 		if state.isOpen and not isSettingsMenu(menu) then
 			hasNonSettingsMenus = true
-			openMenuCount = openMenuCount + 1
+			break
 		end
 	end
 
-	-- Apply or remove sound effects based on menu state
+	-- Apply or remove sound effects based on non-settings menu state
 	if hasNonSettingsMenus and not soundEffectActive then
 		applyClubEffects(true)
 	elseif not hasNonSettingsMenus and soundEffectActive then
@@ -362,6 +369,51 @@ local function updateSoundEffects()
 end
 
 -- Menu management functions
+-- Function to deactivate button's "Active" style (for when menu closes externally)
+local function deactivateButtonActiveStyle(button)
+	print("[MenuAnimator] Attempting to deactivate button:", button and button.Name or "nil")
+	local elementState = elementStates[button]
+	print("[MenuAnimator] elementState found:", elementState ~= nil)
+	if elementState then
+		print("[MenuAnimator] isActive value:", elementState.isActive)
+	end
+
+	-- Always try to deactivate, regardless of current isActive state
+	if elementState then
+		print("[MenuAnimator] Deactivating active style for button:", button.Name)
+		elementState.isActive = false
+
+		-- Apply deactivate animation
+		createHoverTween(button, {
+			Size = elementState.originalSize,
+			Rotation = elementState.originalRotation,
+		}):Play()
+
+		-- Find and deactivate active elements
+		local icon = button:FindFirstChild("Icon")
+		local uiStroke = button:FindFirstChild("UIStroke")
+
+		if icon then
+			print("[MenuAnimator] Restoring icon gradient")
+			-- Restore hover State for Icon
+			icon.UIGradient.Offset = Vector2.new(1, 1)
+		end
+
+		if uiStroke then
+			print("[MenuAnimator] Disabling UIStroke UIGradient")
+			button.UIStroke.UIGradient.Enabled = false
+			print("[MenuAnimator] UIGradient disabled successfully")
+		else
+			print("[MenuAnimator] UIStroke not found")
+		end
+
+		-- Restore original ZIndex
+		button.ZIndex = elementState.originalZIndex
+	else
+		print("[MenuAnimator] No elementState found for button")
+	end
+end
+
 local function resetButtonState(button)
 	if buttonStates[button] then
 		local elementState = elementStates[button]
@@ -377,6 +429,9 @@ local function resetButtonState(button)
 		end
 		buttonStates[button] = false
 	end
+
+	-- Also deactivate any active style
+	deactivateButtonActiveStyle(button)
 end
 
 local function setButtonActive(button)
