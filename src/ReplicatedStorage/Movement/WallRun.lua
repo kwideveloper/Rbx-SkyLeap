@@ -50,7 +50,6 @@ local function findWall(rootPart)
 			if allowedByClimbableRule then
 				local mult = inst:GetAttribute("WallRunSpeedMultiplier")
 				mult = (type(mult) == "number" and mult > 0) and mult or 1
-				print("[WallRun] Wall detected on LEFT side!")
 				return {
 					normal = leftResult.Normal,
 					position = leftResult.Position,
@@ -76,7 +75,6 @@ local function findWall(rootPart)
 			if allowedByClimbableRule then
 				local mult = inst:GetAttribute("WallRunSpeedMultiplier")
 				mult = (type(mult) == "number" and mult > 0) and mult or 1
-				print("[WallRun] Wall detected on RIGHT side!")
 				return {
 					normal = rightResult.Normal,
 					position = rightResult.Position,
@@ -161,7 +159,6 @@ local function playWallrunAnimation(character, wallData, forceChange)
 	end
 
 	local animationName = direction == "right" and "WallRunRight" or "WallRunLeft"
-	print("[WallRun] Playing animation:", animationName, "for direction:", direction)
 
 	-- Check if we're already playing the correct animation
 	local currentTrack = wallrunAnimationTracks[character]
@@ -421,22 +418,16 @@ end
 function WallRun.tryHop(character)
 	local data = active[character]
 	if not data then
-		print("[WallRun.tryHop] No active wall run data for character")
 		return false
 	end
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid then
-		print("[WallRun.tryHop] Missing rootPart or humanoid")
 		return false
 	end
 	local normal = data.lastWallNormal or rootPart.CFrame.RightVector
 
 	-- Log initial state
 	local currentVel = rootPart.AssemblyLinearVelocity
-	print("[WallRun.tryHop] BEFORE - Current velocity:", currentVel)
-	print("[WallRun.tryHop] Wall normal:", normal)
-	print("[WallRun.tryHop] Config.WallJumpImpulseAway:", Config.WallJumpImpulseAway)
-	print("[WallRun.tryHop] Config.WallJumpImpulseUp:", Config.WallJumpImpulseUp)
 
 	-- Calculate away direction (opposite of wall normal) for consistent impulse
 	local away = -normal * Config.WallJumpImpulseAway
@@ -449,8 +440,6 @@ function WallRun.tryHop(character)
 		local horizontalVel = Vector3.new(currentVel.X, 0, currentVel.Z)
 		local horizontalSpeed = horizontalVel.Magnitude
 
-		print("[WallRun.tryHop] Horizontal speed before preservation:", horizontalSpeed)
-
 		-- Only preserve momentum if speed is above minimum threshold
 		if horizontalSpeed >= (Config.WallJumpMinMomentumSpeed or 20) then
 			-- Project horizontal velocity onto the wall plane (perpendicular to wall normal)
@@ -459,25 +448,11 @@ function WallRun.tryHop(character)
 			-- Apply momentum multiplier and add to final velocity
 			local preservedMomentum = projectedVel * (Config.WallJumpMomentumMultiplier or 0.8)
 			finalVelocity = finalVelocity + preservedMomentum
-
-			print("[WallRun.tryHop] Preserved momentum:", preservedMomentum)
-			print("[WallRun.tryHop] Preserved momentum magnitude:", preservedMomentum.Magnitude)
-		else
-			print("[WallRun.tryHop] Speed too low for momentum preservation:", horizontalSpeed)
 		end
 	end
 
-	print("[WallRun.tryHop] Calculated away vector:", away)
-	print("[WallRun.tryHop] Calculated up vector:", up)
-	print("[WallRun.tryHop] Final velocity with momentum:", finalVelocity)
-
 	-- Apply the final velocity
 	rootPart.AssemblyLinearVelocity = finalVelocity
-
-	-- Log final state
-	local finalVel = rootPart.AssemblyLinearVelocity
-	print("[WallRun.tryHop] AFTER - Final velocity:", finalVel)
-	print("[WallRun.tryHop] Velocity magnitude:", finalVel.Magnitude)
 
 	-- Monitor velocity changes in the next few frames
 	local monitorFrames = 0
@@ -486,14 +461,6 @@ function WallRun.tryHop(character)
 		monitorFrames = monitorFrames + 1
 		if monitorFrames <= maxFrames and rootPart and rootPart.Parent then
 			local currentVel = rootPart.AssemblyLinearVelocity
-			print(
-				"[WallRun.tryHop] Frame",
-				monitorFrames,
-				"- Velocity:",
-				currentVel,
-				"Magnitude:",
-				currentVel.Magnitude
-			)
 			task.wait()
 			monitorVelocity()
 		end

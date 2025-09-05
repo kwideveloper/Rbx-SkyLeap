@@ -2485,10 +2485,14 @@ RunService.RenderStepped:Connect(function(dt)
 	if Config.VaultEnabled ~= false then
 		local isMovingForward = humanoid.MoveDirection.Magnitude > 0.1
 		local isGrounded = (humanoid.FloorMaterial ~= Enum.Material.Air)
-		if isGrounded and isMovingForward and state.stamina.isSprinting then
+		local notWallRunning = not WallRun.isActive(character)
+		if isGrounded and isMovingForward and state.stamina.isSprinting and notWallRunning then
 			if Abilities.tryVault(character) then
 				Style.addEvent(state.style, "Vault", 1)
 			end
+		elseif WallRun.isActive(character) then
+			-- Debug: Vault blocked due to wallrun
+			-- print("[ParkourController] Vault blocked - currently wallrunning")
 		end
 	end
 
@@ -2519,6 +2523,7 @@ RunService.RenderStepped:Connect(function(dt)
 			and (not Zipline.isActive(character))
 			and (not Climb.isActive(character))
 			and (not LedgeHang.isActive(character))
+			and (not WallRun.isActive(character))
 		then
 			if state.stamina.current >= (Config.MantleStaminaCost or 0) then
 				local didMantle = false
@@ -2624,6 +2629,9 @@ RunService.RenderStepped:Connect(function(dt)
 					end
 				end
 			end
+		elseif WallRun.isActive(character) then
+			-- Debug: Mantle blocked due to wallrun
+			-- print("[ParkourController] Mantle blocked - currently wallrunning")
 		end
 	end
 end)
