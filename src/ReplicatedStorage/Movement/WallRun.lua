@@ -24,34 +24,66 @@ local function findWall(rootPart)
 	params.FilterDescendantsInstances = { rootPart.Parent }
 	params.IgnoreWater = Config.RaycastIgnoreWater
 
-	local directions = {
-		rootPart.CFrame.RightVector,
-		-rootPart.CFrame.RightVector,
-	}
+	-- Improved wall detection with better side determination
+	local wallDistance = Config.WallDetectionDistance or 5
+	local leftRayOrigin = rootPart.Position
+	local leftRayDirection = rootPart.CFrame:VectorToWorldSpace(Vector3.new(-wallDistance, 0, 0))
 
-	for _, dir in ipairs(directions) do
-		local result = workspace:Raycast(rootPart.Position, dir * Config.WallDetectionDistance, params)
-		if result and result.Instance and result.Instance.CanCollide then
-			local n = result.Normal
-			local verticalDot = math.abs(n:Dot(Vector3.yAxis))
-			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
-			if verticalDot <= allowedDot then
-				local inst = result.Instance
-				local CollectionService = game:GetService("CollectionService")
-				local isClimbable = CollectionService:HasTag(inst, "Climbable")
-				local wallRunOverride = inst:GetAttribute("WallRun") == true
-				-- Rule: disallow wall run on climbable by default; allow only if WallRun==true
-				local allowedByClimbableRule = (not isClimbable) or wallRunOverride
-				if allowedByClimbableRule then
-					local mult = inst:GetAttribute("WallRunSpeedMultiplier")
-					mult = (type(mult) == "number" and mult > 0) and mult or 1
-					return {
-						normal = result.Normal,
-						position = result.Position,
-						instance = inst,
-						speedMult = mult,
-					}
-				end
+	local rightRayOrigin = rootPart.Position
+	local rightRayDirection = rootPart.CFrame:VectorToWorldSpace(Vector3.new(wallDistance, 0, 0))
+
+	-- Cast rays to both sides
+	local leftResult = workspace:Raycast(leftRayOrigin, leftRayDirection, params)
+	local rightResult = workspace:Raycast(rightRayOrigin, rightRayDirection, params)
+
+	-- Check left side first
+	if leftResult and leftResult.Instance and leftResult.Instance.CanCollide then
+		local n = leftResult.Normal
+		local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+		local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+		if verticalDot <= allowedDot then
+			local inst = leftResult.Instance
+			local CollectionService = game:GetService("CollectionService")
+			local isClimbable = CollectionService:HasTag(inst, "Climbable")
+			local wallRunOverride = inst:GetAttribute("WallRun") == true
+			local allowedByClimbableRule = (not isClimbable) or wallRunOverride
+			if allowedByClimbableRule then
+				local mult = inst:GetAttribute("WallRunSpeedMultiplier")
+				mult = (type(mult) == "number" and mult > 0) and mult or 1
+				print("[WallRun] Wall detected on LEFT side!")
+				return {
+					normal = leftResult.Normal,
+					position = leftResult.Position,
+					instance = inst,
+					speedMult = mult,
+					side = "left", -- Wall is on the left side of the character
+				}
+			end
+		end
+	end
+
+	-- Check right side
+	if rightResult and rightResult.Instance and rightResult.Instance.CanCollide then
+		local n = rightResult.Normal
+		local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+		local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
+		if verticalDot <= allowedDot then
+			local inst = rightResult.Instance
+			local CollectionService = game:GetService("CollectionService")
+			local isClimbable = CollectionService:HasTag(inst, "Climbable")
+			local wallRunOverride = inst:GetAttribute("WallRun") == true
+			local allowedByClimbableRule = (not isClimbable) or wallRunOverride
+			if allowedByClimbableRule then
+				local mult = inst:GetAttribute("WallRunSpeedMultiplier")
+				mult = (type(mult) == "number" and mult > 0) and mult or 1
+				print("[WallRun] Wall detected on RIGHT side!")
+				return {
+					normal = rightResult.Normal,
+					position = rightResult.Position,
+					instance = inst,
+					speedMult = mult,
+					side = "right", -- Wall is on the right side of the character
+				}
 			end
 		end
 	end
@@ -76,7 +108,7 @@ local function getWallDirection(rootPart, wallNormal)
 end
 
 -- Play appropriate wallrun animation based on wall direction and movement
-local function playWallrunAnimation(character, wallNormal, forceChange)
+local function playWallrunAnimation(character, wallData, forceChange)
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid then
 		return
@@ -88,41 +120,48 @@ local function playWallrunAnimation(character, wallNormal, forceChange)
 		animator.Parent = humanoid
 	end
 
-	-- Calculate effective wall direction based on both wall normal and movement direction
-	local function getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
-		-- Project movement direction onto the wall plane
-		local projectedMove = moveDirection - (moveDirection:Dot(wallNormal)) * wallNormal
-		if projectedMove.Magnitude < 0.05 then
-			projectedMove = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(wallNormal)) * wallNormal
-		end
-		if projectedMove.Magnitude < 0.05 then
-			projectedMove = wallNormal:Cross(Vector3.yAxis)
-		end
-		projectedMove = projectedMove.Unit
+	-- Use the side information directly from wall detection if available
+	local direction = wallData.side
+	if not direction then
+		-- Fallback to the old calculation method if side is not available
+		local wallNormal = wallData.normal
+		local function getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
+			-- Project movement direction onto the wall plane
+			local projectedMove = moveDirection - (moveDirection:Dot(wallNormal)) * wallNormal
+			if projectedMove.Magnitude < 0.05 then
+				projectedMove = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(wallNormal)) * wallNormal
+			end
+			if projectedMove.Magnitude < 0.05 then
+				projectedMove = wallNormal:Cross(Vector3.yAxis)
+			end
+			projectedMove = projectedMove.Unit
 
-		-- Determine which side of the character the movement is going
-		local rightVector = rootPart.CFrame.RightVector
-		local dotProduct = rightVector:Dot(projectedMove)
+			-- Determine which side of the character the movement is going
+			local rightVector = rootPart.CFrame.RightVector
+			local dotProduct = rightVector:Dot(projectedMove)
 
-		-- If dot product is positive, movement is toward right side of character
-		-- This means the wall is on the LEFT side of the character
-		-- If dot product is negative, movement is toward left side of character
-		-- This means the wall is on the RIGHT side of the character
-		if dotProduct > 0 then
-			return "left" -- Wall is on the left side
-		else
-			return "right" -- Wall is on the right side
+			-- If dot product is positive, movement is toward right side of character
+			-- This means the wall is on the LEFT side of the character
+			-- If dot product is negative, movement is toward left side of character
+			-- This means the wall is on the RIGHT side of the character
+			if dotProduct > 0 then
+				return "left" -- Wall is on the left side
+			else
+				return "right" -- Wall is on the right side
+			end
 		end
+
+		-- Determine effective wall direction based on current movement
+		local moveDirection = humanoid.MoveDirection
+		if moveDirection.Magnitude < 0.05 then
+			moveDirection = rootPart.CFrame.LookVector
+		end
+
+		direction = getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
 	end
 
-	-- Determine effective wall direction based on current movement
-	local moveDirection = humanoid.MoveDirection
-	if moveDirection.Magnitude < 0.05 then
-		moveDirection = rootPart.CFrame.LookVector
-	end
-
-	local direction = getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
 	local animationName = direction == "right" and "WallRunRight" or "WallRunLeft"
+	print("[WallRun] Playing animation:", animationName, "for direction:", direction)
 
 	-- Check if we're already playing the correct animation
 	local currentTrack = wallrunAnimationTracks[character]
@@ -238,6 +277,7 @@ function WallRun.tryStart(character)
 		originalAutoRotate = originalAutoRotate,
 		token = token,
 		lastWallNormal = hit.normal,
+		lastWallSide = hit.side,
 		lastMoveDirection = humanoid.MoveDirection,
 		wallInstance = hit.instance,
 		speedMult = hit.speedMult or 1,
@@ -245,7 +285,7 @@ function WallRun.tryStart(character)
 	}
 
 	-- Play appropriate wallrun animation based on wall direction
-	playWallrunAnimation(character, hit.normal, true) -- Force change on start
+	playWallrunAnimation(character, hit, true) -- Force change on start
 
 	task.delay(Config.WallRunMaxDurationSeconds, function()
 		local data = active[character]
@@ -311,67 +351,31 @@ function WallRun.maintain(character)
 	end
 	-- Check if wall direction changed and update animation if needed
 	local previousNormal = data.lastWallNormal
+	local previousSide = data.lastWallSide
 	data.lastWallNormal = hit.normal
+	data.lastWallSide = hit.side
 
 	-- Check if player movement direction changed (same wall, different movement direction)
 	local previousMoveDirection = data.lastMoveDirection
 	local currentMoveDirection = humanoid.MoveDirection
 	data.lastMoveDirection = currentMoveDirection
 
-	-- Calculate the effective wall direction based on both wall normal and movement direction
-	local function getEffectiveWallDirection(rootPart, wallNormal, moveDirection)
-		-- Project movement direction onto the wall plane
-		local projectedMove = moveDirection - (moveDirection:Dot(wallNormal)) * wallNormal
-		if projectedMove.Magnitude < 0.05 then
-			projectedMove = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(wallNormal)) * wallNormal
-		end
-		if projectedMove.Magnitude < 0.05 then
-			projectedMove = wallNormal:Cross(Vector3.yAxis)
-		end
-		projectedMove = projectedMove.Unit
-
-		-- Determine which side of the character the movement is going
-		local rightVector = rootPart.CFrame.RightVector
-		local dotProduct = rightVector:Dot(projectedMove)
-
-		-- If dot product is positive, movement is toward right side of character
-		-- This means the wall is on the LEFT side of the character
-		-- If dot product is negative, movement is toward left side of character
-		-- This means the wall is on the RIGHT side of the character
-		if dotProduct > 0 then
-			return "left" -- Wall is on the left side
-		else
-			return "right" -- Wall is on the right side
-		end
-	end
-
 	-- Check if we need to update animation
 	local shouldUpdateAnimation = false
 
-	-- Check if wall changed (different wall)
+	-- Check if wall changed (different wall or different side)
 	if previousNormal then
 		local normalDifference = (previousNormal - hit.normal).Magnitude
-		local previousDirection = getWallDirection(rootPart, previousNormal)
-		local currentDirection = getWallDirection(rootPart, hit.normal)
+		local sideChanged = previousSide ~= hit.side
 
-		if previousDirection ~= currentDirection or normalDifference > 0.05 then
-			shouldUpdateAnimation = true
-		end
-	end
-
-	-- Check if movement direction changed on the same wall
-	if not shouldUpdateAnimation and previousMoveDirection and currentMoveDirection.Magnitude > 0.05 then
-		local previousEffectiveDirection = getEffectiveWallDirection(rootPart, hit.normal, previousMoveDirection)
-		local currentEffectiveDirection = getEffectiveWallDirection(rootPart, hit.normal, currentMoveDirection)
-
-		if previousEffectiveDirection ~= currentEffectiveDirection then
+		if sideChanged or normalDifference > 0.05 then
 			shouldUpdateAnimation = true
 		end
 	end
 
 	-- Update animation if needed
 	if shouldUpdateAnimation then
-		playWallrunAnimation(character, hit.normal, false) -- Don't force, let it check if change is needed
+		playWallrunAnimation(character, hit, false) -- Don't force, let it check if change is needed
 	end
 
 	-- Compute tangent along the wall to move forward while sticking slightly and falling slowly
