@@ -442,12 +442,37 @@ function WallRun.tryHop(character)
 	local away = -normal * Config.WallJumpImpulseAway
 	local up = Vector3.new(0, Config.WallJumpImpulseUp, 0)
 
+	-- Preserve horizontal momentum from wallrun if enabled
+	local finalVelocity = away + up
+	if Config.WallJumpPreserveMomentum then
+		-- Get current horizontal velocity (excluding Y component)
+		local horizontalVel = Vector3.new(currentVel.X, 0, currentVel.Z)
+		local horizontalSpeed = horizontalVel.Magnitude
+
+		print("[WallRun.tryHop] Horizontal speed before preservation:", horizontalSpeed)
+
+		-- Only preserve momentum if speed is above minimum threshold
+		if horizontalSpeed >= (Config.WallJumpMinMomentumSpeed or 20) then
+			-- Project horizontal velocity onto the wall plane (perpendicular to wall normal)
+			local projectedVel = horizontalVel - (horizontalVel:Dot(normal)) * normal
+
+			-- Apply momentum multiplier and add to final velocity
+			local preservedMomentum = projectedVel * (Config.WallJumpMomentumMultiplier or 0.8)
+			finalVelocity = finalVelocity + preservedMomentum
+
+			print("[WallRun.tryHop] Preserved momentum:", preservedMomentum)
+			print("[WallRun.tryHop] Preserved momentum magnitude:", preservedMomentum.Magnitude)
+		else
+			print("[WallRun.tryHop] Speed too low for momentum preservation:", horizontalSpeed)
+		end
+	end
+
 	print("[WallRun.tryHop] Calculated away vector:", away)
 	print("[WallRun.tryHop] Calculated up vector:", up)
-	print("[WallRun.tryHop] Final impulse vector:", away + up)
+	print("[WallRun.tryHop] Final velocity with momentum:", finalVelocity)
 
-	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
-	rootPart.AssemblyLinearVelocity = away + up
+	-- Apply the final velocity
+	rootPart.AssemblyLinearVelocity = finalVelocity
 
 	-- Log final state
 	local finalVel = rootPart.AssemblyLinearVelocity

@@ -158,10 +158,15 @@ Config.WallHopForwardBoost = 18
 
 -- Wall jump
 Config.WallJumpImpulseUp = 110
-Config.WallJumpImpulseAway = 180 -- 65
+Config.WallJumpImpulseAway = 160 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 Config.WallJumpCarryFactor = 1
+
+-- Wall jump momentum preservation
+Config.WallJumpPreserveMomentum = true -- Preserve horizontal momentum from wallrun
+Config.WallJumpMomentumMultiplier = 0.8 -- Multiplier for preserved momentum (0.8 = 80% of original speed)
+Config.WallJumpMinMomentumSpeed = 20 -- Minimum speed required to preserve momentum
 Config.WallRunLockAfterWallJumpSeconds = 0
 Config.AirControlUnlockAfterWallJumpSeconds = 0
 -- Camera nudge assists
