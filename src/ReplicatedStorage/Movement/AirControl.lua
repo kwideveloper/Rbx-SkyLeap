@@ -29,6 +29,9 @@ function AirControl.apply(character, dt)
 		return
 	end
 
+	-- Log air control application
+	local velBefore = root.AssemblyLinearVelocity
+
 	-- Build wish direction from MoveDirection or camera facing if configured
 	local wish = horizontal(humanoid.MoveDirection)
 	if wish.Magnitude < 0.05 then
@@ -79,7 +82,8 @@ function AirControl.apply(character, dt)
 		end
 	end
 
-	root.AssemblyLinearVelocity = Vector3.new(newHoriz.X, vel.Y, newHoriz.Z)
+	local finalVel = Vector3.new(newHoriz.X, vel.Y, newHoriz.Z)
+	root.AssemblyLinearVelocity = finalVel
 end
 
 return AirControl

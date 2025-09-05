@@ -1595,14 +1595,22 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		elseif WallRun.isActive(character) or (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
 			-- Hop off the wall and stop sticking
 			if state.stamina.current >= Config.WallJumpStaminaCost then
-				if WallRun.tryHop(character) then
-					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
-				end
-				-- If wall slide is active, attempt wall jump via WallJump.tryJump
-				if WallJump.isWallSliding and WallJump.isWallSliding(character) then
+				local isWallSliding = WallJump.isWallSliding and WallJump.isWallSliding(character)
+				local isWallRunning = WallRun.isActive(character)
+
+				-- If wall slide is active, use WallJump.tryJump (it handles both cases)
+				if isWallSliding then
 					if WallJump.tryJump(character) then
 						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 						FX.play("WallJump", character)
+					end
+				elseif isWallRunning then
+					-- Only use WallRun.tryHop if not wall sliding
+					if WallRun.tryHop(character) then
+						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+						FX.play("WallJump", character)
+						-- Suppress air control briefly to prevent immediate input from reducing away impulse
+						state._suppressAirControlUntil = os.clock() + (Config.WallJumpAirControlSuppressSeconds or 0.2)
 					end
 				end
 			end

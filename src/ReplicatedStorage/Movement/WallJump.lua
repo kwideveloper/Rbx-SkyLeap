@@ -558,7 +558,8 @@ function WallJump.tryJump(character)
 	local upMul = getAttrNum(hit.Instance, "WallJumpUpMultiplier") or 1
 	local awayMul = getAttrNum(hit.Instance, "WallJumpAwayMultiplier") or 1
 
-	local away = hit.Normal * ((Config.WallJumpImpulseAway or 120) * awayMul)
+	-- Calculate away direction (opposite of wall normal) for consistent impulse
+	local away = -hit.Normal * ((Config.WallJumpImpulseAway or 120) * awayMul)
 	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45) * upMul, 0)
 
 	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
@@ -569,11 +570,24 @@ function WallJump.tryJump(character)
 	humanoid.AutoRotate = false
 	local awayHoriz = Vector3.new(away.X, 0, away.Z)
 	if awayHoriz.Magnitude < 0.01 then
-		local n = hit.Normal
+		-- Use the opposite of wall normal for consistent direction
+		local n = -hit.Normal
 		awayHoriz = Vector3.new(n.X, 0, n.Z)
 	end
+
+	-- Check if this walljump is coming from wallslide (not wallrun)
+	local isFromWallSlide = slideData ~= nil
+
 	if awayHoriz.Magnitude > 0 then
-		rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
+		if isFromWallSlide then
+			-- For walljump from wallslide: orient 180 degrees to face backwards (towards the wall)
+			-- This means the character will look in the opposite direction of the jump impulse
+			local backwardsDirection = -awayHoriz.Unit
+			rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + backwardsDirection, Vector3.yAxis)
+		else
+			-- For walljump from wallrun: use normal orientation (facing away from wall)
+			rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
+		end
 	end
 	local lockSecs = Config.WallRunLockAfterWallJumpSeconds or 0.35
 	task.delay(math.max(0.18, lockSecs), function()

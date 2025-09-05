@@ -417,30 +417,60 @@ end
 function WallRun.tryHop(character)
 	local data = active[character]
 	if not data then
+		print("[WallRun.tryHop] No active wall run data for character")
 		return false
 	end
 	local rootPart, humanoid = getCharacterParts(character)
 	if not rootPart or not humanoid then
+		print("[WallRun.tryHop] Missing rootPart or humanoid")
 		return false
 	end
 	local normal = data.lastWallNormal or rootPart.CFrame.RightVector
-	-- Use camera-facing direction projected off the wall to push towards where the player is looking
-	local camera = workspace.CurrentCamera
-	local camForward = camera and camera.CFrame.LookVector or rootPart.CFrame.LookVector
-	local projectedForward = camForward - (camForward:Dot(normal)) * normal
-	if projectedForward.Magnitude < 0.05 then
-		local fallback = rootPart.CFrame.LookVector - (rootPart.CFrame.LookVector:Dot(normal)) * normal
-		projectedForward = fallback.Magnitude > 0.05 and fallback or (normal:Cross(Vector3.yAxis))
+
+	-- Log initial state
+	local currentVel = rootPart.AssemblyLinearVelocity
+	print("[WallRun.tryHop] BEFORE - Current velocity:", currentVel)
+	print("[WallRun.tryHop] Wall normal:", normal)
+	print("[WallRun.tryHop] Config.WallJumpImpulseAway:", Config.WallJumpImpulseAway)
+	print("[WallRun.tryHop] Config.WallJumpImpulseUp:", Config.WallJumpImpulseUp)
+
+	-- Calculate away direction (opposite of wall normal) for consistent impulse
+	local away = -normal * Config.WallJumpImpulseAway
+	local up = Vector3.new(0, Config.WallJumpImpulseUp, 0)
+
+	print("[WallRun.tryHop] Calculated away vector:", away)
+	print("[WallRun.tryHop] Calculated up vector:", up)
+	print("[WallRun.tryHop] Final impulse vector:", away + up)
+
+	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
+	rootPart.AssemblyLinearVelocity = away + up
+
+	-- Log final state
+	local finalVel = rootPart.AssemblyLinearVelocity
+	print("[WallRun.tryHop] AFTER - Final velocity:", finalVel)
+	print("[WallRun.tryHop] Velocity magnitude:", finalVel.Magnitude)
+
+	-- Monitor velocity changes in the next few frames
+	local monitorFrames = 0
+	local maxFrames = 10
+	local function monitorVelocity()
+		monitorFrames = monitorFrames + 1
+		if monitorFrames <= maxFrames and rootPart and rootPart.Parent then
+			local currentVel = rootPart.AssemblyLinearVelocity
+			print(
+				"[WallRun.tryHop] Frame",
+				monitorFrames,
+				"- Velocity:",
+				currentVel,
+				"Magnitude:",
+				currentVel.Magnitude
+			)
+			task.wait()
+			monitorVelocity()
+		end
 	end
-	projectedForward = projectedForward.Unit
+	task.spawn(monitorVelocity)
 
-	local away = normal * Config.WallJumpImpulseAway
-	local forwardBoost = projectedForward * Config.WallHopForwardBoost
-	local carry = rootPart.AssemblyLinearVelocity * 0.25
-	local horizontalCarry = Vector3.new(carry.X, 0, carry.Z)
-
-	local upBoost = Vector3.new(0, Config.WallJumpImpulseUp * 0.6, 0)
-	rootPart.AssemblyLinearVelocity = horizontalCarry + away + forwardBoost + upBoost
 	humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 	WallRun.stop(character)
 	-- mark this wall as used so the next hop must be from a different wall

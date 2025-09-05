@@ -157,8 +157,8 @@ Config.WallStickVelocity = 4
 Config.WallHopForwardBoost = 18
 
 -- Wall jump
-Config.WallJumpImpulseUp = 50
-Config.WallJumpImpulseAway = 100 -- 65
+Config.WallJumpImpulseUp = 110
+Config.WallJumpImpulseAway = 180 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 Config.WallJumpCarryFactor = 1
@@ -368,7 +368,7 @@ Config.MaxWallChainPerSurface = 3
 Config.StyleComboPopupWindowSeconds = 0.2 -- time to aggregate combo increases into a single popup
 
 -- Wall jump control gating
-Config.WallJumpAirControlSuppressSeconds = 0.2
+Config.WallJumpAirControlSuppressSeconds = 1.0
 
 -- Vault (parkour over low obstacles)
 Config.VaultEnabled = true
