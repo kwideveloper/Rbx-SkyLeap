@@ -429,9 +429,34 @@ function WallRun.tryHop(character)
 	-- Log initial state
 	local currentVel = rootPart.AssemblyLinearVelocity
 
-	-- Calculate away direction (opposite of wall normal) for consistent impulse
-	local away = -normal * Config.WallJumpImpulseAway
+	-- Calculate away direction more robustly (same logic as WallJump.tryJump)
+	-- Ensure we always push away from the wall by using the vector from wall to player
+	local wallToPlayer = (rootPart.Position - (rootPart.Position - normal * 2)).Unit
+	local wallNormal = normal.Unit
+
+	-- Choose the direction that points away from the wall toward the player
+	-- If the wall normal points toward the player, use it; otherwise use the inverse
+	local awayDirection
+	if wallNormal:Dot(wallToPlayer) > 0 then
+		-- Wall normal points toward player (away from wall) - use it
+		awayDirection = wallNormal
+	else
+		-- Wall normal points into wall - use the inverse
+		awayDirection = -wallNormal
+	end
+
+	local away = awayDirection * Config.WallJumpImpulseAway
 	local up = Vector3.new(0, Config.WallJumpImpulseUp, 0)
+
+	-- DEBUG: Print wall run hop information
+	print("=== WALL RUN HOP DEBUG ===")
+	print("Wall Normal:", wallNormal)
+	print("Wall to Player:", wallToPlayer)
+	print("Away direction:", awayDirection)
+	print("Away velocity:", away)
+	print("Up direction:", up)
+	print("Final velocity (before momentum):", away + up)
+	print("==========================")
 
 	-- Preserve horizontal momentum from wallrun if enabled
 	local finalVelocity = away + up

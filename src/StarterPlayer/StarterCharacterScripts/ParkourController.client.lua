@@ -1598,6 +1598,21 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 				end
 			end
+		elseif VerticalClimb.isActive(character) then
+			-- Handle wall jump during vertical climb - same logic as wall slide/run
+			if state.stamina.current >= Config.WallJumpStaminaCost then
+				-- Stop vertical climb first to prevent conflicts
+				VerticalClimb.stop(character)
+
+				-- Execute wall jump using the same system as wall slide/run
+				-- Use resetMomentum=true to completely reset velocity before wall jump
+				if WallJump.tryJump(character, true) then
+					state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
+					FX.play("WallJump", character)
+					-- Suppress air control briefly to prevent immediate input from reducing away impulse
+					state._suppressAirControlUntil = os.clock() + (Config.WallJumpAirControlSuppressSeconds or 0.2)
+				end
+			end
 		elseif WallRun.isActive(character) or (WallJump.isWallSliding and WallJump.isWallSliding(character)) then
 			-- Hop off the wall and stop sticking
 			if state.stamina.current >= Config.WallJumpStaminaCost then
@@ -1606,7 +1621,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 
 				-- If wall slide is active, use WallJump.tryJump (it handles both cases)
 				if isWallSliding then
-					if WallJump.tryJump(character) then
+					-- Use resetMomentum=true to ensure clean wall jump from wall slide
+					if WallJump.tryJump(character, true) then
 						state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 						FX.play("WallJump", character)
 					end
@@ -1636,7 +1652,8 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 						-- isNearWall will start slide; rely on WallJump.tryJump to enforce animReady gating on next press
 						return
 					else
-						if WallJump.tryJump(character) then
+						-- Use resetMomentum=true to ensure clean wall jump
+						if WallJump.tryJump(character, true) then
 							state.stamina.current = math.max(0, state.stamina.current - Config.WallJumpStaminaCost)
 							return
 						end

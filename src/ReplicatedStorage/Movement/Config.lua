@@ -157,8 +157,10 @@ Config.WallStickVelocity = 4
 Config.WallHopForwardBoost = 18
 
 -- Wall jump
-Config.WallJumpImpulseUp = 110
-Config.WallJumpImpulseAway = 160 -- 65
+-- Config.WallJumpImpulseUp = 110
+-- Config.WallJumpImpulseAway = 160 -- 65
+Config.WallJumpImpulseUp = 50
+Config.WallJumpImpulseAway = 75 -- 65
 Config.WallJumpCooldownSeconds = 0.2
 Config.WallJumpStaminaCost = 14
 Config.WallJumpCarryFactor = 1

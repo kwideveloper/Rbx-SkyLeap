@@ -81,6 +81,15 @@ local function findNearbyWall(rootPart)
 	params.FilterDescendantsInstances = { rootPart.Parent }
 	params.IgnoreWater = Config.RaycastIgnoreWater
 
+	-- Use multiple raycast origins like VerticalClimb for better detection
+	local origins = {
+		rootPart.Position,
+		rootPart.Position + Vector3.new(0, 1.4, 0),
+		rootPart.Position + Vector3.new(0, -1.0, 0),
+		rootPart.Position + (rootPart.CFrame.RightVector * 0.6),
+		rootPart.Position - (rootPart.CFrame.RightVector * 0.6),
+	}
+
 	local offsets = {
 		rootPart.CFrame.RightVector,
 		-rootPart.CFrame.RightVector,
@@ -88,25 +97,36 @@ local function findNearbyWall(rootPart)
 		-rootPart.CFrame.LookVector,
 	}
 
-	for _, dir in ipairs(offsets) do
-		local result = workspace:Raycast(rootPart.Position, dir * (Config.WallSlideDetectionDistance or 4), params)
-		if result and result.Instance and result.Instance.CanCollide then
-			-- Verticality filter: accept only near-vertical surfaces (normal close to horizontal)
-			local n = result.Normal
-			local verticalDot = math.abs(n:Dot(Vector3.yAxis))
-			local allowedDot = (Config.SurfaceVerticalDotMax or Config.SurfaceVerticalDotMin or 0.2)
-			if verticalDot <= allowedDot then
-				local inst = result.Instance
-				-- WallJump is allowed by default; disallow only if attribute explicitly false
-				local wallJumpAttr = inst:GetAttribute("WallJump")
-				if wallJumpAttr ~= false then
-					return result
+	local bestResult = nil
+	local bestDistance = math.huge
+
+	for _, origin in ipairs(origins) do
+		for _, dir in ipairs(offsets) do
+			local result = workspace:Raycast(origin, dir * (Config.WallSlideDetectionDistance or 4), params)
+			if result and result.Instance and result.Instance.CanCollide then
+				-- Verticality filter: accept only near-vertical surfaces (normal close to horizontal)
+				local n = result.Normal
+				local verticalDot = math.abs(n:Dot(Vector3.yAxis))
+				-- Use a more lenient threshold for wall jump detection
+				local allowedDot = 0.5 -- More lenient than Config.SurfaceVerticalDotMax (0.1)
+				if verticalDot <= allowedDot then
+					local inst = result.Instance
+					-- WallJump is allowed by default; disallow only if attribute explicitly false
+					local wallJumpAttr = inst:GetAttribute("WallJump")
+					if wallJumpAttr ~= false then
+						-- Choose the closest wall for better accuracy
+						local distance = (result.Position - origin).Magnitude
+						if distance < bestDistance then
+							bestDistance = distance
+							bestResult = result
+						end
+					end
 				end
 			end
 		end
 	end
 
-	return nil
+	return bestResult
 end
 
 -- Function to reproduce Walljump animation
@@ -499,7 +519,7 @@ function WallJump.getNearbyWall(character)
 	return hit and hit.Instance or nil
 end
 
-function WallJump.tryJump(character)
+function WallJump.tryJump(character, resetMomentum)
 	local now = os.clock()
 	if now - lastJumpTick < Config.WallJumpCooldownSeconds then
 		return false
@@ -558,25 +578,68 @@ function WallJump.tryJump(character)
 	local upMul = getAttrNum(hit.Instance, "WallJumpUpMultiplier") or 1
 	local awayMul = getAttrNum(hit.Instance, "WallJumpAwayMultiplier") or 1
 
-	-- Calculate away direction (opposite of wall normal) for consistent impulse
-	local away = -hit.Normal * ((Config.WallJumpImpulseAway or 120) * awayMul)
+	-- Calculate away direction more robustly
+	-- Ensure we always push away from the wall by using the vector from wall to player
+	local wallToPlayer = (rootPart.Position - hit.Position).Unit
+	local wallNormal = hit.Normal.Unit
+
+	-- Choose the direction that points away from the wall toward the player
+	-- If the wall normal points toward the player, use it; otherwise use the inverse
+	local awayDirection
+	if wallNormal:Dot(wallToPlayer) > 0 then
+		-- Wall normal points toward player (away from wall) - use it
+		awayDirection = wallNormal
+	else
+		-- Wall normal points into wall - use the inverse
+		awayDirection = -wallNormal
+	end
+
+	local away = awayDirection * ((Config.WallJumpImpulseAway or 120) * awayMul)
 	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45) * upMul, 0)
 
+	-- DEBUG: Print wall jump information
+	print("=== WALL JUMP DEBUG ===")
+	print("Wall Normal:", wallNormal)
+	print("Wall to Player:", wallToPlayer)
+	print("Away direction:", awayDirection)
+	print("Away velocity:", away)
+	print("Up direction:", up)
+	print("Final velocity:", away + up)
+	print("Reset momentum:", resetMomentum)
+	print("Wall position:", hit.Position)
+	print("Player position:", rootPart.Position)
+	print("=======================")
+
 	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
-	rootPart.AssemblyLinearVelocity = away + up
+	-- If resetMomentum is true, completely reset all velocity before applying wall jump impulse
+	if resetMomentum then
+		-- Completely reset all velocity to zero for a microsecond before applying wall jump
+		rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		-- Apply wall jump impulse immediately after reset
+		rootPart.AssemblyLinearVelocity = away + up
+	else
+		-- Normal behavior: just set the velocity directly
+		rootPart.AssemblyLinearVelocity = away + up
+	end
 
 	-- Reorient the character to face away from the wall so movement inputs reinforce the jump direction
 	local oldAuto = humanoid.AutoRotate
 	humanoid.AutoRotate = false
 	local awayHoriz = Vector3.new(away.X, 0, away.Z)
 	if awayHoriz.Magnitude < 0.01 then
-		-- Use the opposite of wall normal for consistent direction
-		local n = -hit.Normal
-		awayHoriz = Vector3.new(n.X, 0, n.Z)
+		-- Use the calculated away direction for consistent orientation
+		awayHoriz = Vector3.new(awayDirection.X, 0, awayDirection.Z)
 	end
 
 	-- Check if this walljump is coming from wallslide (not wallrun)
 	local isFromWallSlide = slideData ~= nil
+
+	-- DEBUG: Print orientation information
+	print("=== ORIENTATION DEBUG ===")
+	print("Away horizontal:", awayHoriz)
+	print("Away horizontal magnitude:", awayHoriz.Magnitude)
+	print("Is from wall slide:", isFromWallSlide)
+	print("=========================")
 
 	if awayHoriz.Magnitude > 0 then
 		if isFromWallSlide then
