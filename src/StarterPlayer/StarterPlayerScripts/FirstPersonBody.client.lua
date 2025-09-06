@@ -11,7 +11,7 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 -- Helper: classify torso/neck/upper-body accessories we want to hide in FP
-local function isTorsoAccessoryType(t: Enum.AccessoryType?): boolean
+local function isTorsoAccessoryType(t)
 	if t == nil then
 		return false
 	end
@@ -26,35 +26,33 @@ local function isTorsoAccessoryType(t: Enum.AccessoryType?): boolean
 		or t == Enum.AccessoryType.Waist
 end
 
-local character: Model? = nil
-local humanoid: Humanoid? = nil
-
-type Connection = RBXScriptConnection
+local character = nil
+local humanoid = nil
 
 local state = {
-	parts = {} :: { BasePart },
-	transparencyConns = {} :: { [BasePart]: { Connection } },
+	parts = {},
+	transparencyConns = {},
 	isShowingBody = false,
-	charConns = {} :: { Connection },
+	charConns = {},
 	appliedFPZ = false,
-	headPart = nil :: BasePart?,
-	headDecals = {} :: { Decal },
-	headOrigDecalTransparency = {} :: { [Decal]: number },
+	headPart = nil,
+	headDecals = {},
+	headOrigDecalTransparency = {},
 	headHidden = false,
-	headAttachmentNames = {} :: { [string]: boolean },
-	headAccessoryParts = {} :: { BasePart },
-	headAccessorySet = {} :: { [BasePart]: boolean },
-	otherAccessoryParts = {} :: { BasePart },
-	otherWrapLayers = {} :: { WrapLayer },
-	otherWrapOrigEnabled = {} :: { [WrapLayer]: boolean },
-	headAccessoryAccs = {} :: { [Accessory]: boolean },
-	headWrapLayers = {} :: { WrapLayer },
-	headWrapOrigEnabled = {} :: { [WrapLayer]: boolean },
-	limbAccessoryParts = {} :: { BasePart },
+	headAttachmentNames = {},
+	headAccessoryParts = {},
+	headAccessorySet = {},
+	otherAccessoryParts = {},
+	otherWrapLayers = {},
+	otherWrapOrigEnabled = {},
+	headAccessoryAccs = {},
+	headWrapLayers = {},
+	headWrapOrigEnabled = {},
+	limbAccessoryParts = {},
 	prevZoomedIn = false,
 }
 
-local function disconnectConnections(connsTbl: { [any]: { Connection } } | { Connection })
+local function disconnectConnections(connsTbl)
 	if connsTbl then
 		if typeof(connsTbl) == "table" then
 			for key, value in pairs(connsTbl) do
@@ -68,8 +66,8 @@ local function disconnectConnections(connsTbl: { [any]: { Connection } } | { Con
 					end
 				elseif typeof(value) == "Instance" or typeof(value) == "RBXScriptConnection" then
 					pcall(function()
-						if (value :: any).Disconnect then
-							(value :: any):Disconnect()
+						if value.Disconnect then
+							value:Disconnect()
 						end
 					end)
 				end
@@ -79,7 +77,7 @@ local function disconnectConnections(connsTbl: { [any]: { Connection } } | { Con
 	end
 end
 
-local function collectCharacterParts(char: Model): { BasePart }
+local function collectCharacterParts(char)
 	local parts = {}
 	for _, d in ipairs(char:GetDescendants()) do
 		if d:IsA("BasePart") then
@@ -121,8 +119,8 @@ local function clearPartListeners()
 	end
 end
 
-local function collectHeadInfo(char: Model)
-	state.headPart = char:FindFirstChild("Head") :: BasePart?
+local function collectHeadInfo(char)
+	state.headPart = char:FindFirstChild("Head")
 	state.headDecals = {}
 	state.headOrigDecalTransparency = {}
 	state.headAttachmentNames = {}
@@ -142,7 +140,7 @@ local function collectHeadInfo(char: Model)
 	end
 end
 
-local function collectHeadAccessoryParts(char: Model)
+local function collectHeadAccessoryParts(char)
 	state.headAccessoryParts = {}
 	state.headAccessorySet = {}
 	state.headAccessoryAccs = {}
@@ -168,60 +166,61 @@ local function collectHeadAccessoryParts(char: Model)
 				end
 			end)
 			if not accTypeOk then
-				continue
-			end
-			local handle = acc:FindFirstChild("Handle")
-			if handle and handle:IsA("BasePart") then
-				local isHeadAttached = false
-				-- 1) Attachment name match
-				for _, att in ipairs(handle:GetChildren()) do
-					if att:IsA("Attachment") and state.headAttachmentNames[att.Name] then
-						isHeadAttached = true
-						break
-					end
-				end
-				-- 2) Weld link to head
-				if not isHeadAttached and state.headPart then
-					for _, j in ipairs(handle:GetDescendants()) do
-						if j:IsA("Weld") or j:IsA("Motor6D") then
-							local p0 = (j :: any).Part0
-							local p1 = (j :: any).Part1
-							if p0 == state.headPart or p1 == state.headPart then
-								isHeadAttached = true
-								break
-							end
-						elseif j:IsA("WeldConstraint") then
-							local p0 = (j :: any).Part0
-							local p1 = (j :: any).Part1
-							if p0 == state.headPart or p1 == state.headPart then
-								isHeadAttached = true
-								break
-							end
-						end
-						if isHeadAttached then
+				-- Skip this accessory
+			else
+				local handle = acc:FindFirstChild("Handle")
+				if handle and handle:IsA("BasePart") then
+					local isHeadAttached = false
+					-- 1) Attachment name match
+					for _, att in ipairs(handle:GetChildren()) do
+						if att:IsA("Attachment") and state.headAttachmentNames[att.Name] then
+							isHeadAttached = true
 							break
 						end
 					end
-				end
-				-- 3) Distance heuristic fallback
-				if not isHeadAttached and state.headPart then
-					local maxDist = (Config.FirstPersonHeadAccessoryMaxDistance ~= nil)
-							and Config.FirstPersonHeadAccessoryMaxDistance
-						or 3
-					local ok, dist = pcall(function()
-						return (handle.Position - state.headPart.Position).Magnitude
-					end)
-					if ok and dist <= maxDist then
-						isHeadAttached = true
+					-- 2) Weld link to head
+					if not isHeadAttached and state.headPart then
+						for _, j in ipairs(handle:GetDescendants()) do
+							if j:IsA("Weld") or j:IsA("Motor6D") then
+								local p0 = j.Part0
+								local p1 = j.Part1
+								if p0 == state.headPart or p1 == state.headPart then
+									isHeadAttached = true
+									break
+								end
+							elseif j:IsA("WeldConstraint") then
+								local p0 = j.Part0
+								local p1 = j.Part1
+								if p0 == state.headPart or p1 == state.headPart then
+									isHeadAttached = true
+									break
+								end
+							end
+							if isHeadAttached then
+								break
+							end
+						end
 					end
-				end
-				if isHeadAttached then
-					state.headAccessoryAccs[acc] = true
-					-- Collect all BaseParts under this accessory to hide/show locally
-					for _, d in ipairs(acc:GetDescendants()) do
-						if d:IsA("BasePart") then
-							table.insert(state.headAccessoryParts, d)
-							state.headAccessorySet[d] = true
+					-- 3) Distance heuristic fallback
+					if not isHeadAttached and state.headPart then
+						local maxDist = (Config.FirstPersonHeadAccessoryMaxDistance ~= nil)
+								and Config.FirstPersonHeadAccessoryMaxDistance
+							or 3
+						local ok, dist = pcall(function()
+							return (handle.Position - state.headPart.Position).Magnitude
+						end)
+						if ok and dist <= maxDist then
+							isHeadAttached = true
+						end
+					end
+					if isHeadAttached then
+						state.headAccessoryAccs[acc] = true
+						-- Collect all BaseParts under this accessory to hide/show locally
+						for _, d in ipairs(acc:GetDescendants()) do
+							if d:IsA("BasePart") then
+								table.insert(state.headAccessoryParts, d)
+								state.headAccessorySet[d] = true
+							end
 						end
 					end
 				end
@@ -239,13 +238,13 @@ local function collectHeadAccessoryParts(char: Model)
 	end
 end
 
-local function collectOtherAccessoryParts(char: Model)
+local function collectOtherAccessoryParts(char)
 	state.otherAccessoryParts = {}
 	state.otherWrapLayers = {}
 	state.otherWrapOrigEnabled = {}
 	for _, acc in ipairs(char:GetChildren()) do
 		if acc:IsA("Accessory") then
-			local accType: Enum.AccessoryType? = nil
+			local accType = nil
 			pcall(function()
 				accType = acc.AccessoryType
 			end)
@@ -265,7 +264,7 @@ local function collectOtherAccessoryParts(char: Model)
 	end
 end
 
-local function collectLimbAccessoryParts(char: Model)
+local function collectLimbAccessoryParts(char)
 	state.limbAccessoryParts = {}
 	local limbKeywords = { "Hand", "Arm", "Foot", "Leg" }
 	for _, acc in ipairs(char:GetChildren()) do
@@ -295,7 +294,7 @@ local function collectLimbAccessoryParts(char: Model)
 	end
 end
 
-local function updateHeadVisibility(hide: boolean)
+local function updateHeadVisibility(hide)
 	if not state.headPart then
 		return
 	end
@@ -327,7 +326,7 @@ local function updateHeadVisibility(hide: boolean)
 	end
 end
 
-local function updateHeadAccessoriesVisibility(hide: boolean)
+local function updateHeadAccessoriesVisibility(hide)
 	for _, part in ipairs(state.headAccessoryParts) do
 		if hide then
 			part.LocalTransparencyModifier = 1
@@ -337,14 +336,14 @@ local function updateHeadAccessoriesVisibility(hide: boolean)
 	end
 end
 
-local function updateOtherAccessoriesVisibility(zoomedIn: boolean)
+local function updateOtherAccessoriesVisibility(zoomedIn)
 	for _, part in ipairs(state.otherAccessoryParts) do
 		-- Hide only torso/neck/torso-adjacent accessories in first-person
 		part.LocalTransparencyModifier = zoomedIn and 1 or 0
 	end
 end
 
-local function updateLimbAccessoriesVisibility(zoomedIn: boolean)
+local function updateLimbAccessoriesVisibility(zoomedIn)
 	for _, part in ipairs(state.limbAccessoryParts) do
 		if zoomedIn then
 			part.LocalTransparencyModifier = part.Transparency
@@ -354,7 +353,7 @@ local function updateLimbAccessoriesVisibility(zoomedIn: boolean)
 	end
 end
 
-local function ensurePartListeners(parts: { BasePart })
+local function ensurePartListeners(parts)
 	clearPartListeners()
 	for _, part in ipairs(parts) do
 		state.transparencyConns[part] = {}
@@ -374,7 +373,7 @@ local function ensurePartListeners(parts: { BasePart })
 	end
 end
 
-local function setBodyVisible(visible: boolean)
+local function setBodyVisible(visible)
 	if state.isShowingBody == visible then
 		return
 	end
@@ -393,7 +392,7 @@ local function setBodyVisible(visible: boolean)
 	end
 end
 
-local function isZoomedFullyIn(): boolean
+local function isZoomedFullyIn()
 	if not camera then
 		return false
 	end
@@ -402,7 +401,7 @@ local function isZoomedFullyIn(): boolean
 	return distance <= threshold
 end
 
-local function onCharacterAdded(char: Model)
+local function onCharacterAdded(char)
 	character = char
 	humanoid = char:WaitForChild("Humanoid")
 
@@ -505,7 +504,7 @@ RunService.RenderStepped:Connect(function()
 				local shown = 0
 				for _, p in ipairs(state.headAccessoryParts) do
 					local acc = p:FindFirstAncestorOfClass("Accessory")
-					shown += 1
+					shown = shown + 1
 					if shown >= 5 then
 						break
 					end
