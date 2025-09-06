@@ -275,11 +275,29 @@ Players.PlayerRemoving:Connect(function(player)
 	purchaseAttempts[player] = nil
 end)
 
--- Initialize default trail for new players
+-- Initialize trail for players
 Players.PlayerAdded:Connect(function(player)
-	-- Give default trail to new players
 	task.wait(2) -- Wait for profile to load
+
 	if PlayerProfile.load(player.UserId) then
-		PlayerProfile.purchaseTrail(player.UserId, "default")
+		-- Ensure default trail is purchased
+		if not PlayerProfile.ownsTrail(player.UserId, "default") then
+			PlayerProfile.purchaseTrail(player.UserId, "default")
+		end
+
+		-- Load and equip the player's saved trail
+		local equippedTrail = PlayerProfile.getEquippedTrail(player.UserId)
+		if equippedTrail and PlayerProfile.ownsTrail(player.UserId, equippedTrail) then
+			print("[TrailSystem] Loading equipped trail for", player.Name, ":", equippedTrail)
+			-- Update trail visuals directly
+			TrailVisuals.setEquippedTrail(equippedTrail, player)
+			-- Notify clients of the equipped trail
+			TrailEquipped:FireAllClients(player, equippedTrail)
+		else
+			-- Fallback to default trail
+			print("[TrailSystem] No valid equipped trail for", player.Name, ", using default")
+			TrailVisuals.setEquippedTrail("default", player)
+			TrailEquipped:FireAllClients(player, "default")
+		end
 	end
 end)
