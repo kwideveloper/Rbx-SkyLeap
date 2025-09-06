@@ -121,27 +121,11 @@ PurchaseTrail.OnServerInvoke = function(player, trailId)
 		return { success = false, reason = "InvalidCurrency" }
 	end
 
-	-- Get current balances before spending
-	local currentCoins, currentDiamonds = PlayerProfile.getBalances(player.UserId)
-	print(
-		string.format(
-			"[TrailSystem] Before purchase - %s wants to spend %d %s. Current: %d coins, %d diamonds",
-			player.Name,
-			trail.price,
-			trail.currency,
-			currentCoins,
-			currentDiamonds
-		)
-	)
-
 	-- Attempt to spend currency
 	local spendSuccess, newCoins, newDiamonds = PlayerProfile.trySpend(player.UserId, trail.currency, trail.price)
 	if not spendSuccess then
-		print(string.format("[TrailSystem] Purchase failed - insufficient funds for %s", player.Name))
 		return { success = false, reason = "InsufficientFunds" }
 	end
-
-	print(string.format("[TrailSystem] After spend - New balance: %d coins, %d diamonds", newCoins, newDiamonds))
 
 	-- Purchase the trail
 	local purchaseSuccess = PlayerProfile.purchaseTrail(player.UserId, trailId)
@@ -177,15 +161,6 @@ PurchaseTrail.OnServerInvoke = function(player, trailId)
 		Coins = newCoins,
 		Diamonds = newDiamonds,
 	})
-
-	print(
-		string.format(
-			"[TrailSystem] Updated currency for %s: %d coins, %d diamonds",
-			player.Name,
-			newCoins,
-			newDiamonds
-		)
-	)
 
 	-- Log significant purchases
 	if trail.price > 1000 then
@@ -242,9 +217,6 @@ EquipTrail.OnServerInvoke = function(player, trailId)
 	-- Notify all clients of successful equipment (so clients can update their local data)
 	TrailEquipped:FireAllClients(player, trailId)
 
-	-- Log equipment
-	print(string.format("[TrailSystem] %s equipped trail: %s", player.Name, trail.name))
-
 	return { success = true, message = message }
 end
 
@@ -288,14 +260,11 @@ Players.PlayerAdded:Connect(function(player)
 		-- Load and equip the player's saved trail
 		local equippedTrail = PlayerProfile.getEquippedTrail(player.UserId)
 		if equippedTrail and PlayerProfile.ownsTrail(player.UserId, equippedTrail) then
-			print("[TrailSystem] Loading equipped trail for", player.Name, ":", equippedTrail)
 			-- Update trail visuals directly
 			TrailVisuals.setEquippedTrail(equippedTrail, player)
 			-- Notify clients of the equipped trail
 			TrailEquipped:FireAllClients(player, equippedTrail)
 		else
-			-- Fallback to default trail
-			print("[TrailSystem] No valid equipped trail for", player.Name, ", using default")
 			TrailVisuals.setEquippedTrail("default", player)
 			TrailEquipped:FireAllClients(player, "default")
 		end
