@@ -6,11 +6,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- Hide Trail template
-local trailTemplate = playerGui:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Template
+local trailTemplate = playerGui:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Core.Template
 trailTemplate.Visible = false
 
 -- Wait for modules
-local TrailConfig = require(ReplicatedStorage:WaitForChild("TrailSystem"):WaitForChild("TrailConfig"))
+local TrailConfig =
+	require(ReplicatedStorage:WaitForChild("Cosmetics"):WaitForChild("TrailSystem"):WaitForChild("TrailConfig"))
 
 -- Wait for remotes
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -274,7 +275,7 @@ local function initializeTrailShop()
 		return
 	end
 
-	local cosmetics = content:FindFirstChild("Cosmetics")
+	local cosmetics = content:FindFirstChild("Cosmetics").Core
 	if not cosmetics then
 		warn("Shop Cosmetics not found!")
 		return
