@@ -27,6 +27,21 @@ local DEFAULT_CONFIG = {
 	VISIBLE_TIME = 0.25, -- Time in seconds that particle stays fully visible AFTER fade-in completes (independent of Lifetime)
 }
 
+-- Pool configuration for memory management
+local POOL_CONFIG = {
+	MAX_POOL_SIZE = 100, -- Maximum number of particles that can be stored in the pool
+}
+
+-- Update throttling configuration
+local UPDATE_CONFIG = {
+	UPDATE_INTERVAL = 1 / 30, -- Update at 30 FPS instead of 60 FPS to reduce CPU usage
+}
+
+-- Culling configuration for performance
+local CULLING_CONFIG = {
+	ENABLE_CONTAINER_CULLING = true, -- Disable updates for invisible containers
+}
+
 -- System state
 local activeParticles = {}
 local particlePool = {} -- Pool for reusing particles
@@ -59,6 +74,68 @@ local function getEasingDirection(direction)
 		["InOut"] = Enum.EasingDirection.InOut,
 	}
 	return directionMap[direction] or Enum.EasingDirection.Out
+end
+
+-- Optimized tween creation helper to batch similar operations
+local function createOptimizedTweens(particleImage, config, totalParticleTime)
+	local easingStyle = getEasingStyle(config.EASING_STYLE)
+	local easingDirection = getEasingDirection(config.EASING_DIRECTION)
+
+	-- Create tweens with optimized settings
+	local uiScale = particleImage:FindFirstChild("UIScale")
+	local scaleTween = TweenService:Create(
+		uiScale,
+		TweenInfo.new(totalParticleTime, easingStyle, easingDirection),
+		{ Scale = config.MAX_SCALE }
+	)
+
+	-- Transparency timing
+	local fadeInTime = 0.2
+	local visibleTime = config.VISIBLE_TIME
+	local fadeOutTime = 0.3
+
+	local fadeInTween = TweenService:Create(
+		particleImage,
+		TweenInfo.new(fadeInTime, easingStyle, easingDirection),
+		{ ImageTransparency = 0 }
+	)
+
+	local fadeOutTween = TweenService:Create(
+		particleImage,
+		TweenInfo.new(fadeOutTime, easingStyle, easingDirection),
+		{ ImageTransparency = 1 }
+	)
+
+	local rotationTween = TweenService:Create(
+		particleImage,
+		TweenInfo.new(totalParticleTime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+		{ Rotation = config.ROTATION_SPEED * totalParticleTime }
+	)
+
+	-- Movement with random velocity
+	local velocityX = (math.random() - 0.5) * config.SPEED / 1000
+	local velocityY = (math.random() - 0.5) * config.SPEED / 1000
+	local currentPos = particleImage.Position
+	local targetPos = UDim2.new(
+		currentPos.X.Scale + velocityX * totalParticleTime,
+		currentPos.X.Offset,
+		currentPos.Y.Scale + velocityY * totalParticleTime,
+		currentPos.Y.Offset
+	)
+
+	local movementTween = TweenService:Create(
+		particleImage,
+		TweenInfo.new(totalParticleTime, easingStyle, easingDirection),
+		{ Position = targetPos }
+	)
+
+	return {
+		scale = scaleTween,
+		fadeIn = fadeInTween,
+		fadeOut = fadeOutTween,
+		rotation = rotationTween,
+		movement = movementTween,
+	}
 end
 
 -- Function to get random position based on area type
@@ -134,7 +211,6 @@ function ParticleSystem.init()
 	end
 
 	isInitialized = true
-	print("[ParticleSystem] Initialized successfully")
 end
 
 function ParticleSystem.createEmitterForImage(image)
@@ -167,38 +243,10 @@ function ParticleSystem.createEmitterForImage(image)
 		-- Use original image size as default max scale
 		local originalSize = math.max(image.AbsoluteSize.X, image.AbsoluteSize.Y)
 		config.MAX_SCALE = originalSize / 20 -- Normalize to base size of 20
-		print("[ParticleSystem] Using original image size as MaxScale:", config.MAX_SCALE)
 	end
 
 	-- Store the image ID from the original element
 	local imageID = image.Image
-	print("[ParticleSystem] Stored image ID:", imageID, "from element:", image.Name)
-	print(
-		"[ParticleSystem] Config - Particles:",
-		config.MAX_PARTICLES,
-		"Lifetime:",
-		config.LIFETIME,
-		"MaxScale:",
-		config.MAX_SCALE,
-		"RotationSpeed:",
-		config.ROTATION_SPEED,
-		"Speed:",
-		config.SPEED,
-		"Cooldown:",
-		config.COOLDOWN,
-		"Area:",
-		config.AREA,
-		"EasingStyle:",
-		config.EASING_STYLE,
-		"EasingDirection:",
-		config.EASING_DIRECTION,
-		"Staggered:",
-		config.STAGGERED,
-		"StaggerPercent:",
-		config.STAGGER_PERCENT,
-		"VisibleTime:",
-		config.VISIBLE_TIME
-	)
 
 	-- Hide the original image (only particles should be visible)
 	image.Visible = false
@@ -220,6 +268,7 @@ function ParticleSystem.startEmission(container, config, originalImage, imageID)
 		totalSpawned = 0,
 		originalImage = originalImage, -- Store reference to original image
 		imageID = imageID, -- Store the image ID explicitly
+		lastUpdate = 0, -- For throttling updates
 	}
 
 	-- Start emission loop with higher frequency for smoother animations
@@ -230,7 +279,6 @@ function ParticleSystem.startEmission(container, config, originalImage, imageID)
 	end)
 
 	table.insert(activeParticles, emitter)
-	print("[ParticleSystem] Started emission for", container.Name or "container", "(x" .. config.MAX_PARTICLES .. ")")
 end
 
 function ParticleSystem.spawnParticle(emitter)
@@ -259,8 +307,6 @@ function ParticleSystem.spawnParticle(emitter)
 
 		-- Reset rotation
 		particleImage.Rotation = 0
-
-		print("[ParticleSystem] Reused particle from pool")
 	else
 		-- Create a new ImageLabel for the particle
 		particleImage = Instance.new("ImageLabel")
@@ -268,7 +314,6 @@ function ParticleSystem.spawnParticle(emitter)
 		-- Set the image ID directly from the stored ID
 		if emitter.imageID then
 			particleImage.Image = emitter.imageID
-			print("[ParticleSystem] Created new particle with image:", emitter.imageID)
 		else
 			-- Fallback: create a simple colored particle
 			local colors = {
@@ -281,7 +326,6 @@ function ParticleSystem.spawnParticle(emitter)
 			}
 			particleImage.BackgroundColor3 = colors[math.random(1, #colors)]
 			particleImage.BackgroundTransparency = 1 -- Always 1 as requested
-			print("[ParticleSystem] Created new fallback colored particle")
 		end
 
 		-- Override particle-specific properties
@@ -318,90 +362,41 @@ function ParticleSystem.spawnParticle(emitter)
 	local randomX, randomY = getRandomPositionInArea(emitter.config.AREA, emitter.container.AbsoluteSize)
 	particleImage.Position = UDim2.new(randomX, 0, randomY, 0)
 
-	-- Create tweens using TweenService
-	local easingStyle = getEasingStyle(emitter.config.EASING_STYLE)
-	local easingDirection = getEasingDirection(emitter.config.EASING_DIRECTION)
-
-	-- Scale tween (use total particle time instead of lifetime)
-	local uiScale = particleImage:FindFirstChild("UIScale")
+	-- Create tweens using optimized batch function
 	local totalParticleTime = 0.2 + emitter.config.VISIBLE_TIME + 0.3 -- fadeIn + visible + fadeOut
-	local scaleTween = TweenService:Create(
-		uiScale,
-		TweenInfo.new(totalParticleTime, easingStyle, easingDirection),
-		{ Scale = emitter.config.MAX_SCALE }
-	)
-
-	-- Calculate timing for transparency tweens (independent of lifetime)
-	local fadeInTime = 0.2 -- Quick fade in (0.2 seconds)
 	local visibleTime = emitter.config.VISIBLE_TIME -- Time to stay visible after fade-in completes
-	local fadeOutTime = 0.3 -- Quick fade out (0.3 seconds)
 
-	-- Transparency tweens (fade in, stay visible, then fade out)
-	local fadeInTween = TweenService:Create(
-		particleImage,
-		TweenInfo.new(fadeInTime, easingStyle, easingDirection),
-		{ ImageTransparency = 0 } -- Fade in to visible
-	)
-
-	local fadeOutTween = TweenService:Create(
-		particleImage,
-		TweenInfo.new(fadeOutTime, easingStyle, easingDirection),
-		{ ImageTransparency = 1 } -- Fade out to invisible
-	)
-
-	-- Rotation tween (use total particle time)
-	local rotationTween = TweenService:Create(
-		particleImage,
-		TweenInfo.new(totalParticleTime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-		{ Rotation = emitter.config.ROTATION_SPEED * totalParticleTime }
-	)
-
-	-- Movement tween (random drift, use total particle time)
-	local velocityX = (math.random() - 0.5) * emitter.config.SPEED / 1000
-	local velocityY = (math.random() - 0.5) * emitter.config.SPEED / 1000
-	local currentPos = particleImage.Position
-	local targetPos = UDim2.new(
-		currentPos.X.Scale + velocityX * totalParticleTime,
-		currentPos.X.Offset,
-		currentPos.Y.Scale + velocityY * totalParticleTime,
-		currentPos.Y.Offset
-	)
-
-	local movementTween = TweenService:Create(
-		particleImage,
-		TweenInfo.new(totalParticleTime, easingStyle, easingDirection),
-		{ Position = targetPos }
-	)
-
-	-- Store tweens for cleanup
-	particle.tweens = {
-		scale = scaleTween,
-		fadeIn = fadeInTween,
-		fadeOut = fadeOutTween,
-		rotation = rotationTween,
-		movement = movementTween,
-	}
+	-- Use optimized tween creation
+	particle.tweens = createOptimizedTweens(particleImage, emitter.config, totalParticleTime)
 
 	-- Start all tweens
-	scaleTween:Play()
-	rotationTween:Play()
-	movementTween:Play()
+	particle.tweens.scale:Play()
+	particle.tweens.rotation:Play()
+	particle.tweens.movement:Play()
 
 	-- Start fade in, wait visible time after fade-in completes, then fade out
-	fadeInTween:Play()
-	fadeInTween.Completed:Connect(function()
+	particle.tweens.fadeIn:Play()
+	particle.tweens.fadeIn.Completed:Connect(function()
 		-- Wait for the specified visible time after fade-in is complete
 		task.wait(visibleTime)
 		-- Then start fade out
-		fadeOutTween:Play()
+		particle.tweens.fadeOut:Play()
 	end)
 
 	-- Set up completion callback for fade-out (when particle is completely gone)
-	fadeOutTween.Completed:Connect(function()
+	particle.tweens.fadeOut.Completed:Connect(function()
 		-- Recycle particle when fade-out completes
 		particleImage.Visible = false
 		particleImage.Parent = nil
-		table.insert(particlePool, particle)
+
+		-- Only add to pool if we haven't exceeded the maximum pool size
+		if #particlePool < POOL_CONFIG.MAX_POOL_SIZE then
+			table.insert(particlePool, particle)
+		else
+			-- Pool is full, destroy the particle instead of recycling
+			particle.image:Destroy()
+		end
+
 		emitter.activeParticles = emitter.activeParticles - 1
 
 		-- Remove from active particles list
@@ -419,6 +414,20 @@ end
 
 function ParticleSystem.updateEmitter(emitter, dt)
 	local now = os.clock()
+
+	-- Throttle updates to reduce CPU usage
+	emitter.lastUpdate = emitter.lastUpdate + dt
+	if emitter.lastUpdate < UPDATE_CONFIG.UPDATE_INTERVAL then
+		return
+	end
+	emitter.lastUpdate = 0
+
+	-- Container culling: skip updates if container is not visible
+	if CULLING_CONFIG.ENABLE_CONTAINER_CULLING and emitter.container then
+		if not emitter.container:IsDescendantOf(game) or not emitter.container.Visible then
+			return
+		end
+	end
 
 	-- Initialize staggered spawning variables if not set
 	if not emitter.staggeredSpawned then
@@ -494,24 +503,36 @@ function ParticleSystem.stopEmission(container)
 			emitter.isEmitting = false
 			if emitter.connection then
 				emitter.connection:Disconnect()
+				emitter.connection = nil
 			end
 			-- Cancel all tweens and recycle particles to the pool
 			for _, particle in ipairs(emitter.particles) do
 				if particle.tweens then
-					-- Cancel all tweens
-					particle.tweens.scale:Cancel()
-					particle.tweens.fadeIn:Cancel()
-					particle.tweens.fadeOut:Cancel()
-					particle.tweens.rotation:Cancel()
-					particle.tweens.movement:Cancel()
+					-- Cancel all tweens and clear connections
+					for tweenName, tween in pairs(particle.tweens) do
+						if tween then
+							tween:Cancel()
+							particle.tweens[tweenName] = nil
+						end
+					end
+					-- Clear the tweens table
+					particle.tweens = nil
 				end
 
 				if particle.image then
 					particle.image.Visible = false
 					particle.image.Parent = nil
-					table.insert(particlePool, particle)
+					-- Only add to pool if we haven't exceeded the maximum pool size
+					if #particlePool < POOL_CONFIG.MAX_POOL_SIZE then
+						table.insert(particlePool, particle)
+					else
+						-- Pool is full, destroy the particle
+						particle.image:Destroy()
+					end
 				end
 			end
+			-- Clear the particles array
+			emitter.particles = {}
 			table.remove(activeParticles, i)
 			break
 		end
@@ -535,15 +556,34 @@ function ParticleSystem.cleanup()
 	for _, emitter in ipairs(activeParticles) do
 		if emitter.connection then
 			emitter.connection:Disconnect()
+			emitter.connection = nil
 		end
 		for _, particle in ipairs(emitter.particles) do
+			-- Cancel and clean up tweens
+			if particle.tweens then
+				for tweenName, tween in pairs(particle.tweens) do
+					if tween then
+						tween:Cancel()
+					end
+				end
+				particle.tweens = nil
+			end
+			-- Destroy particle image
 			if particle.image then
 				particle.image:Destroy()
 			end
 		end
+		-- Clear emitter data
+		emitter.particles = nil
 	end
 	activeParticles = {}
-	particlePool = {} -- Clear the pool as well
+	-- Clear the pool and destroy all pooled particles
+	for _, particle in ipairs(particlePool) do
+		if particle and particle.image then
+			particle.image:Destroy()
+		end
+	end
+	particlePool = {}
 	isInitialized = false
 end
 
@@ -567,7 +607,6 @@ local function initializeParticleSystem()
 
 	if success then
 		isInitialized = true
-		print("[ParticleSystem] Client initialization successful")
 
 		-- Set up cleanup on player leaving
 		LocalPlayer:GetPropertyChangedSignal("Parent"):Connect(function()
@@ -626,7 +665,7 @@ end
 
 -- Enable/disable debug mode
 function ParticleAPI.setDebug(enabled)
-	print("[ParticleSystem] Debug mode " .. (enabled and "enabled" or "disabled"))
+	-- Debug mode functionality can be added here if needed
 end
 
 -- Expose API globally for development

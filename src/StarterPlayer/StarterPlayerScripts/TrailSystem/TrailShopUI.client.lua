@@ -187,19 +187,6 @@ local function purchaseTrail(trailId)
 		-- Update local state
 		ownedTrails[trailId] = true
 		updateTrailFrame(trailId, frame)
-
-		-- Currency UI will be updated automatically by the server
-		print(
-			string.format(
-				"[TrailShopUI] Purchase successful: %s, New balance: %d coins, %d diamonds",
-				trailData.name,
-				result.coins or 0,
-				result.diamonds or 0
-			)
-		)
-
-		-- Show success message
-		print("Successfully purchased " .. trailData.name .. "!")
 	else
 		-- Show error message
 		local errorMsg = result and result.reason or "Purchase failed"
@@ -308,9 +295,6 @@ local function initializeTrailShop()
 			child:Destroy()
 		end
 	end
-
-	-- Don't create frames yet - wait for data to load first
-	print("[TrailShopUI] Shop UI initialized, waiting for data...")
 end
 
 -- Create trail frames after data is loaded
@@ -369,8 +353,6 @@ local function loadTrailData()
 			-- Show the frame now that data is loaded
 			frame.Visible = true
 		end
-
-		print("[TrailShopUI] Trail data loaded successfully, UI is now visible")
 	else
 		warn("Failed to load trail data: " .. (result and result.reason or "Unknown error"))
 		-- Create frames anyway with default state if server data fails
