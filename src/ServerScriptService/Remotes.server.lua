@@ -84,6 +84,12 @@ ensureRemoteFunction(remotesFolder, "EquipTrail")
 ensureRemoteFunction(remotesFolder, "GetTrailData")
 ensureRemoteEvent(remotesFolder, "TrailEquipped")
 
+-- Hand trail system remotes
+ensureRemoteFunction(remotesFolder, "PurchaseHandTrail")
+ensureRemoteFunction(remotesFolder, "EquipHandTrail")
+ensureRemoteFunction(remotesFolder, "GetHandTrailData")
+ensureRemoteEvent(remotesFolder, "HandTrailEquipped")
+
 -- TEMPORARY: Anti-cheat remotes disabled for debugging
 -- if RunService:IsStudio() then
 -- 	-- Anti-cheat debug remotes (DEVELOPMENT ONLY)

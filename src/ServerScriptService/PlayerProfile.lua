@@ -36,6 +36,7 @@ local function defaultProfile()
 			equipped = {
 				outfitId = nil,
 				trailId = nil,
+				handTrailId = nil,
 			},
 		},
 		purchases = {
@@ -73,7 +74,8 @@ local function migrate(profile)
 	profile.stats.coins = profile.stats.coins or 0
 	profile.stats.diamonds = profile.stats.diamonds or 0
 	profile.progression = profile.progression or { unlockedAbilities = {} }
-	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
+	profile.cosmetics = profile.cosmetics
+		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
 	profile.purchases = profile.purchases or { developerProducts = {}, gamePasses = {} }
 	profile.settings = profile.settings or { cameraFov = nil, uiScale = nil }
 	profile.rewards = profile.rewards or { playtimeClaimed = {}, lastPlaytimeDay = nil, playtimeAccumulatedSeconds = 0 }
@@ -583,7 +585,8 @@ function PlayerProfile.purchaseTrail(userId, trailId)
 	trailId = tostring(trailId)
 
 	local profile = PlayerProfile.load(userId)
-	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
+	profile.cosmetics = profile.cosmetics
+		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
 	profile.cosmetics.owned = profile.cosmetics.owned or {}
 
 	-- Mark trail as owned
@@ -604,7 +607,8 @@ function PlayerProfile.equipTrail(userId, trailId)
 	end
 
 	local profile = PlayerProfile.load(userId)
-	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
+	profile.cosmetics = profile.cosmetics
+		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
 	profile.cosmetics.equipped = profile.cosmetics.equipped or { outfitId = nil, trailId = nil }
 
 	-- Equip the trail
@@ -636,6 +640,83 @@ function PlayerProfile.getOwnedTrails(userId)
 
 	-- Always include default trail
 	if not owned["default"] then
+		table.insert(ownedList, "default")
+	end
+
+	return ownedList
+end
+
+-- Hand trail management functions
+function PlayerProfile.ownsHandTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+	local profile = PlayerProfile.load(userId)
+	local owned = profile.cosmetics and profile.cosmetics.owned or {}
+	return owned["hand_" .. trailId] == true
+end
+
+function PlayerProfile.purchaseHandTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+
+	local profile = PlayerProfile.load(userId)
+	profile.cosmetics = profile.cosmetics
+		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
+	profile.cosmetics.owned = profile.cosmetics.owned or {}
+
+	-- Mark hand trail as owned with "hand_" prefix
+	profile.cosmetics.owned["hand_" .. trailId] = true
+
+	-- Force save for purchase
+	local success = forceSave(userId)
+	return success
+end
+
+function PlayerProfile.equipHandTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+
+	-- Verify ownership first
+	if not PlayerProfile.ownsHandTrail(userId, trailId) then
+		return false, "Hand trail not owned"
+	end
+
+	local profile = PlayerProfile.load(userId)
+	profile.cosmetics = profile.cosmetics
+		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
+	profile.cosmetics.equipped = profile.cosmetics.equipped or { outfitId = nil, trailId = nil, handTrailId = nil }
+
+	-- Equip the hand trail
+	profile.cosmetics.equipped.handTrailId = trailId
+
+	-- Force save for equipment change
+	local success = forceSave(userId)
+	return success, "Hand trail equipped"
+end
+
+function PlayerProfile.getEquippedHandTrail(userId)
+	userId = tostring(userId)
+	local profile = PlayerProfile.load(userId)
+	local equipped = profile.cosmetics and profile.cosmetics.equipped or {}
+	return equipped.handTrailId or "default"
+end
+
+function PlayerProfile.getOwnedHandTrails(userId)
+	userId = tostring(userId)
+	local profile = PlayerProfile.load(userId)
+	local owned = profile.cosmetics and profile.cosmetics.owned or {}
+	local ownedList = {}
+
+	for trailId, isOwned in pairs(owned) do
+		if isOwned and trailId:sub(1, 5) == "hand_" then
+			-- Remove "hand_" prefix for the returned list
+			local cleanTrailId = trailId:sub(6)
+			table.insert(ownedList, cleanTrailId)
+		end
+	end
+
+	-- Always include default hand trail
+	if not owned["hand_default"] then
 		table.insert(ownedList, "default")
 	end
 

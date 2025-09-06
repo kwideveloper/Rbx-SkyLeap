@@ -231,71 +231,8 @@ local function createTrail(char)
 	trail.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 	trail.Parent = char
 
-	-- Hand trails (only if enabled)
-	local leftHand = char:FindFirstChild("LeftHand")
-	local rightHand = char:FindFirstChild("RightHand")
-
-	if TRAIL_CONFIG.TrailHandsEnabled and leftHand then
-		local handA_L = leftHand:FindFirstChild(TRAIL_CONFIG.TrailAttachmentNameL or "TrailL")
-		if not handA_L then
-			handA_L = Instance.new("Attachment")
-			handA_L.Name = TRAIL_CONFIG.TrailAttachmentNameL or "TrailL"
-			handA_L.Position = Vector3.new(0, 0.1, 0)
-			handA_L.Parent = leftHand
-		end
-
-		local handB_L = leftHand:FindFirstChild("TrailB_L")
-		if not handB_L then
-			handB_L = Instance.new("Attachment")
-			handB_L.Name = "TrailB_L"
-			handB_L.Position = Vector3.new(0, -0.1, 0)
-			handB_L.Parent = leftHand
-		end
-
-		local handTrailL = Instance.new("Trail")
-		handTrailL.Attachment0 = handA_L
-		handTrailL.Attachment1 = handB_L
-		handTrailL.FaceCamera = true
-		handTrailL.Lifetime = TRAIL_CONFIG.TrailLifeTime * TRAIL_CONFIG.TrailHandsLifetimeFactor
-		handTrailL.MinLength = 0.05
-		handTrailL.WidthScale = NumberSequence.new(
-			TRAIL_CONFIG.TrailWidth * TRAIL_CONFIG.TrailHandsScale * TRAIL_CONFIG.TrailHandsSizeFactor
-		)
-		handTrailL.Transparency = NumberSequence.new(1)
-		handTrailL.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-		handTrailL.Parent = leftHand
-	end
-
-	if TRAIL_CONFIG.TrailHandsEnabled and rightHand then
-		local handA_R = rightHand:FindFirstChild(TRAIL_CONFIG.TrailAttachmentNameR or "TrailR")
-		if not handA_R then
-			handA_R = Instance.new("Attachment")
-			handA_R.Name = TRAIL_CONFIG.TrailAttachmentNameR or "TrailR"
-			handA_R.Position = Vector3.new(0, 0.1, 0)
-			handA_R.Parent = rightHand
-		end
-
-		local handB_R = rightHand:FindFirstChild("TrailB_R")
-		if not handB_R then
-			handB_R = Instance.new("Attachment")
-			handB_R.Name = "TrailB_R"
-			handB_R.Position = Vector3.new(0, -0.1, 0)
-			handB_R.Parent = rightHand
-		end
-
-		local handTrailR = Instance.new("Trail")
-		handTrailR.Attachment0 = handA_R
-		handTrailR.Attachment1 = handB_R
-		handTrailR.FaceCamera = true
-		handTrailR.Lifetime = TRAIL_CONFIG.TrailLifeTime * TRAIL_CONFIG.TrailHandsLifetimeFactor
-		handTrailR.MinLength = 0.05
-		handTrailR.WidthScale = NumberSequence.new(
-			TRAIL_CONFIG.TrailWidth * TRAIL_CONFIG.TrailHandsScale * TRAIL_CONFIG.TrailHandsSizeFactor
-		)
-		handTrailR.Transparency = NumberSequence.new(1)
-		handTrailR.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
-		handTrailR.Parent = rightHand
-	end
+	-- Hand trails are now handled by the separate HandTrailVisuals system
+	-- This system only handles the core body trail
 
 	-- Create particle system
 	local particleEmitter = createTrailParticles(char)
@@ -303,8 +240,6 @@ local function createTrail(char)
 	-- Store trail instances
 	trailInstances[char] = {
 		main = trail,
-		leftHand = leftHand and leftHand:FindFirstChildOfClass("Trail"),
-		rightHand = rightHand and rightHand:FindFirstChildOfClass("Trail"),
 		particles = particleEmitter,
 	}
 
@@ -327,14 +262,6 @@ local function updateTrail(char, speed, player)
 		updateTrailColor(instances.main, speed, player)
 	end
 
-	-- Update hand trails (use same speed as main trail)
-	if instances.leftHand then
-		updateTrailColor(instances.leftHand, speed, player)
-	end
-	if instances.rightHand then
-		updateTrailColor(instances.rightHand, speed, player)
-	end
-
 	-- Update particles based on speed
 	if instances.particles then
 		local shouldEmit = speed >= TRAIL_CONFIG.TrailParticlesSpeedMin
@@ -353,12 +280,6 @@ local function cleanupTrail(char)
 	if instances then
 		if instances.main then
 			instances.main:Destroy()
-		end
-		if instances.leftHand then
-			instances.leftHand:Destroy()
-		end
-		if instances.rightHand then
-			instances.rightHand:Destroy()
 		end
 		if instances.particles then
 			instances.particles:Destroy()
@@ -390,12 +311,6 @@ local function setEquippedTrail(trailId, player)
 
 		if instances.main then
 			updateTrailColor(instances.main, TRAIL_CONFIG.TrailSpeedMax * 0.6, trailPlayer)
-		end
-		if instances.leftHand then
-			updateTrailColor(instances.leftHand, TRAIL_CONFIG.TrailSpeedMax * 0.6, trailPlayer)
-		end
-		if instances.rightHand then
-			updateTrailColor(instances.rightHand, TRAIL_CONFIG.TrailSpeedMax * 0.6, trailPlayer)
 		end
 	end
 end

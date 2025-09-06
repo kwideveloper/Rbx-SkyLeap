@@ -1,35 +1,36 @@
--- Client-side trail shop UI system
--- Handles trail purchasing, equipping, and UI updates
+-- Client-side hand trail shop UI system
+-- Handles hand trail purchasing, equipping, and UI updates using existing template
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
--- Hide Trail template
-local trailTemplate =
-	playerGui:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Core:FindFirstChild("Template", true)
-trailTemplate.Visible = false
+-- Hide Hand trail template
+local handTrailTemplate = playerGui
+	:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Hands.ScrollingFrame
+	:FindFirstChild("Template", true)
+handTrailTemplate.Visible = false
 
 -- Wait for modules
-local TrailConfig =
-	require(ReplicatedStorage:WaitForChild("Cosmetics"):WaitForChild("TrailSystem"):WaitForChild("TrailConfig"))
+local HandTrailConfig =
+	require(ReplicatedStorage:WaitForChild("Cosmetics"):WaitForChild("TrailSystem"):WaitForChild("HandTrailConfig"))
 
 -- Wait for remotes
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
-local PurchaseTrail = Remotes:WaitForChild("PurchaseTrail")
-local EquipTrail = Remotes:WaitForChild("EquipTrail")
-local GetTrailData = Remotes:WaitForChild("GetTrailData")
-local TrailEquipped = Remotes:WaitForChild("TrailEquipped")
+local PurchaseHandTrail = Remotes:WaitForChild("PurchaseHandTrail")
+local EquipHandTrail = Remotes:WaitForChild("EquipHandTrail")
+local GetHandTrailData = Remotes:WaitForChild("GetHandTrailData")
+local HandTrailEquipped = Remotes:WaitForChild("HandTrailEquipped")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- UI State
 local shopUI = nil
-local trailFrames = {}
-local currentEquippedTrail = "default"
-local ownedTrails = {}
-local allTrails = {}
+local handTrailFrames = {}
+local currentEquippedHandTrail = "default"
+local ownedHandTrails = {}
+local allHandTrails = {}
 
 -- Animation settings
 local ANIMATION_DURATION = 0.3
@@ -45,18 +46,18 @@ local function findUIElement(parent, name)
 	return nil
 end
 
--- Helper function to create trail frame UI using existing template
-local function createTrailFrame(trailData, parent)
+-- Helper function to create hand trail frame UI using existing template
+local function createHandTrailFrame(trailData, parent)
 	-- Find the template
 	local template = parent:FindFirstChild("Template", true)
 	if not template then
-		warn("Template not found in Cosmetics folder!")
+		warn("Hand trail template not found in Hands folder!")
 		return nil
 	end
 
 	-- Clone the template
 	local frame = template:Clone()
-	frame.Name = "TrailFrame_" .. trailData.id
+	frame.Name = "HandTrailFrame_" .. trailData.id
 	frame.Visible = false -- Will be made visible when data is loaded
 	frame.Parent = parent
 
@@ -65,7 +66,7 @@ local function createTrailFrame(trailData, parent)
 	if nameLabel then
 		nameLabel.Text = trailData.name
 		-- Apply rarity color to name background
-		nameLabel.BackgroundColor3 = TrailConfig.RarityColors[trailData.rarity] or Color3.fromRGB(255, 255, 255)
+		nameLabel.BackgroundColor3 = HandTrailConfig.RarityColors[trailData.rarity] or Color3.fromRGB(255, 255, 255)
 	end
 
 	-- Update trail color
@@ -109,7 +110,7 @@ local function createTrailFrame(trailData, parent)
 		local rarity = info:FindFirstChild("Rarity")
 		if rarity then
 			rarity.Text = trailData.rarity
-			rarity.TextColor3 = TrailConfig.RarityColors[trailData.rarity] or Color3.fromRGB(255, 255, 255)
+			rarity.TextColor3 = HandTrailConfig.RarityColors[trailData.rarity] or Color3.fromRGB(255, 255, 255)
 		end
 	end
 
@@ -120,20 +121,20 @@ local function createTrailFrame(trailData, parent)
 	return frame, buyButton, equipButton
 end
 
--- Update trail frame based on ownership and equipment status
-local function updateTrailFrame(trailId, frame)
-	local trailData = TrailConfig.getTrailById(trailId)
+-- Update hand trail frame based on ownership and equipment status
+local function updateHandTrailFrame(trailId, frame)
+	local trailData = HandTrailConfig.getHandTrailById(trailId)
 	if not trailData or not frame then
 		return
 	end
 
-	local isOwned = ownedTrails[trailId] or false
-	local isEquipped = (currentEquippedTrail == trailId)
+	local isOwned = ownedHandTrails[trailId] or false
+	local isEquipped = (currentEquippedHandTrail == trailId)
 
 	-- Default trail is always owned, but only equipped if it's the current equipped trail
 	if trailId == "default" then
 		isOwned = true
-		-- Don't force isEquipped = true, let it be determined by currentEquippedTrail
+		-- Don't force isEquipped = true, let it be determined by currentEquippedHandTrail
 	end
 
 	local buyButton = frame:FindFirstChild("Buy")
@@ -170,29 +171,29 @@ local function updateTrailFrame(trailId, frame)
 	end
 end
 
--- Handle trail purchase
-local function purchaseTrail(trailId)
-	local trailData = TrailConfig.getTrailById(trailId)
+-- Handle hand trail purchase
+local function purchaseHandTrail(trailId)
+	local trailData = HandTrailConfig.getHandTrailById(trailId)
 	if not trailData then
 		return
 	end
 
 	-- Get frame reference
-	local frame = trailFrames[trailId]
+	local frame = handTrailFrames[trailId]
 
 	-- Call server
 	local success, result = pcall(function()
-		return PurchaseTrail:InvokeServer(trailId)
+		return PurchaseHandTrail:InvokeServer(trailId)
 	end)
 
 	if success and result.success then
 		-- Update local state
-		ownedTrails[trailId] = true
-		updateTrailFrame(trailId, frame)
+		ownedHandTrails[trailId] = true
+		updateHandTrailFrame(trailId, frame)
 	else
 		-- Show error message
 		local errorMsg = result and result.reason or "Purchase failed"
-		print("Purchase failed: " .. errorMsg)
+		print("Hand trail purchase failed: " .. errorMsg)
 
 		-- Reset button state
 		if frame then
@@ -205,38 +206,38 @@ local function purchaseTrail(trailId)
 	end
 end
 
--- Handle trail equipment
-local function equipTrail(trailId)
-	local trailData = TrailConfig.getTrailById(trailId)
+-- Handle hand trail equipment
+local function equipHandTrail(trailId)
+	local trailData = HandTrailConfig.getHandTrailById(trailId)
 	if not trailData then
 		return
 	end
 
 	-- Get frame reference
-	local frame = trailFrames[trailId]
+	local frame = handTrailFrames[trailId]
 
 	-- Call server
 	local success, result = pcall(function()
-		return EquipTrail:InvokeServer(trailId)
+		return EquipHandTrail:InvokeServer(trailId)
 	end)
 
 	if success and result.success then
 		-- Update local state
-		currentEquippedTrail = trailId
+		currentEquippedHandTrail = trailId
 
-		-- Trail is automatically saved on server side
+		-- Hand trail is automatically saved on server side
 
 		-- Update all frames
-		for id, frame in pairs(trailFrames) do
-			updateTrailFrame(id, frame)
+		for id, frame in pairs(handTrailFrames) do
+			updateHandTrailFrame(id, frame)
 		end
 
 		-- Show success message
-		print("Successfully equipped " .. trailData.name .. "!")
+		print("Successfully equipped " .. trailData.name .. " hand trail!")
 	else
 		-- Show error message
 		local errorMsg = result and result.reason or "Equipment failed"
-		print("Equipment failed: " .. errorMsg)
+		print("Hand trail equipment failed: " .. errorMsg)
 
 		-- Reset button state
 		if frame then
@@ -249,9 +250,9 @@ local function equipTrail(trailId)
 	end
 end
 
--- Initialize trail shop UI
-local function initializeTrailShop()
-	-- Find the shop UI (assuming it exists as shown in the image)
+-- Initialize hand trail shop UI
+local function initializeHandTrailShop()
+	-- Find the shop UI
 	local shop = playerGui:FindFirstChild("Shop")
 	if not shop then
 		warn("Shop UI not found! Please ensure the Shop UI exists in PlayerGui")
@@ -276,9 +277,21 @@ local function initializeTrailShop()
 		return
 	end
 
-	local core = content:FindFirstChild("Cosmetics").Core.ScrollingFrame
-	if not core then
+	local cosmetics = content:FindFirstChild("Cosmetics")
+	if not cosmetics then
 		warn("Shop Cosmetics not found!")
+		return
+	end
+
+	local hands = cosmetics:FindFirstChild("Hands")
+	if not hands then
+		warn("Shop Hands not found!")
+		return
+	end
+
+	local handsScrollingFrame = hands:FindFirstChild("ScrollingFrame")
+	if not handsScrollingFrame then
+		warn("Shop Hands ScrollingFrame not found!")
 		return
 	end
 
@@ -288,93 +301,95 @@ local function initializeTrailShop()
 		canvasGroup = canvasGroup,
 		mainFrame = mainFrame,
 		content = content,
-		core = core,
+		cosmetics = cosmetics,
+		hands = hands,
+		handsScrollingFrame = handsScrollingFrame,
 	}
 
-	-- Clear existing trail frames
-	for _, child in ipairs(core:GetChildren()) do
-		if child.Name:find("TrailFrame_") then
+	-- Clear existing hand trail frames
+	for _, child in ipairs(handsScrollingFrame:GetChildren()) do
+		if child.Name:find("HandTrailFrame_") then
 			child:Destroy()
 		end
 	end
 end
 
--- Create trail frames after data is loaded
-local function createTrailFrames()
-	if not shopUI or not shopUI.core then
-		warn("Shop UI not initialized!")
+-- Create hand trail frames after data is loaded
+local function createHandTrailFrames()
+	if not shopUI or not shopUI.handsScrollingFrame then
+		warn("Hand trail shop UI not initialized!")
 		return
 	end
 
-	local core = shopUI.core
+	local handsScrollingFrame = shopUI.handsScrollingFrame
 
-	-- Create trail frames for each trail
-	for _, trailData in ipairs(TrailConfig.Trails) do
-		local frame, buyButton, equipButton = createTrailFrame(trailData, core)
+	-- Create hand trail frames for each hand trail
+	for _, trailData in ipairs(HandTrailConfig.HandTrails) do
+		local frame, buyButton, equipButton = createHandTrailFrame(trailData, handsScrollingFrame)
 		if frame then
-			trailFrames[trailData.id] = frame
+			handTrailFrames[trailData.id] = frame
 
 			-- Connect button events
 			if buyButton then
 				buyButton.MouseButton1Click:Connect(function()
-					purchaseTrail(trailData.id)
+					purchaseHandTrail(trailData.id)
 				end)
 			end
 
 			if equipButton then
 				equipButton.MouseButton1Click:Connect(function()
-					equipTrail(trailData.id)
+					equipHandTrail(trailData.id)
 				end)
 			end
 		end
 	end
 end
 
--- Load trail data from server
-local function loadTrailData()
+-- Load hand trail data from server
+local function loadHandTrailData()
 	local success, result = pcall(function()
-		return GetTrailData:InvokeServer()
+		return GetHandTrailData:InvokeServer()
 	end)
 
 	if success and result.success then
 		-- Update local state
-		ownedTrails = {}
-		for _, trailId in ipairs(result.ownedTrails) do
-			ownedTrails[trailId] = true
+		ownedHandTrails = {}
+		for _, trailId in ipairs(result.ownedHandTrails) do
+			ownedHandTrails[trailId] = true
 		end
 		-- Always ensure default trail is owned
-		ownedTrails["default"] = true
-		currentEquippedTrail = result.equippedTrail or "default"
+		ownedHandTrails["default"] = true
+		currentEquippedHandTrail = result.equippedHandTrail or "default"
 
 		-- Create frames now that we have data
-		createTrailFrames()
+		createHandTrailFrames()
 
 		-- Update all frames and make them visible
-		for trailId, frame in pairs(trailFrames) do
-			updateTrailFrame(trailId, frame)
+		for trailId, frame in pairs(handTrailFrames) do
+			updateHandTrailFrame(trailId, frame)
 			-- Show the frame now that data is loaded
 			frame.Visible = true
 		end
 	else
-		warn("Failed to load trail data: " .. (result and result.reason or "Unknown error"))
+		warn("Failed to load hand trail data: " .. (result and result.reason or "Unknown error"))
 		-- Create frames anyway with default state if server data fails
-		createTrailFrames()
-		for trailId, frame in pairs(trailFrames) do
-			updateTrailFrame(trailId, frame)
+		createHandTrailFrames()
+		for trailId, frame in pairs(handTrailFrames) do
+			updateHandTrailFrame(trailId, frame)
 			frame.Visible = true
 		end
 	end
 end
 
--- Listen for trail equipment updates
-TrailEquipped.OnClientEvent:Connect(function(player, trailId)
+-- Listen for hand trail equipment updates
+HandTrailEquipped.OnClientEvent:Connect(function(player, trailId)
 	-- Only update if it's for the local player
 	if player == Players.LocalPlayer then
-		currentEquippedTrail = trailId
+		currentEquippedHandTrail = trailId
 
 		-- Update all frames
-		for id, frame in pairs(trailFrames) do
-			updateTrailFrame(id, frame)
+		for id, frame in pairs(handTrailFrames) do
+			updateHandTrailFrame(id, frame)
 		end
 	end
 end)
@@ -383,11 +398,11 @@ end)
 local function onPlayerDataReady()
 	-- Reduce wait time - only wait for essential systems
 	task.wait(0.5)
-	initializeTrailShop()
+	initializeHandTrailShop()
 
 	-- Load data immediately after UI is created
 	task.wait(0.2)
-	loadTrailData()
+	loadHandTrailData()
 end
 
 -- Start initialization
