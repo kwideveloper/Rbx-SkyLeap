@@ -111,8 +111,6 @@ local function getCurrentTrailColor(player)
 				"player:",
 				player and player.Name or "unknown"
 			)
-		else
-			print("[TrailVisuals] Trail data not found for:", equippedTrail)
 		end
 		return Color3.fromRGB(255, 255, 255) -- Default white
 	end
@@ -137,7 +135,6 @@ local function getCurrentTrailColor(player)
 		-- Less verbose logging on server
 		return trailData.color
 	else
-		print("[TrailVisuals] Using trail color:", trailData.color, "for trail:", trailData.name)
 		return trailData.color
 	end
 end
@@ -238,11 +235,6 @@ local function createTrail(char)
 	local leftHand = char:FindFirstChild("LeftHand")
 	local rightHand = char:FindFirstChild("RightHand")
 
-	print("[TrailVisuals] Creating trails for character:", char.Name)
-	print("[TrailVisuals] LeftHand found:", leftHand ~= nil)
-	print("[TrailVisuals] RightHand found:", rightHand ~= nil)
-	print("[TrailVisuals] Hand trails enabled:", TRAIL_CONFIG.TrailHandsEnabled)
-
 	if TRAIL_CONFIG.TrailHandsEnabled and leftHand then
 		local handA_L = leftHand:FindFirstChild(TRAIL_CONFIG.TrailAttachmentNameL or "TrailL")
 		if not handA_L then
@@ -272,12 +264,6 @@ local function createTrail(char)
 		handTrailL.Transparency = NumberSequence.new(1)
 		handTrailL.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 		handTrailL.Parent = leftHand
-		print(
-			"[TrailVisuals] Created left hand trail with config - Lifetime:",
-			handTrailL.Lifetime,
-			"Width:",
-			TRAIL_CONFIG.TrailWidth * TRAIL_CONFIG.TrailHandsScale * TRAIL_CONFIG.TrailHandsSizeFactor
-		)
 	end
 
 	if TRAIL_CONFIG.TrailHandsEnabled and rightHand then
@@ -309,12 +295,6 @@ local function createTrail(char)
 		handTrailR.Transparency = NumberSequence.new(1)
 		handTrailR.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 		handTrailR.Parent = rightHand
-		print(
-			"[TrailVisuals] Created right hand trail with config - Lifetime:",
-			handTrailR.Lifetime,
-			"Width:",
-			TRAIL_CONFIG.TrailWidth * TRAIL_CONFIG.TrailHandsScale * TRAIL_CONFIG.TrailHandsSizeFactor
-		)
 	end
 
 	-- Create particle system
@@ -395,13 +375,11 @@ local function setEquippedTrail(trailId, player)
 		-- Server: Store per-player trail data
 		if player then
 			playerTrailData[player] = targetTrailId
-			print("[TrailVisuals] Server: Setting equipped trail for", player.Name, "to:", targetTrailId)
 		end
 	else
 		-- Client: Only update local trail if it's for the local player
 		if player == Players.LocalPlayer then
 			currentEquippedTrail = targetTrailId
-			print("[TrailVisuals] Client: Setting equipped trail to:", targetTrailId)
 		end
 	end
 
