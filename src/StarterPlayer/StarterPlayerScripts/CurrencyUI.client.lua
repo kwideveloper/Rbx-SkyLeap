@@ -202,25 +202,15 @@ CurrencyUpdated.OnClientEvent:Connect(function(payload)
 		return
 	end
 
-	print(
-		string.format(
-			"[CurrencyUI] Received update: Coins=%s, Diamonds=%s",
-			tostring(payload.Coins),
-			tostring(payload.Diamonds)
-		)
-	)
-
 	local coinsTarget = nil
 	if payload.Coins ~= nil then
 		coinsTarget = tonumber(payload.Coins) or state.coins
 		state.coins = coinsTarget
-		print(string.format("[CurrencyUI] Updated coins: %d", coinsTarget))
 	end
 	if payload.Diamonds ~= nil then
 		local target = tonumber(payload.Diamonds) or state.diamonds
 		state.diamonds = target
 		animateDiamondsTo(target)
-		print(string.format("[CurrencyUI] Updated diamonds: %d", target))
 	end
 	if payload.AwardedCoins and (payload.AwardedCoins > 0) and not payload.FromPlaytime then
 		-- Visual feedback for awarded coins using global system (skip if from playtime rewards)
