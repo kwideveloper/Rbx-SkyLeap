@@ -4,6 +4,7 @@ local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -24,6 +25,39 @@ local MENU_CLOSE_ANIMATION_DURATION = 0.25 -- Tiempo más rápido para cerrar el
 local BOUNCE_DURATION = 0.15
 local VOLUME_TO_REDUCE = 0.1
 
+-- Animation presets for easy configuration
+local ANIMATION_PRESETS = {
+	-- Slide animations
+	SLIDE_UP = { type = "slide", direction = "Top", duration = 0.4 },
+	SLIDE_DOWN = { type = "slide", direction = "Bottom", duration = 0.4 },
+	SLIDE_LEFT = { type = "slide", direction = "Left", duration = 0.4 },
+	SLIDE_RIGHT = { type = "slide", direction = "Right", duration = 0.4 },
+
+	-- Fast slide animations
+	SLIDE_UP_FAST = { type = "slide", direction = "Top", duration = 0.25 },
+	SLIDE_DOWN_FAST = { type = "slide", direction = "Bottom", duration = 0.25 },
+	SLIDE_LEFT_FAST = { type = "slide", direction = "Left", duration = 0.25 },
+	SLIDE_RIGHT_FAST = { type = "slide", direction = "Right", duration = 0.25 },
+
+	-- Fade animations
+	FADE_IN = { type = "fade", direction = "Center", duration = 0.3 },
+	FADE_IN_FAST = { type = "fade", direction = "Center", duration = 0.15 },
+	FADE_IN_SLOW = { type = "fade", direction = "Center", duration = 0.6 },
+
+	-- Scale animations
+	SCALE_IN = { type = "scale", direction = "Center", duration = 0.4 },
+	SCALE_IN_FAST = { type = "scale", direction = "Center", duration = 0.2 },
+	SCALE_IN_SLOW = { type = "scale", direction = "Center", duration = 0.8 },
+
+	-- Bounce animations
+	BOUNCE_UP = { type = "bounce", direction = "Top", duration = 0.5 },
+	BOUNCE_DOWN = { type = "bounce", direction = "Bottom", duration = 0.5 },
+
+	-- Custom combinations
+	SLIDE_FADE_UP = { type = "slide_fade", direction = "Top", duration = 0.4 },
+	SCALE_FADE_IN = { type = "scale_fade", direction = "Center", duration = 0.4 },
+}
+
 -- Camera effects constants
 local BLUR_SIZE = 15 -- Maximum blur size when menu is open
 local DEFAULT_FOV = 70 -- Default camera FOV
@@ -37,6 +71,7 @@ local menuStates = {}
 -- Menu management system
 local openMenus = {} -- Track which menus are currently open {menu = button}
 local buttonStates = {} -- Track button active states {button = isActive}
+local menuOriginalPositions = {} -- Store original positions of menus {menu = originalPosition}
 
 -- Camera effects system
 local camera = Workspace.CurrentCamera
@@ -64,6 +99,94 @@ end
 local function createBounceTween(instance, originalPosition)
 	local tweenInfo = TweenInfo.new(BOUNCE_DURATION, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out, 0, false, 0.3)
 	return TweenService:Create(instance, tweenInfo, { Position = originalPosition })
+end
+
+-- Menu position management functions
+local function saveMenuOriginalPosition(menu)
+	if not menuOriginalPositions[menu] then
+		menuOriginalPositions[menu] = menu.Position
+	end
+end
+
+local function getMenuOriginalPosition(menu)
+	return menuOriginalPositions[menu] or menu.Position
+end
+
+-- Function to get animation configuration for a menu
+local function getMenuAnimationConfig(menu, button)
+	-- Check for Animation StringValue on the menu itself
+	local animationValue = menu:FindFirstChild("Animation")
+	if animationValue and animationValue:IsA("StringValue") then
+		local presetName = animationValue.Value
+		if ANIMATION_PRESETS[presetName] then
+			return ANIMATION_PRESETS[presetName]
+		end
+	end
+
+	-- Check for Animation StringValue on the button
+	if button then
+		local buttonAnimationValue = button:FindFirstChild("Animation")
+		if buttonAnimationValue and buttonAnimationValue:IsA("StringValue") then
+			local presetName = buttonAnimationValue.Value
+			if ANIMATION_PRESETS[presetName] then
+				return ANIMATION_PRESETS[presetName]
+			end
+		end
+	end
+
+	-- Fallback to default animation
+	return ANIMATION_PRESETS.SLIDE_UP
+end
+
+-- Function to get custom animation settings from attributes
+local function getCustomAnimationSettings(menu)
+	local settings = {}
+
+	-- Duration override
+	local durationValue = menu:GetAttribute("AnimationDuration")
+	if durationValue then
+		settings.duration = durationValue
+	end
+
+	-- Easing style override
+	local easingValue = menu:GetAttribute("AnimationEasing")
+	if easingValue then
+		settings.easingStyle = easingValue
+	end
+
+	-- Easing direction override
+	local easingDirectionValue = menu:GetAttribute("AnimationEasingDirection")
+	if easingDirectionValue then
+		settings.easingDirection = easingDirectionValue
+	end
+
+	return settings
+end
+
+local function moveMenuDown(menu)
+	local originalPos = getMenuOriginalPosition(menu)
+
+	-- Wait for the menu to be properly loaded and have valid sizes
+	if not menu.Parent or not menu.AbsoluteSize or menu.AbsoluteSize.Y == 0 then
+		-- Fallback: move down by a fixed amount if we can't calculate properly
+		menu.Position =
+			UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale + 0.1, originalPos.Y.Offset)
+		return
+	end
+
+	local menuSize = menu.AbsoluteSize.Y
+	local parentSize = menu.Parent.AbsoluteSize.Y
+
+	if parentSize > 0 then
+		-- Move down by 1x the menu height
+		local newYScale = originalPos.Y.Scale + (menuSize / parentSize)
+		local newYOffset = originalPos.Y.Offset
+		menu.Position = UDim2.new(originalPos.X.Scale, originalPos.X.Offset, newYScale, newYOffset)
+	else
+		-- Fallback for edge cases
+		menu.Position =
+			UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale + 0.1, originalPos.Y.Offset)
+	end
 end
 
 local function createHoverTween(instance, properties)
@@ -119,6 +242,12 @@ local function setFovOverride(enable, fovValue)
 	fovOverrideValue.Value = fovValue
 end
 
+-- Function to check if a button has the "MenuButton" tag
+-- This identifies buttons that control main menu navigation
+local function isMenuButton(button)
+	return CollectionService:HasTag(button, "MenuButton")
+end
+
 local function applyCameraEffects(enable)
 	if not camera then
 		return
@@ -147,25 +276,27 @@ local function applyCameraEffects(enable)
 end
 
 local function updateCameraEffects()
-	-- Check if any menus are open by checking menu states
-	local hasOpenMenus = false
-	local openMenuCount = 0
-	local totalMenus = 0
-	local openMenuNames = {}
+	-- Check if any MenuButton-controlled menus are open
+	local hasOpenMenuButtonMenus = false
+	local openMenuButtonCount = 0
+	local openMenuButtonNames = {}
 
 	for menu, menuState in pairs(menuStates) do
-		totalMenus = totalMenus + 1
 		if menuState.isOpen then
-			hasOpenMenus = true
-			openMenuCount = openMenuCount + 1
-			table.insert(openMenuNames, menu.Name or "UnnamedMenu")
+			-- Check if this menu is controlled by a MenuButton-tagged button
+			local controllingButton = openMenus[menu]
+			if controllingButton and isMenuButton(controllingButton) then
+				hasOpenMenuButtonMenus = true
+				openMenuButtonCount = openMenuButtonCount + 1
+				table.insert(openMenuButtonNames, menu.Name or "UnnamedMenu")
+			end
 		end
 	end
 
-	-- Apply or remove camera effects based on menu state
-	if hasOpenMenus and not cameraEffectActive then
+	-- Apply or remove camera effects based on MenuButton menu state only
+	if hasOpenMenuButtonMenus and not cameraEffectActive then
 		applyCameraEffects(true)
-	elseif not hasOpenMenus and cameraEffectActive then
+	elseif not hasOpenMenuButtonMenus and cameraEffectActive then
 		applyCameraEffects(false)
 	end
 end
@@ -353,19 +484,23 @@ local function isSettingsMenu(menu)
 end
 
 local function updateSoundEffects()
-	-- Check if any non-settings menus are open - apply effects for any menu except settings
-	local hasNonSettingsMenus = false
+	-- Check if any MenuButton-controlled menus are open
+	local hasOpenMenuButtonMenus = false
 	for menu, state in pairs(menuStates) do
-		if state.isOpen and not isSettingsMenu(menu) then
-			hasNonSettingsMenus = true
-			break
+		if state.isOpen then
+			-- Check if this menu is controlled by a MenuButton-tagged button
+			local controllingButton = openMenus[menu]
+			if controllingButton and isMenuButton(controllingButton) then
+				hasOpenMenuButtonMenus = true
+				break
+			end
 		end
 	end
 
-	-- Apply or remove sound effects based on non-settings menu state
-	if hasNonSettingsMenus and not soundEffectActive then
+	-- Apply or remove sound effects based on MenuButton menu state only
+	if hasOpenMenuButtonMenus and not soundEffectActive then
 		applyClubEffects(true)
-	elseif not hasNonSettingsMenus and soundEffectActive then
+	elseif not hasOpenMenuButtonMenus and soundEffectActive then
 		applyClubEffects(false)
 	end
 end
@@ -394,8 +529,8 @@ local function deactivateButtonActiveStyle(button)
 			icon.UIGradient.Offset = Vector2.new(1, 1)
 		end
 
-		if uiStroke then
-			button.UIStroke.UIGradient.Enabled = false
+		if uiStroke and uiStroke.UIGradient then
+			uiStroke.UIGradient.Enabled = false
 		end
 
 		-- Restore original ZIndex
@@ -484,8 +619,21 @@ local function shouldIgnoreMenu(menu, ignoredMenus)
 	return false
 end
 
+-- Function to get all open menus controlled by MenuButton-tagged buttons
+-- This ensures we only close menus controlled by main navigation buttons
+local function getMenuButtonControlledMenus(button)
+	local menuButtonMenus = {}
+	for menu, associatedButton in pairs(openMenus) do
+		if associatedButton ~= button and isMenuButton(associatedButton) then
+			table.insert(menuButtonMenus, menu)
+		end
+	end
+	return menuButtonMenus
+end
+
 local function closeAllOtherMenus(exceptMenu, button)
-	local menusToClose = getOpenMenus(button)
+	-- NEW LOGIC: Only close menus controlled by buttons with "MenuButton" tag
+	local menusToClose = getMenuButtonControlledMenus(button)
 	local ignoredMenus = getIgnoredMenus(button)
 	local firstMenuClosed = false
 
@@ -499,7 +647,8 @@ local function closeAllOtherMenus(exceptMenu, button)
 				openMenus[menu] = nil
 
 				-- Apply camera and sound effects immediately when first menu is closed
-				if not firstMenuClosed then
+				-- Only apply effects if the button that opened this menu has "MenuButton" tag
+				if not firstMenuClosed and isMenuButton(associatedButton) then
 					updateCameraEffects()
 					updateSoundEffects()
 					firstMenuClosed = true
@@ -518,12 +667,17 @@ end
 
 -- Handle animated elements (Hover, Click, Active)
 local function setupAnimatedElement(element)
+	-- Safety check: ensure element exists and is valid
+	if not element or not element:IsA("GuiObject") then
+		return
+	end
+
 	local state = {
 		isActive = false,
 		originalSize = element.Size,
 		originalPosition = element.Position,
 		originalRotation = element.Rotation or 0,
-		originalZIndex = element.Parent.ZIndex,
+		originalZIndex = element.Parent and element.Parent.ZIndex or 1,
 	}
 	elementStates[element] = state
 
@@ -636,14 +790,18 @@ local function setupAnimatedElement(element)
 		end)
 	end
 
-	local activeGradientTween = createTween(
-		element.UIStroke.UIGradient,
-		{ Rotation = 180 },
-		3,
-		Enum.EasingStyle.Linear,
-		Enum.EasingDirection.InOut,
-		-1
-	)
+	local activeGradientTween = nil
+	local uiStroke = element:FindFirstChild("UIStroke")
+	if uiStroke and uiStroke:FindFirstChild("UIGradient") then
+		activeGradientTween = createTween(
+			uiStroke.UIGradient,
+			{ Rotation = 180 },
+			3,
+			Enum.EasingStyle.Linear,
+			Enum.EasingDirection.InOut,
+			-1
+		)
+	end
 
 	-- Setup active animations
 	if hasActive then
@@ -668,8 +826,12 @@ local function setupAnimatedElement(element)
 				end
 
 				-- Active Gradient
-				element.UIStroke.UIGradient.Enabled = true
-				activeGradientTween:Play()
+				if uiStroke and uiStroke:FindFirstChild("UIGradient") and activeGradientTween then
+					uiStroke.UIGradient.Enabled = true
+					if activeGradientTween.Play then
+						activeGradientTween:Play()
+					end
+				end
 				--
 
 				-- Set ZIndex to 100 for active state
@@ -686,8 +848,12 @@ local function setupAnimatedElement(element)
 					icon.UIGradient.Offset = Vector2.new(1, 1)
 				end
 
-				element.UIStroke.UIGradient.Enabled = false
-				activeGradientTween:Cancel()
+				if uiStroke and uiStroke:FindFirstChild("UIGradient") and activeGradientTween then
+					uiStroke.UIGradient.Enabled = false
+					if activeGradientTween.Cancel then
+						activeGradientTween:Cancel()
+					end
+				end
 
 				-- Restore original ZIndex
 				element.ZIndex = state.originalZIndex
@@ -738,9 +904,12 @@ local function setupMenuButton(button)
 		-- Create menu states for each target menu
 		local menuStatesForButton = {}
 		for _, targetMenu in ipairs(targetMenus) do
+			-- Save the original position when setting up the menu
+			saveMenuOriginalPosition(targetMenu)
+
 			local menuState = {
 				isOpen = false,
-				originalPosition = targetMenu.Position,
+				originalPosition = getMenuOriginalPosition(targetMenu),
 				canvasGroup = targetMenu,
 			}
 			menuStatesForButton[targetMenu] = menuState
@@ -748,6 +917,25 @@ local function setupMenuButton(button)
 		end
 
 		button.MouseButton1Click:Connect(function()
+			-- Check for Toggle BoolValue to prevent closing when already active
+			local toggleValue = button:FindFirstChild("Toggle")
+			local hasToggleOff = toggleValue and toggleValue:IsA("BoolValue") and not toggleValue.Value
+
+			-- If Toggle is false and any target menu is already open, don't do anything
+			if hasToggleOff then
+				local anyMenuOpen = false
+				for _, targetMenu in ipairs(targetMenus) do
+					local menuState = menuStatesForButton[targetMenu]
+					if menuState and menuState.isOpen then
+						anyMenuOpen = true
+						break
+					end
+				end
+				if anyMenuOpen then
+					return -- Don't close or re-open, just return
+				end
+			end
+
 			local isOpening = false
 
 			-- Check if we're opening or closing
@@ -760,9 +948,12 @@ local function setupMenuButton(button)
 			end
 
 			if isOpening then
-				-- Close all other menus first
-				for _, targetMenu in ipairs(targetMenus) do
-					closeAllOtherMenus(targetMenu, button)
+				-- Close all other menus first, but only if this button has "MenuButton" tag
+				-- This prevents buttons without "MenuButton" tag from closing other menus
+				if isMenuButton(button) then
+					for _, targetMenu in ipairs(targetMenus) do
+						closeAllOtherMenus(targetMenu, button)
+					end
 				end
 
 				-- Open all target menus
@@ -774,39 +965,60 @@ local function setupMenuButton(button)
 						openMenus[targetMenu] = button
 
 						-- Apply camera and sound effects immediately when first menu is opened
-						if not firstMenuOpened then
+						-- Only apply effects if the button has "MenuButton" tag
+						if not firstMenuOpened and isMenuButton(button) then
 							updateCameraEffects()
 							updateSoundEffects()
 							firstMenuOpened = true
 						end
-						openMenu(targetMenu, animationDirection, menuState)
+						openMenu(targetMenu, animationDirection, menuState, button)
 					end
 				end
 
 				-- Set button as active
 				setButtonActive(button)
 			else
-				-- Close all target menus
-				local firstMenuClosed = false
-				for _, targetMenu in ipairs(targetMenus) do
-					local menuState = menuStatesForButton[targetMenu]
-					if menuState.isOpen then
-						menuState.isOpen = false
-						openMenus[targetMenu] = nil
+				-- Close all target menus, but check Toggle setting first
+				local shouldClose = true
 
-						-- Apply camera and sound effects immediately when first menu is closed
-						if not firstMenuClosed then
-							updateCameraEffects()
-							updateSoundEffects()
-							firstMenuClosed = true
+				-- If Toggle is false, don't close menus that are already open
+				if hasToggleOff then
+					local anyMenuOpen = false
+					for _, targetMenu in ipairs(targetMenus) do
+						local menuState = menuStatesForButton[targetMenu]
+						if menuState and menuState.isOpen then
+							anyMenuOpen = true
+							break
 						end
-
-						closeMenu(targetMenu, animationDirection, menuState)
+					end
+					if anyMenuOpen then
+						shouldClose = false -- Don't close if Toggle is false and menus are open
 					end
 				end
 
-				-- Reset button state
-				resetButtonState(button)
+				if shouldClose then
+					local firstMenuClosed = false
+					for _, targetMenu in ipairs(targetMenus) do
+						local menuState = menuStatesForButton[targetMenu]
+						if menuState.isOpen then
+							menuState.isOpen = false
+							openMenus[targetMenu] = nil
+
+							-- Apply camera and sound effects immediately when first menu is closed
+							-- Only apply effects if the button that opened this menu has "MenuButton" tag
+							if not firstMenuClosed and isMenuButton(button) then
+								updateCameraEffects()
+								updateSoundEffects()
+								firstMenuClosed = true
+							end
+
+							closeMenu(targetMenu, animationDirection, menuState)
+						end
+					end
+
+					-- Reset button state
+					resetButtonState(button)
+				end
 			end
 		end)
 	end
@@ -823,6 +1035,9 @@ local function setupMenuButton(button)
 		button.MouseButton1Click:Connect(function()
 			local effectsUpdated = false
 			for _, target in ipairs(closeTargets) do
+				-- Find the button that opened this menu (if any) - defined outside if block
+				local openingButton = openMenus[target]
+
 				-- Check if menu is currently open (either in menuStates or visible)
 				local isMenuOpen = false
 				local menuState = menuStates[target] -- Use target menu as key
@@ -836,9 +1051,6 @@ local function setupMenuButton(button)
 				end
 
 				if isMenuOpen then
-					-- Find the button that opened this menu (if any)
-					local openingButton = openMenus[target]
-
 					-- Mark as closed first
 					if menuState then
 						menuState.isOpen = false
@@ -846,7 +1058,8 @@ local function setupMenuButton(button)
 					openMenus[target] = nil
 
 					-- Update camera and sound effects immediately when first menu is closed
-					if not effectsUpdated then
+					-- Only apply effects if the button that opened this menu has "MenuButton" tag
+					if not effectsUpdated and openingButton and isMenuButton(openingButton) then
 						updateCameraEffects()
 						updateSoundEffects()
 						effectsUpdated = true
@@ -868,6 +1081,7 @@ local function setupMenuButton(button)
 					end
 
 					-- Reset button state if we found the opening button
+					-- This works regardless of whether the opening button has "MenuButton" tag
 					if openingButton then
 						resetButtonState(openingButton)
 					end
@@ -879,7 +1093,8 @@ local function setupMenuButton(button)
 						target.Visible = false
 					end
 					-- Update camera and sound effects immediately
-					if not effectsUpdated then
+					-- Only apply effects if there was an opening button with "MenuButton" tag
+					if not effectsUpdated and openingButton and isMenuButton(openingButton) then
 						updateCameraEffects()
 						updateSoundEffects()
 						effectsUpdated = true
@@ -890,27 +1105,65 @@ local function setupMenuButton(button)
 	end
 end
 
-function openMenu(menu, direction, state)
-	-- Set initial state - handle both CanvasGroup and regular GuiObjects
+-- Specialized animation functions for different types
+local function playSlideAnimation(menu, state, config, customSettings)
+	local originalPosition = getMenuOriginalPosition(menu)
+	local startPosition
+
+	-- Set initial state
 	if state.canvasGroup:IsA("CanvasGroup") then
 		state.canvasGroup.GroupTransparency = 1
 	else
 		menu.Visible = false
 	end
 
-	-- Move to center of screen
-	local centerPosition = UDim2.new(0.5, 0, 0.5, 0)
-	local startPosition = getStartPosition(centerPosition, direction)
+	-- Calculate start position based on direction
+	if config.direction == "Top" then
+		startPosition = UDim2.new(
+			originalPosition.X.Scale,
+			originalPosition.X.Offset,
+			originalPosition.Y.Scale - 1,
+			originalPosition.Y.Offset
+		)
+	elseif config.direction == "Bottom" then
+		startPosition = UDim2.new(
+			originalPosition.X.Scale,
+			originalPosition.X.Offset,
+			originalPosition.Y.Scale + 1,
+			originalPosition.Y.Offset
+		)
+	elseif config.direction == "Left" then
+		startPosition = UDim2.new(
+			originalPosition.X.Scale - 1,
+			originalPosition.X.Offset,
+			originalPosition.Y.Scale,
+			originalPosition.Y.Offset
+		)
+	elseif config.direction == "Right" then
+		startPosition = UDim2.new(
+			originalPosition.X.Scale + 1,
+			originalPosition.X.Offset,
+			originalPosition.Y.Scale,
+			originalPosition.Y.Offset
+		)
+	else
+		startPosition = UDim2.new(
+			originalPosition.X.Scale,
+			originalPosition.X.Offset,
+			originalPosition.Y.Scale - 1,
+			originalPosition.Y.Offset
+		)
+	end
+
 	menu.Position = startPosition
 
-	-- Animate in
-	local moveTween = createTween(menu, { Position = centerPosition }, MENU_ANIMATION_DURATION)
+	local duration = customSettings.duration or config.duration or MENU_ANIMATION_DURATION
+	local moveTween = createTween(menu, { Position = originalPosition }, duration)
 
 	local fadeTween
 	if state.canvasGroup:IsA("CanvasGroup") then
-		fadeTween = createTween(state.canvasGroup, { GroupTransparency = 0 }, MENU_ANIMATION_DURATION)
+		fadeTween = createTween(state.canvasGroup, { GroupTransparency = 0 }, duration)
 	else
-		-- For non-CanvasGroup, just make it visible immediately
 		menu.Visible = true
 	end
 
@@ -920,37 +1173,154 @@ function openMenu(menu, direction, state)
 	moveTween:Play()
 
 	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
-
 	if hasStroke then
-		local fadeStroke = createTween(hasStroke, { Transparency = 0 }, MENU_ANIMATION_DURATION)
+		local fadeStroke = createTween(hasStroke, { Transparency = 0 }, duration)
 		fadeStroke:Play()
 	end
 
-	-- Bounce effect at the end
-	moveTween.Completed:Wait()
-	createBounceTween(menu, centerPosition):Play()
+	return moveTween
+end
+
+local function playFadeAnimation(menu, state, config, customSettings)
+	local originalPosition = getMenuOriginalPosition(menu)
+
+	-- Set initial state
+	if state.canvasGroup:IsA("CanvasGroup") then
+		state.canvasGroup.GroupTransparency = 1
+	else
+		menu.Visible = false
+	end
+
+	menu.Position = originalPosition
+
+	local duration = customSettings.duration or config.duration or MENU_ANIMATION_DURATION
+	local fadeTween
+
+	if state.canvasGroup:IsA("CanvasGroup") then
+		fadeTween = createTween(state.canvasGroup, { GroupTransparency = 0 }, duration)
+	else
+		menu.Visible = true
+	end
+
+	if fadeTween then
+		fadeTween:Play()
+	end
+
+	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
+	if hasStroke then
+		local fadeStroke = createTween(hasStroke, { Transparency = 0 }, duration)
+		fadeStroke:Play()
+	end
+
+	return fadeTween or { Completed = { Wait = function() end } }
+end
+
+local function playScaleAnimation(menu, state, config, customSettings)
+	local originalPosition = getMenuOriginalPosition(menu)
+
+	-- Set initial state
+	if state.canvasGroup:IsA("CanvasGroup") then
+		state.canvasGroup.GroupTransparency = 1
+	else
+		menu.Visible = false
+	end
+
+	menu.Position = originalPosition
+
+	local duration = customSettings.duration or config.duration or MENU_ANIMATION_DURATION
+	local scaleTween = createTween(menu, { Size = menu.Size }, duration)
+
+	local fadeTween
+	if state.canvasGroup:IsA("CanvasGroup") then
+		fadeTween = createTween(state.canvasGroup, { GroupTransparency = 0 }, duration)
+	else
+		menu.Visible = true
+	end
+
+	if fadeTween then
+		fadeTween:Play()
+	end
+	scaleTween:Play()
+
+	local hasStroke = state.canvasGroup:FindFirstChild("UIStroke")
+	if hasStroke then
+		local fadeStroke = createTween(hasStroke, { Transparency = 0 }, duration)
+		fadeStroke:Play()
+	end
+
+	return scaleTween
+end
+
+function openMenu(menu, direction, state, button)
+	-- Ensure the menu is visible before starting animation
+	if menu:IsA("GuiObject") and menu.Visible ~= nil then
+		menu.Visible = true
+	end
+
+	-- Get animation configuration for this menu
+	local animationConfig = getMenuAnimationConfig(menu, button)
+	local customSettings = getCustomAnimationSettings(menu)
+
+	local animationTween
+
+	-- Execute the appropriate animation based on type
+	if animationConfig.type == "slide" then
+		animationTween = playSlideAnimation(menu, state, animationConfig, customSettings)
+	elseif animationConfig.type == "fade" then
+		animationTween = playFadeAnimation(menu, state, animationConfig, customSettings)
+	elseif animationConfig.type == "scale" then
+		animationTween = playScaleAnimation(menu, state, animationConfig, customSettings)
+	elseif animationConfig.type == "bounce" then
+		animationTween = playSlideAnimation(menu, state, animationConfig, customSettings)
+	else
+		-- Default to slide animation
+		animationTween = playSlideAnimation(menu, state, animationConfig, customSettings)
+	end
+
+	-- Bounce effect at the end for slide animations
+	if animationConfig.type == "slide" or animationConfig.type == "bounce" then
+		local originalPosition = getMenuOriginalPosition(menu)
+		animationTween.Completed:Wait()
+		createBounceTween(menu, originalPosition):Play()
+	end
 end
 
 function closeMenu(menu, direction, state)
-	-- Get the opposite direction for closing animation
-	local closeDirection = getOppositeDirection(direction)
-	local endPosition = getStartPosition(menu.Position, closeDirection)
+	-- Get animation configuration for this menu
+	local animationConfig = getMenuAnimationConfig(menu)
+	local customSettings = getCustomAnimationSettings(menu)
 
-	-- Animate out
-	local moveTween = createTween(
-		menu,
-		{ Position = endPosition },
-		MENU_CLOSE_ANIMATION_DURATION,
-		Enum.EasingStyle.Exponential,
-		Enum.EasingDirection.Out
-	)
+	local duration = customSettings.duration or MENU_CLOSE_ANIMATION_DURATION
+	local currentPosition = menu.Position
+	local originalPosition = getMenuOriginalPosition(menu)
+	local endPosition
+
+	-- Calculate end position for closing animation
+	if menu.Parent and menu.AbsoluteSize and menu.AbsoluteSize.Y > 0 and menu.Parent.AbsoluteSize.Y > 0 then
+		local menuSize = menu.AbsoluteSize.Y
+		local parentSize = menu.Parent.AbsoluteSize.Y
+		local endYScale = currentPosition.Y.Scale + (menuSize / parentSize)
+		endPosition = UDim2.new(currentPosition.X.Scale, currentPosition.X.Offset, endYScale, currentPosition.Y.Offset)
+	else
+		-- Fallback for edge cases
+		endPosition = UDim2.new(
+			currentPosition.X.Scale,
+			currentPosition.X.Offset,
+			currentPosition.Y.Scale + 0.1,
+			currentPosition.Y.Offset
+		)
+	end
+
+	-- Animate down
+	local moveTween =
+		createTween(menu, { Position = endPosition }, duration, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
 
 	local fadeTween
 	if state and state.canvasGroup and state.canvasGroup:IsA("CanvasGroup") then
 		fadeTween = createTween(
 			state.canvasGroup,
 			{ GroupTransparency = 1 },
-			MENU_CLOSE_ANIMATION_DURATION,
+			duration,
 			Enum.EasingStyle.Exponential,
 			Enum.EasingDirection.Out
 		)
@@ -959,15 +1329,12 @@ function closeMenu(menu, direction, state)
 		fadeTween = createTween(
 			menu,
 			{ GroupTransparency = 1 },
-			MENU_CLOSE_ANIMATION_DURATION,
+			duration,
 			Enum.EasingStyle.Exponential,
 			Enum.EasingDirection.Out
 		)
 	else
-		-- For non-CanvasGroup, just hide it at the end of movement
-		moveTween.Completed:Connect(function()
-			menu.Visible = false
-		end)
+		-- For non-CanvasGroup, the Visible=false will be handled at the end of all animations
 	end
 
 	local hasStroke = menu:FindFirstChild("UIStroke")
@@ -976,7 +1343,7 @@ function closeMenu(menu, direction, state)
 		local fadeStroke = createTween(
 			hasStroke,
 			{ Transparency = 1 },
-			MENU_CLOSE_ANIMATION_DURATION,
+			duration,
 			Enum.EasingStyle.Exponential,
 			Enum.EasingDirection.Out
 		)
@@ -988,12 +1355,36 @@ function closeMenu(menu, direction, state)
 	end
 	moveTween:Play()
 
-	-- Reset to original position after animation
-	moveTween.Completed:Connect(function()
-		if state and state.originalPosition then
-			menu.Position = state.originalPosition
+	-- Handle animation completion
+	local function onAnimationComplete()
+		-- Reset to original position
+		menu.Position = originalPosition
+
+		-- Set Visible = false for all menu types at the end of animation
+		if menu:IsA("GuiObject") and menu.Visible ~= nil then
+			menu.Visible = false
 		end
-	end)
+	end
+
+	-- Connect to the main animation completion
+	if fadeTween then
+		-- If there's a fade animation, wait for both to complete
+		local animationsCompleted = 0
+		local totalAnimations = 2
+
+		local function checkCompletion()
+			animationsCompleted = animationsCompleted + 1
+			if animationsCompleted >= totalAnimations then
+				onAnimationComplete()
+			end
+		end
+
+		fadeTween.Completed:Connect(checkCompletion)
+		moveTween.Completed:Connect(checkCompletion)
+	else
+		-- Only move animation, connect directly
+		moveTween.Completed:Connect(onAnimationComplete)
+	end
 end
 
 function getOppositeDirection(direction)
