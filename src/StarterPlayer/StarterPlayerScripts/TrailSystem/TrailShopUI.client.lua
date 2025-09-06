@@ -6,7 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 -- Hide Trail template
-local trailTemplate = playerGui:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Core.Template
+local trailTemplate =
+	playerGui:WaitForChild("Shop").CanvasGroup.Frame.Content.Cosmetics.Core:FindFirstChild("Template", true)
 trailTemplate.Visible = false
 
 -- Wait for modules
@@ -275,8 +276,8 @@ local function initializeTrailShop()
 		return
 	end
 
-	local cosmetics = content:FindFirstChild("Cosmetics").Core
-	if not cosmetics then
+	local core = content:FindFirstChild("Cosmetics").Core.ScrollingFrame
+	if not core then
 		warn("Shop Cosmetics not found!")
 		return
 	end
@@ -287,11 +288,11 @@ local function initializeTrailShop()
 		canvasGroup = canvasGroup,
 		mainFrame = mainFrame,
 		content = content,
-		cosmetics = cosmetics,
+		core = core,
 	}
 
 	-- Clear existing trail frames
-	for _, child in ipairs(cosmetics:GetChildren()) do
+	for _, child in ipairs(core:GetChildren()) do
 		if child.Name:find("TrailFrame_") then
 			child:Destroy()
 		end
@@ -300,16 +301,16 @@ end
 
 -- Create trail frames after data is loaded
 local function createTrailFrames()
-	if not shopUI or not shopUI.cosmetics then
+	if not shopUI or not shopUI.core then
 		warn("Shop UI not initialized!")
 		return
 	end
 
-	local cosmetics = shopUI.cosmetics
+	local core = shopUI.core
 
 	-- Create trail frames for each trail
 	for _, trailData in ipairs(TrailConfig.Trails) do
-		local frame, buyButton, equipButton = createTrailFrame(trailData, cosmetics)
+		local frame, buyButton, equipButton = createTrailFrame(trailData, core)
 		if frame then
 			trailFrames[trailData.id] = frame
 
