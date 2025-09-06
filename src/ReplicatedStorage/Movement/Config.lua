@@ -511,21 +511,6 @@ Config.MantleUseMoveDirFallback = true
 Config.MantleSpeedRelaxDot = 0.9
 Config.MantleSpeedRelaxFactor = 0.4
 
--- Trails
-Config.TrailEnabled = true
-Config.TrailBodyPartName = "UpperTorso" -- fallback to "Torso" then HRP
-Config.TrailAttachmentNameA = "TrailA"
-Config.TrailAttachmentNameB = "TrailB"
-Config.TrailBaseTransparency = 0.6
-Config.TrailMinTransparency = 0.2
-Config.TrailColorMin = Color3.fromRGB(90, 170, 255)
-Config.TrailColorMax = Color3.fromRGB(255, 100, 180)
--- Config.TrailLifeTime = 0.30 -- 0.25
-Config.TrailLifeTime = 0.5
-Config.TrailWidth = 0.3 -- 0.3
-Config.TrailSpeedMin = 10 -- 10
-Config.TrailSpeedMax = 80 -- 80
-
 -- Grapple / Hook
 Config.GrappleEnabled = true
 Config.GrappleMaxDistance = 120
@@ -557,11 +542,37 @@ Config.VerticalClimbStickVelocity = 6
 Config.VerticalClimbDurationSeconds = 0.45
 Config.VerticalClimbCooldownSeconds = 0.6 -- 0.6
 
+-- Trails
+Config.TrailEnabled = true
+Config.TrailBodyPartName = "UpperTorso" -- fallback to "Torso" then HRP
+Config.TrailAttachmentNameA = "TrailA"
+Config.TrailAttachmentNameB = "TrailB"
+Config.TrailBaseTransparency = 0.3
+Config.TrailMinTransparency = 0.2
+-- Config.TrailLifeTime = 0.30 -- 0.25
+Config.TrailLifeTime = 0.8 -- 0.8
+Config.TrailWidth = 0.35 -- 0.3
+Config.TrailSpeedMin = 10 -- 10
+Config.TrailSpeedMax = 80 -- 80
+
 -- Hand trails
 Config.TrailHandsEnabled = true
 Config.TrailHandsScale = 0.6 -- width/transparency scaling relative to main trail
-Config.TrailHandsLifetimeFactor = 0.5 -- lifetime relative to main trail
+Config.TrailHandsLifetimeFactor = 0.8 -- 0.5 lifetime relative to main trail
 Config.TrailHandsSizeFactor = 2.15 -- extra width factor vs main-scaled width
+
+-- Trail particles configuration
+Config.TrailParticlesEnabled = true
+Config.TrailParticlesTexture = "rbxassetid://130950887223800" -- Default particle texture
+Config.TrailParticlesLifetime = 1.5
+Config.TrailParticlesRate = 4
+Config.TrailParticlesEmissionDirection = "Front"
+Config.TrailParticlesSpeedMin = 8 -- Minimum speed to start emitting particles
+Config.TrailParticlesSizeMin = 0.8 -- Minimum particle size
+Config.TrailParticlesSizeMax = 1.5 -- Maximum particle size
+Config.TrailParticlesTransparencyStart = 0 -- Starting transparency (0 = fully visible)
+Config.TrailParticlesTransparencyMid = 0.2 -- Mid-life transparency
+Config.TrailParticlesTransparencyEnd = 0.5 -- End transparency (1 = fully transparent)
 
 -- Debug flags
 Config.DebugLaunchPad = false

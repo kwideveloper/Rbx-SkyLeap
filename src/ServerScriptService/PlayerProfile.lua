@@ -446,10 +446,8 @@ function PlayerProfile.trySpend(userId, currency, amount)
 
 	local current = math.floor(profile.stats[field] or 0)
 	if current >= amount then
-		-- Apply negative amount (spending)
-		local changeObj = {}
-		changeObj[field] = -amount
-		applyChanges(userId, changeObj)
+		-- Apply spending directly to profile (subtract amount)
+		profile.stats[field] = math.max(0, current - amount)
 
 		-- Force save for spending operations (critical)
 		forceSave(userId)
@@ -570,5 +568,78 @@ task.spawn(function()
 		end
 	end
 end)
+
+-- Trail management functions
+function PlayerProfile.ownsTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+	local profile = PlayerProfile.load(userId)
+	local owned = profile.cosmetics and profile.cosmetics.owned or {}
+	return owned[trailId] == true
+end
+
+function PlayerProfile.purchaseTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+
+	local profile = PlayerProfile.load(userId)
+	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
+	profile.cosmetics.owned = profile.cosmetics.owned or {}
+
+	-- Mark trail as owned
+	profile.cosmetics.owned[trailId] = true
+
+	-- Force save for purchase
+	local success = forceSave(userId)
+	return success
+end
+
+function PlayerProfile.equipTrail(userId, trailId)
+	userId = tostring(userId)
+	trailId = tostring(trailId)
+
+	-- Verify ownership first
+	if not PlayerProfile.ownsTrail(userId, trailId) then
+		return false, "Trail not owned"
+	end
+
+	local profile = PlayerProfile.load(userId)
+	profile.cosmetics = profile.cosmetics or { owned = {}, equipped = { outfitId = nil, trailId = nil } }
+	profile.cosmetics.equipped = profile.cosmetics.equipped or { outfitId = nil, trailId = nil }
+
+	-- Equip the trail
+	profile.cosmetics.equipped.trailId = trailId
+
+	-- Force save for equipment change
+	local success = forceSave(userId)
+	return success, "Trail equipped"
+end
+
+function PlayerProfile.getEquippedTrail(userId)
+	userId = tostring(userId)
+	local profile = PlayerProfile.load(userId)
+	local equipped = profile.cosmetics and profile.cosmetics.equipped or {}
+	return equipped.trailId or "default"
+end
+
+function PlayerProfile.getOwnedTrails(userId)
+	userId = tostring(userId)
+	local profile = PlayerProfile.load(userId)
+	local owned = profile.cosmetics and profile.cosmetics.owned or {}
+	local ownedList = {}
+
+	for trailId, isOwned in pairs(owned) do
+		if isOwned then
+			table.insert(ownedList, trailId)
+		end
+	end
+
+	-- Always include default trail
+	if not owned["default"] then
+		table.insert(ownedList, "default")
+	end
+
+	return ownedList
+end
 
 return PlayerProfile

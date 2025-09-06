@@ -78,6 +78,12 @@ ensureRemoteEvent(remotesFolder, "CurrencyUpdated")
 ensureRemoteFunction(remotesFolder, "RequestBalances")
 ensureRemoteFunction(remotesFolder, "RequestSpendCurrency")
 
+-- Trail system remotes
+ensureRemoteFunction(remotesFolder, "PurchaseTrail")
+ensureRemoteFunction(remotesFolder, "EquipTrail")
+ensureRemoteFunction(remotesFolder, "GetTrailData")
+ensureRemoteEvent(remotesFolder, "TrailEquipped")
+
 -- TEMPORARY: Anti-cheat remotes disabled for debugging
 -- if RunService:IsStudio() then
 -- 	-- Anti-cheat debug remotes (DEVELOPMENT ONLY)
