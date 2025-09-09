@@ -17,6 +17,7 @@ local GeneralButtonAnimations = require(script.Parent.GeneralButtonAnimations)
 local MenuAnimations = require(script.Parent.MenuAnimations)
 local MenuAnimationsOut = require(script.Parent.MenuAnimationsOut)
 local StyleManager = require(script.Parent.StyleManager)
+local AttributeStyleManager = require(script.Parent.AttributeStyleManager)
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -468,6 +469,9 @@ local function monitorMenuChanges(menu, button)
 
 			-- Apply custom styles if configured
 			StyleManager.applyButtonStyle(button)
+
+			-- Apply attribute-based active styles if configured
+			AttributeStyleManager.applyActiveStyle(button)
 		else
 			-- Deactivate button
 			if isMenuButton(button) then
@@ -508,6 +512,9 @@ local function monitorMenuChanges(menu, button)
 
 			-- Remove custom styles if configured
 			StyleManager.removeButtonStyle(button)
+
+			-- Remove attribute-based active styles if configured
+			AttributeStyleManager.removeActiveStyle(button)
 		end
 	end
 
@@ -597,6 +604,9 @@ local function cleanupMenuListeners()
 
 	-- Clean up all custom styles
 	StyleManager.cleanupAllStyles()
+
+	-- Clean up all attribute-based styles
+	AttributeStyleManager.cleanupAllStyles()
 end
 
 -- Periodic cleanup of destroyed UIs
@@ -606,6 +616,39 @@ local function startPeriodicCleanup()
 			wait(10) -- Clean up every 10 seconds
 			StyleManager.cleanupDestroyedUIs()
 		end
+	end)
+end
+
+-- Setup interactive styles for all buttons
+local function setupInteractiveStyles()
+	-- Wait a bit for UI to load
+	spawn(function()
+		wait(1)
+
+		-- Find all buttons with interactive style configuration
+		local allDescendants = PlayerGui:GetDescendants()
+		local processedButtons = 0
+		local styledButtons = 0
+
+		for _, descendant in ipairs(allDescendants) do
+			if descendant:IsA("GuiButton") then
+				processedButtons = processedButtons + 1
+				local hadAttribute = AttributeStyleManager.setupButtonStyles(descendant)
+				if hadAttribute then
+					styledButtons = styledButtons + 1
+				end
+			end
+		end
+
+		print("📊 MenuAnimator: Processed", processedButtons, "buttons,", styledButtons, "with styles")
+
+		-- Also check for newly added buttons
+		PlayerGui.DescendantAdded:Connect(function(descendant)
+			if descendant:IsA("GuiButton") then
+				wait(0.1) -- Small delay to ensure button is fully loaded
+				AttributeStyleManager.setupButtonStyles(descendant)
+			end
+		end)
 	end)
 end
 
@@ -708,6 +751,9 @@ local function initialize()
 
 	-- Start periodic cleanup of destroyed UIs
 	startPeriodicCleanup()
+
+	-- Setup interactive styles for all buttons
+	setupInteractiveStyles()
 end
 
 -- Force camera effects test
@@ -731,6 +777,75 @@ end
 -- Cleanup function for menu listeners
 _G.CleanupMenuListeners = function()
 	cleanupMenuListeners()
+end
+
+-- Test attribute style system
+_G.TestAttributeStyles = function()
+	print("🧪 Testing Attribute Style System...")
+
+	-- Find all buttons with HoverStyle attribute
+	local allDescendants = PlayerGui:GetDescendants()
+	local buttonsWithStyles = {}
+
+	for _, descendant in ipairs(allDescendants) do
+		if descendant:IsA("GuiButton") then
+			local hoverStyle = descendant:GetAttribute("HoverStyle")
+			if hoverStyle then
+				table.insert(buttonsWithStyles, descendant)
+				print("✅ Found button with HoverStyle:", descendant.Name, "->", hoverStyle)
+			end
+		end
+	end
+
+	print("📊 Total buttons with HoverStyle:", #buttonsWithStyles)
+
+	-- Test setup for each button
+	for _, button in ipairs(buttonsWithStyles) do
+		print("🔧 Setting up styles for:", button.Name)
+		AttributeStyleManager.setupButtonStyles(button)
+	end
+
+	return buttonsWithStyles
+end
+
+-- Easy button styling function
+_G.StyleButton = function(buttonName, hoverStyle, clickStyle, activeStyle)
+	local button = nil
+
+	-- Find button by name
+	local allDescendants = PlayerGui:GetDescendants()
+	for _, descendant in ipairs(allDescendants) do
+		if descendant:IsA("GuiButton") and descendant.Name == buttonName then
+			button = descendant
+			break
+		end
+	end
+
+	if not button then
+		print("❌ Button not found:", buttonName)
+		return false
+	end
+
+	-- Set attributes
+	if hoverStyle then
+		button:SetAttribute("HoverStyle", hoverStyle)
+		print("✅ Set HoverStyle for", buttonName, "->", hoverStyle)
+	end
+
+	if clickStyle then
+		button:SetAttribute("ClickStyle", clickStyle)
+		print("✅ Set ClickStyle for", buttonName, "->", clickStyle)
+	end
+
+	if activeStyle then
+		button:SetAttribute("ActiveStyle", activeStyle)
+		print("✅ Set ActiveStyle for", buttonName, "->", activeStyle)
+	end
+
+	-- Setup styles
+	AttributeStyleManager.setupButtonStyles(button)
+
+	return true
 end
 
 -- Start the system

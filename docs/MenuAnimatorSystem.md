@@ -12,6 +12,10 @@ The MenuAnimator system is a comprehensive UI animation and menu management syst
 - **Gradient Animations**: Provides animated gradients for active button states
 - **Toggle Support**: Respects Toggle BoolValue settings for menu behavior
 - **Multiple Animation Types**: Supports various animation presets for menu transitions
+- **Interactive Style System**: Professional hover, click, and active effects using attributes or StringValues
+- **Button Style Presets**: Ready-to-use style configurations for different button interactions
+- **Smooth Animations**: TweenService-powered transitions for fluid UI interactions
+- **Target Style Support**: Apply styles to external UI elements when menus are active
 
 ## System Architecture
 
@@ -23,6 +27,12 @@ The MenuAnimator system is a comprehensive UI animation and menu management syst
 4. **GeneralButtonAnimations.lua** - General button animations
 5. **MenuAnimations.lua** - Menu opening animations
 6. **MenuAnimationsOut.lua** - Menu closing animations
+
+### Style System Components
+
+1. **AttributeStyleManager.lua** - Modern attribute-based style management
+2. **ButtonStylePresets.lua** - Professional style preset definitions
+3. **StyleManager.lua** - Target UI element styling system
 
 ## Setup Requirements
 
@@ -38,6 +48,15 @@ To create a button that opens/closes menus, add these children to your button:
 - **BoolValue** named `"Toggle"` - If `false`, prevents closing when menu is open
 - **StringValue** named `"Position"` - Animation direction (default: "Top")
 - **StringValue** named `"Animation"` - Custom animation preset
+
+#### Interactive Style Attributes:
+- **Attribute** `"HoverStyle"` - Preset name for hover effect (e.g., "ScaleUp")
+- **Attribute** `"ClickStyle"` - Preset name for click effect (e.g., "Press")
+- **Attribute** `"ActiveStyle"` - Preset name for active state (e.g., "Elevated")
+
+#### Target Style Children:
+- **ObjectValue** named `"Target"` - Points to external UI element to style
+- **StringValue** named `"Style"` - Custom style properties in Lua table format
 
 ### For Close Buttons
 
@@ -87,6 +106,8 @@ Buttons without the `"MenuButton"` tag use the general animation system:
 - Basic hover effects
 - Click animations
 - Active state management
+- Interactive style system support
+- Target style system support
 
 **Setup:**
 ```lua
@@ -100,6 +121,14 @@ local animateValue = Instance.new("StringValue")
 animateValue.Name = "Animate"
 animateValue.Value = "Active" -- or "All"
 animateValue.Parent = button
+
+-- Add interactive styles (modern approach)
+button:SetAttribute("HoverStyle", "ScaleUp")
+button:SetAttribute("ClickStyle", "Press")
+button:SetAttribute("ActiveStyle", "Elevated")
+
+-- Or using helper function
+_G.StyleButton("ButtonName", "ScaleUp", "Press", "Elevated")
 ```
 
 ## Animation System
@@ -165,6 +194,64 @@ animateOutValue.Parent = closeButton
 - If no "AnimateOut" StringValue is found, uses `slide_bottom` animation
 - If "AnimateOut" is set to "none", menu disappears immediately
 - All animations respect the menu's original position and restore it after completion
+
+## Interactive Style System
+
+The MenuAnimator system includes a powerful interactive style system that provides professional hover, click, and active effects for buttons.
+
+### Style Setup
+
+```lua
+-- Using button attributes (recommended)
+button:SetAttribute("HoverStyle", "ScaleUp")
+button:SetAttribute("ClickStyle", "Press")
+button:SetAttribute("ActiveStyle", "Elevated")
+```
+
+#### Helper Function
+```lua
+-- Quick setup using global helper
+_G.StyleButton("ButtonName", "ScaleUp", "Press", "Elevated")
+```
+
+### Available Style Presets
+
+#### Hover Effects
+- `ScaleUp` - Scales button to 105%
+- `ScaleDown` - Scales button to 98%
+- `Elevate` - Moves button up 2 pixels
+- `Brighten` - Reduces background transparency
+- `Glow` - Increases thickness (for UIStroke)
+- `Pulse` - Subtle scale and transparency change
+- `SlideUp` - Slides button up 1 pixel
+- `Rotate` - Rotates button 2 degrees
+
+#### Click Effects
+- `Press` - Quick scale down to 95%
+- `DeepPress` - Scale down to 90% with position change
+- `Squash` - Horizontal stretch effect
+- `Flash` - Bright background flash
+- `BounceDown` - Bounce down effect
+- `QuickRotate` - Quick rotation with scale
+- `Squeeze` - Vertical squeeze effect
+- `Pop` - Scale up with transparency
+
+#### Active Effects
+- `Elevated` - Permanently elevated position
+- `Glowing` - Glowing border effect
+- `PulseGlow` - Pulsing glow effect
+- `Bright` - Bright background
+- `Highlighted` - Subtle highlight
+- `Selected` - Selected state appearance
+- `ActiveGlow` - Active glow effect
+- `Premium` - Premium active state
+
+### Animation Behavior
+
+- **Smooth Transitions**: Properties like `Size`, `Position`, `Transparency` animate smoothly (0.2s default)
+- **Immediate Changes**: Properties like `ZIndex` apply instantly
+- **Automatic Cleanup**: Styles are restored when interactions end
+- **Performance Optimized**: Only tweenable properties are animated
 
 ## Menu Detection System
 
@@ -247,6 +334,11 @@ local animateValue = Instance.new("StringValue")
 animateValue.Name = "Animate"
 animateValue.Value = "Active"
 animateValue.Parent = button
+
+-- Add interactive styles (modern approach)
+button:SetAttribute("HoverStyle", "ScaleUp")
+button:SetAttribute("ClickStyle", "Press")
+button:SetAttribute("ActiveStyle", "Elevated")
 ```
 
 ### Close Button
@@ -308,6 +400,69 @@ local toggleValue = Instance.new("BoolValue")
 toggleValue.Name = "Toggle"
 toggleValue.Value = false
 toggleValue.Parent = toggleButton
+```
+
+### Button with Interactive Styles
+
+```lua
+-- Create a styled button
+local styledButton = Instance.new("TextButton")
+styledButton.Name = "StyledButton"
+styledButton.Parent = parentGui
+
+-- Add basic menu functionality
+local openValue = Instance.new("ObjectValue")
+openValue.Name = "Open"
+openValue.Value = targetMenu
+openValue.Parent = styledButton
+
+local animateValue = Instance.new("StringValue")
+animateValue.Name = "Animate"
+animateValue.Value = "Active"
+animateValue.Parent = styledButton
+
+-- Add interactive styles using attributes
+styledButton:SetAttribute("HoverStyle", "Pulse")
+styledButton:SetAttribute("ClickStyle", "DeepPress")
+styledButton:SetAttribute("ActiveStyle", "Glowing")
+
+-- Or use the helper function
+_G.StyleButton("StyledButton", "Pulse", "DeepPress", "Glowing")
+```
+
+### Button with Target Styling
+
+```lua
+-- Create a button that styles another UI element
+local styleButton = Instance.new("TextButton")
+styleButton.Name = "StyleButton"
+styleButton.Parent = parentGui
+
+-- Basic menu setup
+local openValue = Instance.new("ObjectValue")
+openValue.Name = "Open"
+openValue.Value = targetMenu
+openValue.Parent = styleButton
+
+local animateValue = Instance.new("StringValue")
+animateValue.Name = "Animate"
+animateValue.Value = "Active"
+animateValue.Parent = styleButton
+
+-- Target styling setup
+local targetValue = Instance.new("ObjectValue")
+targetValue.Name = "Target"
+targetValue.Value = backgroundFrame -- UI element to style
+targetValue.Parent = styleButton
+
+local styleValue = Instance.new("StringValue")
+styleValue.Name = "Style"
+styleValue.Value = "{ BackgroundColor3 = Color3.fromRGB(100, 200, 255), BackgroundTransparency = 0.1 }"
+styleValue.Parent = styleButton
+
+-- Add interactive styles to the button itself
+styleButton:SetAttribute("HoverStyle", "ScaleUp")
+styleButton:SetAttribute("ClickStyle", "Press")
 ```
 
 ## Advanced Features
@@ -384,6 +539,10 @@ _G.ForceCameraEffects(true)
 
 -- Test FOV override
 _G.TestFovOverride(true, 80)
+
+-- Style system debug functions
+_G.StyleButton(buttonName, hoverStyle, clickStyle, activeStyle) -- Quick setup
+_G.TestAttributeStyles() -- Find buttons with style attributes
 ```
 
 ## Best Practices
@@ -394,6 +553,11 @@ _G.TestFovOverride(true, 80)
 4. **Test with different menu states** to ensure proper detection
 5. **Clean up listeners** when removing UI elements
 6. **Use consistent naming** for ObjectValue and StringValue children
+7. **Use attribute-based styles** (modern approach) for better performance
+8. **Choose appropriate style presets** based on your UI design
+9. **Test interactive styles** on different button types
+10. **Use the helper function** `_G.StyleButton()` for quick setup
+11. **Combine interactive styles with target styling** for rich interactions
 
 ## Animation Technical Details
 
@@ -432,17 +596,73 @@ Each animation type has configurable properties:
 
 ## Style Customization System
 
-The MenuAnimator system includes a powerful StyleManager that allows buttons to dynamically modify UI elements when their menus are open.
+The MenuAnimator system includes comprehensive styling capabilities through two main systems:
 
-### Basic Setup
+### 1. Interactive Style System
 
-Add these children to any button:
+Provides professional hover, click, and active effects for buttons using predefined presets.
 
-1. **ObjectValue "Target"** - Points to the UI element to style
-2. **StringValue "Style"** - Contains style properties in Lua table format
+#### Modern Attribute-Based Setup
+```lua
+-- Quick setup using attributes
+button:SetAttribute("HoverStyle", "ScaleUp")
+button:SetAttribute("ClickStyle", "Press")
+button:SetAttribute("ActiveStyle", "Elevated")
+
+-- Or using helper function
+_G.StyleButton("ButtonName", "ScaleUp", "Press", "Elevated")
+```
+
+#### Available Presets
+- **Hover**: `ScaleUp`, `ScaleDown`, `Elevate`, `Brighten`, `Glow`, `Pulse`, `SlideUp`, `Rotate`
+- **Click**: `Press`, `DeepPress`, `Squash`, `Flash`, `BounceDown`, `QuickRotate`, `Squeeze`, `Pop`
+- **Active**: `Elevated`, `Glowing`, `PulseGlow`, `Bright`, `Highlighted`, `Selected`, `ActiveGlow`, `Premium`
+
+### 2. Target Style System
+
+Allows buttons to modify external UI elements when their menus are active.
+
+#### Basic Setup
+```lua
+-- Target styling setup
+local targetValue = Instance.new("ObjectValue")
+targetValue.Name = "Target"
+targetValue.Value = backgroundFrame -- UI element to style
+targetValue.Parent = button
+
+local styleValue = Instance.new("StringValue")
+styleValue.Name = "Style"
+styleValue.Value = "{ BackgroundColor3 = Color3.fromRGB(100, 200, 255), BackgroundTransparency = 0.1 }"
+styleValue.Parent = button
+```
+
+#### Supported Properties
+- **Colors**: `BackgroundColor3`, `TextColor3`, `BorderColor3`, `ImageColor3`
+- **Transparency**: `BackgroundTransparency`, `TextTransparency`, `ImageTransparency`
+- **Size/Position**: `Size`, `Position`, `AnchorPoint`, `Rotation`
+- **Text**: `TextSize`, `Font`, `TextStrokeTransparency`
+- **Other**: `BorderSizePixel`, `ZIndex`, `Visible`
+
+### Combined Usage Example
 
 ```lua
--- Example: Style a background when menu is open
+-- Create a button with both interactive and target styles
+local button = Instance.new("TextButton")
+button.Name = "StyledMenuButton"
+button.Parent = parentGui
+
+-- Basic menu functionality
+local openValue = Instance.new("ObjectValue")
+openValue.Name = "Open"
+openValue.Value = targetMenu
+openValue.Parent = button
+
+-- Interactive styles (for the button itself)
+button:SetAttribute("HoverStyle", "Pulse")
+button:SetAttribute("ClickStyle", "DeepPress")
+button:SetAttribute("ActiveStyle", "Glowing")
+
+-- Target styles (for external UI elements)
 local targetValue = Instance.new("ObjectValue")
 targetValue.Name = "Target"
 targetValue.Value = backgroundFrame
@@ -454,34 +674,10 @@ styleValue.Value = "{ BackgroundColor3 = Color3.fromRGB(100, 200, 255), Backgrou
 styleValue.Parent = button
 ```
 
-### Supported Properties
-
-- **Colors**: `BackgroundColor3`, `TextColor3`, `BorderColor3`, `ImageColor3`
-- **Transparency**: `BackgroundTransparency`, `TextTransparency`, `ImageTransparency`
-- **Size/Position**: `Size`, `Position`, `AnchorPoint`, `Rotation`
-- **Text**: `TextSize`, `Font`, `TextStrokeTransparency`
-- **Other**: `BorderSizePixel`, `ZIndex`, `Visible`
-
-### Animation Behavior
-
-- **Smooth Transitions**: Transparency properties animate smoothly (0.3s)
-- **Immediate Changes**: Other properties apply instantly
-- **Automatic Cleanup**: Styles are restored when menus close
-
-### Example Use Cases
-
-```lua
--- Highlight background
-"{ BackgroundColor3 = Color3.fromRGB(50, 150, 255), BackgroundTransparency = 0.2 }"
-
--- Change text appearance
-"{ TextColor3 = Color3.fromRGB(255, 255, 0), TextSize = 20, Font = Enum.Font.GothamBold }"
-
--- Resize and reposition
-"{ Size = UDim2.new(0, 300, 0, 100), Position = UDim2.new(0, 50, 0, 50) }"
-```
-
-For detailed information, see [StyleManager Documentation](StyleManager.md).
+For detailed information, see:
+- [Interactive Styles Documentation](docs/MenuAnimator/InteractiveStyles.md)
+- [Button Style Presets Documentation](docs/MenuAnimator/ButtonStylePresets.md)
+- [StyleManager Documentation](docs/StyleManager.md)
 
 ## Integration with Other Systems
 
@@ -490,7 +686,10 @@ The MenuAnimator system integrates seamlessly with:
 - Sound effects system
 - Custom animation presets
 - UI layout systems
-- Style customization system
+- Interactive style system (hover, click, active effects)
+- Target style system (external UI element styling)
+- Button style presets (professional ready-to-use effects)
 - CollectionService tagging
+- TweenService for smooth animations
 
 This makes it a powerful foundation for complex UI interactions in Roblox games.
