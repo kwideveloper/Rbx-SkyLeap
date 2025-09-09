@@ -597,19 +597,6 @@ function WallJump.tryJump(character, resetMomentum)
 	local away = awayDirection * ((Config.WallJumpImpulseAway or 120) * awayMul)
 	local up = Vector3.new(0, (Config.WallJumpImpulseUp or 45) * upMul, 0)
 
-	-- DEBUG: Print wall jump information
-	print("=== WALL JUMP DEBUG ===")
-	print("Wall Normal:", wallNormal)
-	print("Wall to Player:", wallToPlayer)
-	print("Away direction:", awayDirection)
-	print("Away velocity:", away)
-	print("Up direction:", up)
-	print("Final velocity:", away + up)
-	print("Reset momentum:", resetMomentum)
-	print("Wall position:", hit.Position)
-	print("Player position:", rootPart.Position)
-	print("=======================")
-
 	-- Force a clean eject: ignore prior velocity so camera/facing or slide residue cannot reduce jump power
 	-- If resetMomentum is true, completely reset all velocity before applying wall jump impulse
 	if resetMomentum then
@@ -635,29 +622,18 @@ function WallJump.tryJump(character, resetMomentum)
 	local isFromWallSlide = slideData ~= nil
 	local isFromWallRun = false -- WallRun.tryHop is called separately, not through WallJump.tryJump
 
-	-- DEBUG: Print orientation information
-	print("=== ORIENTATION DEBUG ===")
-	print("Away horizontal:", awayHoriz)
-	print("Away horizontal magnitude:", awayHoriz.Magnitude)
-	print("Is from wall slide:", isFromWallSlide)
-	print("Is from wall run:", isFromWallRun)
-	print("=========================")
-
 	if awayHoriz.Magnitude > 0 then
 		if isFromWallSlide then
 			-- For walljump from wallslide: orient to face the direction of the jump (away from wall)
 			-- Character was looking at wall, now look in jump direction
 			rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
-			print("WallSlide: Rotating to face jump direction (away from wall)")
 		elseif not isFromWallRun then
 			-- For walljump from VerticalClimb or other sources: orient to face the direction of the jump
 			-- Character was looking at wall, now look in jump direction
 			rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
-			print("VerticalClimb/Other: Rotating to face jump direction (away from wall)")
 		else
 			-- For walljump from wallrun: use normal orientation (facing away from wall)
 			rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + awayHoriz.Unit, Vector3.yAxis)
-			print("WallRun: Using normal orientation (facing away from wall)")
 		end
 	else
 		-- Fallback: if awayHoriz is too small, use the calculated awayDirection

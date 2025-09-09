@@ -56,7 +56,7 @@ local Animations = {
 	WallJump = "rbxassetid://125842455228311", -- Preparation animation for Wall Jump
 
 	-- Vertical Climb
-	VerticalClimb = "rbxassetid://107697509448004", -- vertical wall climbing animation
+	VerticalClimb = "rbxassetid://114927643133024", -- vertical wall climbing animation
 	-- Default: 107697509448004
 	-- Original: 74696284153822
 
