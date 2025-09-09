@@ -430,6 +430,59 @@ Each animation type has configurable properties:
 - Animations automatically clean up after completion
 - No memory leaks from abandoned tweens
 
+## Style Customization System
+
+The MenuAnimator system includes a powerful StyleManager that allows buttons to dynamically modify UI elements when their menus are open.
+
+### Basic Setup
+
+Add these children to any button:
+
+1. **ObjectValue "Target"** - Points to the UI element to style
+2. **StringValue "Style"** - Contains style properties in Lua table format
+
+```lua
+-- Example: Style a background when menu is open
+local targetValue = Instance.new("ObjectValue")
+targetValue.Name = "Target"
+targetValue.Value = backgroundFrame
+targetValue.Parent = button
+
+local styleValue = Instance.new("StringValue")
+styleValue.Name = "Style"
+styleValue.Value = "{ BackgroundColor3 = Color3.fromRGB(100, 200, 255), BackgroundTransparency = 0.1 }"
+styleValue.Parent = button
+```
+
+### Supported Properties
+
+- **Colors**: `BackgroundColor3`, `TextColor3`, `BorderColor3`, `ImageColor3`
+- **Transparency**: `BackgroundTransparency`, `TextTransparency`, `ImageTransparency`
+- **Size/Position**: `Size`, `Position`, `AnchorPoint`, `Rotation`
+- **Text**: `TextSize`, `Font`, `TextStrokeTransparency`
+- **Other**: `BorderSizePixel`, `ZIndex`, `Visible`
+
+### Animation Behavior
+
+- **Smooth Transitions**: Transparency properties animate smoothly (0.3s)
+- **Immediate Changes**: Other properties apply instantly
+- **Automatic Cleanup**: Styles are restored when menus close
+
+### Example Use Cases
+
+```lua
+-- Highlight background
+"{ BackgroundColor3 = Color3.fromRGB(50, 150, 255), BackgroundTransparency = 0.2 }"
+
+-- Change text appearance
+"{ TextColor3 = Color3.fromRGB(255, 255, 0), TextSize = 20, Font = Enum.Font.GothamBold }"
+
+-- Resize and reposition
+"{ Size = UDim2.new(0, 300, 0, 100), Position = UDim2.new(0, 50, 0, 50) }"
+```
+
+For detailed information, see [StyleManager Documentation](StyleManager.md).
+
 ## Integration with Other Systems
 
 The MenuAnimator system integrates seamlessly with:
@@ -437,6 +490,7 @@ The MenuAnimator system integrates seamlessly with:
 - Sound effects system
 - Custom animation presets
 - UI layout systems
+- Style customization system
 - CollectionService tagging
 
 This makes it a powerful foundation for complex UI interactions in Roblox games.

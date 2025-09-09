@@ -16,6 +16,7 @@ local ButtonAnimations = require(script.Parent.ButtonAnimations)
 local GeneralButtonAnimations = require(script.Parent.GeneralButtonAnimations)
 local MenuAnimations = require(script.Parent.MenuAnimations)
 local MenuAnimationsOut = require(script.Parent.MenuAnimationsOut)
+local StyleManager = require(script.Parent.StyleManager)
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -464,6 +465,9 @@ local function monitorMenuChanges(menu, button)
 					button.ZIndex = 75
 				end
 			end
+
+			-- Apply custom styles if configured
+			StyleManager.applyButtonStyle(button)
 		else
 			-- Deactivate button
 			if isMenuButton(button) then
@@ -501,6 +505,9 @@ local function monitorMenuChanges(menu, button)
 			else
 				GeneralButtonAnimations.deactivateButtonActiveStyle(button)
 			end
+
+			-- Remove custom styles if configured
+			StyleManager.removeButtonStyle(button)
 		end
 	end
 
@@ -587,6 +594,19 @@ local function cleanupMenuListeners()
 	end
 	menuListeners = {}
 	monitoredMenus = {}
+
+	-- Clean up all custom styles
+	StyleManager.cleanupAllStyles()
+end
+
+-- Periodic cleanup of destroyed UIs
+local function startPeriodicCleanup()
+	spawn(function()
+		while true do
+			wait(10) -- Clean up every 10 seconds
+			StyleManager.cleanupDestroyedUIs()
+		end
+	end)
 end
 
 -- Initialize system
@@ -685,6 +705,9 @@ local function initialize()
 		wait(5)
 		checkAndActivateOpenMenus()
 	end)
+
+	-- Start periodic cleanup of destroyed UIs
+	startPeriodicCleanup()
 end
 
 -- Force camera effects test
