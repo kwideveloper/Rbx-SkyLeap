@@ -14,7 +14,7 @@ local SAVE_INTERVAL = 30 -- Save every 30 seconds maximum
 local CRITICAL_SAVE_THRESHOLD = 5000 -- Auto-save if coins/diamonds change by this much
 local LOADING = {} -- Track profiles currently being loaded to prevent duplicate requests
 local SAVE_QUEUE = {} -- Queue for DataStore operations to prevent overload
-local MAX_CONCURRENT_SAVES = 3 -- Maximum concurrent DataStore operations
+local MAX_CONCURRENT_SAVES = 1 -- Maximum concurrent DataStore operations (reduced to prevent overload)
 
 local function defaultProfile()
 	return {
@@ -199,10 +199,10 @@ local function forceSave(userId)
 		return false
 	end
 
-	-- ANTI-DUPLICATE: Prevent multiple saves within 1 second (throttle rapid saves)
+	-- ANTI-DUPLICATE: Prevent multiple saves within 5 seconds (throttle rapid saves)
 	local lastSave = LAST_SAVE[userId] or 0
 	local timeSinceLastSave = os.time() - lastSave
-	if timeSinceLastSave < 1 then
+	if timeSinceLastSave < 5 then
 		return true -- Return success since data is already recent
 	end
 
@@ -432,7 +432,7 @@ function PlayerProfile.addDiamonds(userId, amount)
 	return PlayerProfile.getBalances(userId)
 end
 
--- OPTIMIZED: Use batching for spending but with validation
+-- OPTIMIZED: Atomic spending with immediate save to prevent double-spending
 function PlayerProfile.trySpend(userId, currency, amount)
 	currency = tostring(currency)
 	amount = math.floor(tonumber(amount) or 0)
@@ -451,8 +451,18 @@ function PlayerProfile.trySpend(userId, currency, amount)
 		-- Apply spending directly to profile (subtract amount)
 		profile.stats[field] = math.max(0, current - amount)
 
-		-- Force save for spending operations (critical)
-		forceSave(userId)
+		-- Clear any pending changes for this currency to prevent conflicts
+		if PENDING_CHANGES[userId] then
+			PENDING_CHANGES[userId][field] = nil
+		end
+
+		-- Force immediate save for spending operations (critical for preventing double-spending)
+		local success = forceSave(userId)
+		if not success then
+			-- Refund if save failed
+			profile.stats[field] = current
+			return false, PlayerProfile.getBalances(userId)
+		end
 
 		return true, PlayerProfile.getBalances(userId)
 	end
@@ -611,6 +621,11 @@ function PlayerProfile.equipTrail(userId, trailId)
 		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
 	profile.cosmetics.equipped = profile.cosmetics.equipped or { outfitId = nil, trailId = nil }
 
+	-- Check if already equipped (avoid unnecessary save)
+	if profile.cosmetics.equipped.trailId == trailId then
+		return true, "Trail already equipped"
+	end
+
 	-- Equip the trail
 	profile.cosmetics.equipped.trailId = trailId
 
@@ -685,6 +700,11 @@ function PlayerProfile.equipHandTrail(userId, trailId)
 	profile.cosmetics = profile.cosmetics
 		or { owned = {}, equipped = { outfitId = nil, trailId = nil, handTrailId = nil } }
 	profile.cosmetics.equipped = profile.cosmetics.equipped or { outfitId = nil, trailId = nil, handTrailId = nil }
+
+	-- Check if already equipped (avoid unnecessary save)
+	if profile.cosmetics.equipped.handTrailId == trailId then
+		return true, "Hand trail already equipped"
+	end
 
 	-- Equip the hand trail
 	profile.cosmetics.equipped.handTrailId = trailId

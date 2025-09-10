@@ -448,16 +448,6 @@ function WallRun.tryHop(character)
 	local away = awayDirection * Config.WallJumpImpulseAway
 	local up = Vector3.new(0, Config.WallJumpImpulseUp, 0)
 
-	-- DEBUG: Print wall run hop information
-	print("=== WALL RUN HOP DEBUG ===")
-	print("Wall Normal:", wallNormal)
-	print("Wall to Player:", wallToPlayer)
-	print("Away direction:", awayDirection)
-	print("Away velocity:", away)
-	print("Up direction:", up)
-	print("Final velocity (before momentum):", away + up)
-	print("==========================")
-
 	-- Preserve horizontal momentum from wallrun if enabled
 	local finalVelocity = away + up
 	if Config.WallJumpPreserveMomentum then

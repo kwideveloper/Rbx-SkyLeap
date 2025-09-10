@@ -123,13 +123,16 @@ PurchaseTrail.OnServerInvoke = function(player, trailId)
 		return { success = false, reason = "InvalidCurrency" }
 	end
 
-	-- Attempt to spend currency
+	-- Get current balances before spending
+	local currentCoins, currentDiamonds = PlayerProfile.getBalances(player.UserId)
+
+	-- Attempt to spend currency (this now includes immediate save)
 	local spendSuccess, newCoins, newDiamonds = PlayerProfile.trySpend(player.UserId, trail.currency, trail.price)
 	if not spendSuccess then
 		return { success = false, reason = "InsufficientFunds" }
 	end
 
-	-- Purchase the trail
+	-- Purchase the trail (this should be very fast since currency was already spent)
 	local purchaseSuccess = PlayerProfile.purchaseTrail(player.UserId, trailId)
 	if not purchaseSuccess then
 		-- Refund the currency if purchase failed
@@ -144,7 +147,7 @@ PurchaseTrail.OnServerInvoke = function(player, trailId)
 	-- Record the attempt
 	recordPurchaseAttempt(player)
 
-	-- Update leaderstats first
+	-- Update leaderstats immediately
 	local stats = player:FindFirstChild("leaderstats")
 	if stats then
 		local ci = stats:FindFirstChild("Coins")
@@ -194,6 +197,12 @@ EquipTrail.OnServerInvoke = function(player, trailId)
 
 	if type(trailId) ~= "string" or trailId == "" then
 		return { success = false, reason = "InvalidTrailId" }
+	end
+
+	-- Check if already equipped (avoid unnecessary DataStore operations)
+	local currentEquipped = PlayerProfile.getEquippedTrail(player.UserId)
+	if currentEquipped == trailId then
+		return { success = true, message = "Trail already equipped" }
 	end
 
 	-- Verify trail exists

@@ -32,6 +32,11 @@ local currentEquippedHandTrail = "default"
 local ownedHandTrails = {}
 local allHandTrails = {}
 
+-- Purchase protection
+local purchaseInProgress = {}
+local equipInProgress = {}
+local PURCHASE_COOLDOWN = 2 -- 2 seconds cooldown between purchases
+
 -- Animation settings
 local ANIMATION_DURATION = 0.3
 local TWEEN_INFO = TweenInfo.new(ANIMATION_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -178,30 +183,61 @@ local function purchaseHandTrail(trailId)
 		return
 	end
 
+	-- Check if purchase is already in progress for this trail
+	if purchaseInProgress[trailId] then
+		print("Hand trail purchase already in progress for " .. trailData.name)
+		return
+	end
+
+	-- Check if trail is already owned
+	if ownedHandTrails[trailId] then
+		print("Hand trail " .. trailData.name .. " is already owned")
+		return
+	end
+
 	-- Get frame reference
 	local frame = handTrailFrames[trailId]
+	if not frame then
+		warn("Frame not found for hand trail: " .. trailId)
+		return
+	end
+
+	-- Mark purchase as in progress
+	purchaseInProgress[trailId] = true
+
+	-- Update button to show loading state
+	local buyButton = frame:FindFirstChild("Buy")
+	if buyButton then
+		buyButton.Text = "Purchasing..."
+		buyButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+		buyButton.Active = false -- Disable button during purchase
+	end
 
 	-- Call server
 	local success, result = pcall(function()
 		return PurchaseHandTrail:InvokeServer(trailId)
 	end)
 
+	-- Clear purchase in progress flag
+	purchaseInProgress[trailId] = nil
+
 	if success and result.success then
 		-- Update local state
 		ownedHandTrails[trailId] = true
 		updateHandTrailFrame(trailId, frame)
+
+		-- Show success message
+		print("Successfully purchased " .. trailData.name .. " hand trail!")
 	else
 		-- Show error message
 		local errorMsg = result and result.reason or "Purchase failed"
 		print("Hand trail purchase failed: " .. errorMsg)
 
 		-- Reset button state
-		if frame then
-			local buyButton = frame:FindFirstChild("Buy")
-			if buyButton then
-				buyButton.Text = "Buy"
-				buyButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
-			end
+		if buyButton then
+			buyButton.Text = "Buy"
+			buyButton.BackgroundColor3 = Color3.fromRGB(50, 150, 50)
+			buyButton.Active = true -- Re-enable button
 		end
 	end
 end
@@ -213,19 +249,47 @@ local function equipHandTrail(trailId)
 		return
 	end
 
+	-- Check if already equipped
+	if currentEquippedHandTrail == trailId then
+		print("Hand trail " .. trailData.name .. " is already equipped")
+		return
+	end
+
+	-- Check if equipment is already in progress for this trail
+	if equipInProgress[trailId] then
+		print("Hand trail equipment already in progress for " .. trailData.name)
+		return
+	end
+
 	-- Get frame reference
 	local frame = handTrailFrames[trailId]
+	if not frame then
+		warn("Frame not found for hand trail: " .. trailId)
+		return
+	end
+
+	-- Mark equipment as in progress
+	equipInProgress[trailId] = true
+
+	-- Update button to show loading state
+	local equipButton = frame:FindFirstChild("Equip")
+	if equipButton then
+		equipButton.Text = "Equipping..."
+		equipButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+		equipButton.Active = false -- Disable button during equipment
+	end
 
 	-- Call server
 	local success, result = pcall(function()
 		return EquipHandTrail:InvokeServer(trailId)
 	end)
 
+	-- Clear equipment in progress flag
+	equipInProgress[trailId] = nil
+
 	if success and result.success then
 		-- Update local state
 		currentEquippedHandTrail = trailId
-
-		-- Hand trail is automatically saved on server side
 
 		-- Update all frames
 		for id, frame in pairs(handTrailFrames) do
@@ -240,12 +304,10 @@ local function equipHandTrail(trailId)
 		print("Hand trail equipment failed: " .. errorMsg)
 
 		-- Reset button state
-		if frame then
-			local equipButton = frame:FindFirstChild("Equip")
-			if equipButton then
-				equipButton.Text = "Equip"
-				equipButton.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
-			end
+		if equipButton then
+			equipButton.Text = "Equip"
+			equipButton.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+			equipButton.Active = true -- Re-enable button
 		end
 	end
 end

@@ -123,13 +123,16 @@ PurchaseHandTrail.OnServerInvoke = function(player, trailId)
 		return { success = false, reason = "InvalidCurrency" }
 	end
 
-	-- Attempt to spend currency
+	-- Get current balances before spending
+	local currentCoins, currentDiamonds = PlayerProfile.getBalances(player.UserId)
+
+	-- Attempt to spend currency (this now includes immediate save)
 	local spendSuccess, newCoins, newDiamonds = PlayerProfile.trySpend(player.UserId, trail.currency, trail.price)
 	if not spendSuccess then
 		return { success = false, reason = "InsufficientFunds" }
 	end
 
-	-- Purchase the hand trail
+	-- Purchase the hand trail (this should be very fast since currency was already spent)
 	local purchaseSuccess = PlayerProfile.purchaseHandTrail(player.UserId, trailId)
 	if not purchaseSuccess then
 		-- Refund the currency if purchase failed
@@ -194,6 +197,12 @@ EquipHandTrail.OnServerInvoke = function(player, trailId)
 
 	if type(trailId) ~= "string" or trailId == "" then
 		return { success = false, reason = "InvalidTrailId" }
+	end
+
+	-- Check if already equipped (avoid unnecessary DataStore operations)
+	local currentEquipped = PlayerProfile.getEquippedHandTrail(player.UserId)
+	if currentEquipped == trailId then
+		return { success = true, message = "Hand trail already equipped" }
 	end
 
 	-- Verify hand trail exists
