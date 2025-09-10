@@ -640,8 +640,6 @@ local function setupInteractiveStyles()
 			end
 		end
 
-		print("📊 MenuAnimator: Processed", processedButtons, "buttons,", styledButtons, "with styles")
-
 		-- Also check for newly added buttons
 		PlayerGui.DescendantAdded:Connect(function(descendant)
 			if descendant:IsA("GuiButton") then

@@ -376,8 +376,6 @@ function StyleManager.applyButtonStyle(button)
 		return false
 	end
 
-	print("🎨 StyleManager: Applying styles to button:", button.Name)
-
 	local targetValue = button:FindFirstChild("Target")
 	local styleValue = button:FindFirstChild("Style")
 
@@ -416,8 +414,6 @@ function StyleManager.removeButtonStyle(button)
 	if not activeStyleButtons[button] then
 		return false
 	end
-
-	print("🔄 StyleManager: Removing styles from button:", button.Name)
 
 	local targetUI = activeStyleButtons[button]
 	restoreOriginalStyle(targetUI)

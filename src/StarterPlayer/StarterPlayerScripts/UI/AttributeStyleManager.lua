@@ -142,16 +142,12 @@ local function applyStyleWithAnimation(targetUI, styleTable, duration)
 
 	-- Apply tweenable properties with animation
 	if next(tweenableProperties) then
-		print("🎬 AttributeStyleManager: Creating tween for properties:", tweenableProperties)
 		local tween = TweenService:Create(
 			targetUI,
 			TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			tweenableProperties
 		)
 		tween:Play()
-		print("✅ AttributeStyleManager: Tween started")
-	else
-		print("⚠️ AttributeStyleManager: No tweenable properties found")
 	end
 end
 
@@ -257,29 +253,6 @@ local function hasStyleConfiguration(button)
 		or targetClickStyle
 		or targetActiveStyle
 
-	-- Only log if button has styles configured
-	if hasAnyStyle then
-		print("🎨 AttributeStyleManager: Found styles for", button.Name)
-		if hoverStyle then
-			print("  - HoverStyle:", hoverStyle)
-		end
-		if clickStyle then
-			print("  - ClickStyle:", clickStyle)
-		end
-		if activeStyle then
-			print("  - ActiveStyle:", activeStyle)
-		end
-		if targetHoverStyle then
-			print("  - TargetHoverStyle:", targetHoverStyle)
-		end
-		if targetClickStyle then
-			print("  - TargetClickStyle:", targetClickStyle)
-		end
-		if targetActiveStyle then
-			print("  - TargetActiveStyle:", targetActiveStyle)
-		end
-	end
-
 	return hasAnyStyle
 end
 
@@ -288,9 +261,6 @@ function AttributeStyleManager.setupButtonStyles(button)
 	if not hasStyleConfiguration(button) then
 		return false
 	end
-
-	print("✅ AttributeStyleManager: Setting up styles for button:", button.Name)
-
 	-- Initialize state tracking
 	if not styleStates[button] then
 		styleStates[button] = {
@@ -311,7 +281,6 @@ function AttributeStyleManager.setupButtonStyles(button)
 
 	-- Setup hover effects
 	local hoverStyle = button:GetAttribute("HoverStyle")
-	print("🎨 AttributeStyleManager: HoverStyle for", button.Name, ":", hoverStyle)
 
 	if hoverStyle then
 		local styleTable = nil
@@ -319,33 +288,23 @@ function AttributeStyleManager.setupButtonStyles(button)
 		-- Check if it's a preset name
 		if not hoverStyle:match("{") then
 			local targetType = getTargetType(button)
-			print("🎨 AttributeStyleManager: Getting preset for", hoverStyle, "type:", targetType)
 			styleTable = ButtonStylePresets.getPreset("Hover", hoverStyle, targetType)
-			print("🎨 AttributeStyleManager: Preset result:", styleTable)
 		else
 			-- Parse custom style
 			styleTable = parseStyleString(hoverStyle)
 		end
 
 		if styleTable then
-			print("✅ AttributeStyleManager: Setting up hover connections for", button.Name)
-			print("🎨 StyleTable:", styleTable)
 			local connection = button.MouseEnter:Connect(function()
-				print("🖱️ AttributeStyleManager: MouseEnter triggered for", button.Name)
 				applyStyleWithAnimation(button, styleTable, 0.2)
 			end)
 			table.insert(styleStates[button].connections, connection)
 
 			local connection2 = button.MouseLeave:Connect(function()
-				print("🖱️ AttributeStyleManager: MouseLeave triggered for", button.Name)
 				restoreOriginalStyle(button, styleStates[button].original, 0.2)
 			end)
 			table.insert(styleStates[button].connections, connection2)
-		else
-			print("❌ AttributeStyleManager: No styleTable found for hover style:", hoverStyle)
 		end
-	else
-		print("❌ AttributeStyleManager: No HoverStyle attribute found for", button.Name)
 	end
 
 	-- Setup target hover effects
