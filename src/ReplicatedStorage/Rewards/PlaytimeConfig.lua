@@ -9,20 +9,20 @@ local Config = {}
 -- Goal: Smooth progression with meaningful rewards that encourage continued play
 Config.Rewards = {
 	-- Early game: Quick wins to hook players (5-15 min)
-	{ seconds = 60 * 5, type = "Coins", amount = 1000, image = "rbxassetid://127484940327901" }, -- 200 coins/min
-	{ seconds = 60 * 10, type = "Coins", amount = 2500, image = "rbxassetid://127484940327901" }, -- 250 coins/min
-	{ seconds = 60 * 15, type = "Diamonds", amount = 50, image = "rbxassetid://134526683895571" }, -- ~3.33 diamonds/min
+	{ seconds = 60 * 5, type = "Coins", amount = 500, image = "rbxassetid://127484940327901" }, -- 100 coins/min
+	{ seconds = 60 * 10, type = "Coins", amount = 1250, image = "rbxassetid://127484940327901" }, -- 125 coins/min
+	{ seconds = 60 * 15, type = "Diamonds", amount = 25, image = "rbxassetid://134526683895571" }, -- ~1.67 diamonds/min
 
 	-- Mid game: Building momentum (25-45 min)
-	{ seconds = 60 * 25, type = "Coins", amount = 6500, image = "rbxassetid://127484940327901" }, -- 260 coins/min
-	{ seconds = 60 * 35, type = "Coins", amount = 9500, image = "rbxassetid://127484940327901" }, -- 271 coins/min
-	{ seconds = 60 * 45, type = "Diamonds", amount = 120, image = "rbxassetid://134526683895571" }, -- ~2.67 diamonds/min
+	{ seconds = 60 * 25, type = "Coins", amount = 1800, image = "rbxassetid://127484940327901" }, -- 72 coins/min
+	{ seconds = 60 * 35, type = "Coins", amount = 2500, image = "rbxassetid://127484940327901" }, -- ~71.4 coins/min
+	{ seconds = 60 * 45, type = "Diamonds", amount = 50, image = "rbxassetid://134526683895571" }, -- ~1.11 diamonds/min
 
 	-- Late game: Premium rewards for dedicated players (60-120 min)
-	{ seconds = 60 * 60, type = "Coins", amount = 12500, image = "rbxassetid://127484940327901" }, -- 208 coins/min
-	{ seconds = 60 * 75, type = "Coins", amount = 16000, image = "rbxassetid://127484940327901" }, -- 213 coins/min
-	{ seconds = 60 * 90, type = "Diamonds", amount = 250, image = "rbxassetid://134526683895571" }, -- ~2.78 diamonds/min
-	{ seconds = 60 * 120, type = "Coins", amount = 22000, image = "rbxassetid://127484940327901" }, -- 183 coins/min
+	{ seconds = 60 * 60, type = "Coins", amount = 4000, image = "rbxassetid://127484940327901" }, -- ~66.7 coins/min
+	{ seconds = 60 * 75, type = "Coins", amount = 5500, image = "rbxassetid://127484940327901" }, -- ~73.3 coins/min
+	{ seconds = 60 * 90, type = "Diamonds", amount = 100, image = "rbxassetid://134526683895571" }, -- ~1.11 diamonds/min
+	{ seconds = 60 * 120, type = "Coins", amount = 8000, image = "rbxassetid://127484940327901" }, -- ~66.7 coins/min
 }
 
 function Config.formatReward(entry)

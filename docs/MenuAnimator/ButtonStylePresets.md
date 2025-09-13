@@ -17,9 +17,9 @@ Applied when a button is pressed or released.
 ### Active Presets
 Applied when a button's associated menu is open.
 
-## GuiObject Presets
+## Hover Effects
 
-### Hover Effects
+### GuiObject Hover Effects
 
 #### `ScaleUp`
 **Effect**: Scales button to 105% of original size
@@ -71,7 +71,49 @@ Applied when a button's associated menu is open.
 - `Rotation = 2`
 - `ZIndex = 5`
 
-### Click Effects
+### UIStroke Hover Effects
+
+#### `Glow`
+**Effect**: Increases thickness and reduces transparency
+**Use Case**: Glowing border on hover
+**Properties**:
+- `Thickness = 3`
+- `Transparency = 0.3`
+- `Enabled = true`
+
+#### `Bright`
+**Effect**: Reduces transparency
+**Use Case**: Brighter border on hover
+**Properties**:
+- `Transparency = 0.1`
+- `Enabled = true`
+
+#### `Thick`
+**Effect**: Increases thickness
+**Use Case**: Thicker border on hover
+**Properties**:
+- `Thickness = 4`
+- `Enabled = true`
+
+### UIGradient Hover Effects
+
+#### `Rotate`
+**Effect**: Rotates gradient 15 degrees
+**Use Case**: Dynamic gradient on hover
+**Properties**:
+- `Rotation = 15`
+- `Enabled = true`
+
+#### `Brighten`
+**Effect**: Adjusts gradient offset
+**Use Case**: Brighter gradient on hover
+**Properties**:
+- `Offset = Vector2.new(0, 0.3)`
+- `Enabled = true`
+
+## Click Effects
+
+### GuiObject Click Effects
 
 #### `Press`
 **Effect**: Quick scale down to 95%
@@ -133,7 +175,34 @@ Applied when a button's associated menu is open.
 - `BackgroundTransparency = 0.02`
 - `ZIndex = 10`
 
-### Active Effects
+### UIStroke Click Effects
+
+#### `Press`
+**Effect**: Reduces thickness
+**Use Case**: Pressed border effect
+**Properties**:
+- `Thickness = 2`
+- `Enabled = true`
+
+#### `Flash`
+**Effect**: Full opacity flash
+**Use Case**: Bright flash on click
+**Properties**:
+- `Transparency = 0`
+- `Enabled = true`
+
+### UIGradient Click Effects
+
+#### `Flash`
+**Effect**: Resets rotation
+**Use Case**: Gradient reset on click
+**Properties**:
+- `Rotation = 0`
+- `Enabled = true`
+
+## Active Effects
+
+### GuiObject Active Effects
 
 #### `Elevated`
 **Effect**: Permanently elevated position
@@ -197,49 +266,7 @@ Applied when a button's associated menu is open.
 - `BackgroundTransparency = 0.02`
 - `ZIndex = 15`
 
-## UIStroke Presets
-
-### Hover Effects
-
-#### `Glow`
-**Effect**: Increases thickness and reduces transparency
-**Use Case**: Glowing border on hover
-**Properties**:
-- `Thickness = 3`
-- `Transparency = 0.3`
-- `Enabled = true`
-
-#### `Bright`
-**Effect**: Reduces transparency
-**Use Case**: Brighter border on hover
-**Properties**:
-- `Transparency = 0.1`
-- `Enabled = true`
-
-#### `Thick`
-**Effect**: Increases thickness
-**Use Case**: Thicker border on hover
-**Properties**:
-- `Thickness = 4`
-- `Enabled = true`
-
-### Click Effects
-
-#### `Press`
-**Effect**: Reduces thickness
-**Use Case**: Pressed border effect
-**Properties**:
-- `Thickness = 2`
-- `Enabled = true`
-
-#### `Flash`
-**Effect**: Full opacity flash
-**Use Case**: Bright flash on click
-**Properties**:
-- `Transparency = 0`
-- `Enabled = true`
-
-### Active Effects
+### UIStroke Active Effects
 
 #### `Glowing`
 **Effect**: Thick glowing border
@@ -256,34 +283,7 @@ Applied when a button's associated menu is open.
 - `Transparency = 0.05`
 - `Enabled = true`
 
-## UIGradient Presets
-
-### Hover Effects
-
-#### `Rotate`
-**Effect**: Rotates gradient 15 degrees
-**Use Case**: Dynamic gradient on hover
-**Properties**:
-- `Rotation = 15`
-- `Enabled = true`
-
-#### `Brighten`
-**Effect**: Adjusts gradient offset
-**Use Case**: Brighter gradient on hover
-**Properties**:
-- `Offset = Vector2.new(0, 0.3)`
-- `Enabled = true`
-
-### Click Effects
-
-#### `Flash`
-**Effect**: Resets rotation
-**Use Case**: Gradient reset on click
-**Properties**:
-- `Rotation = 0`
-- `Enabled = true`
-
-### Active Effects
+### UIGradient Active Effects
 
 #### `Active`
 **Effect**: Rotated gradient
