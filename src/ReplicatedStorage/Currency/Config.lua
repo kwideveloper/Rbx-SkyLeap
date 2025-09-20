@@ -3,21 +3,22 @@
 local Config = {}
 local SharedUtils = require(script.Parent.Parent.SharedUtils)
 
--- Award conversion from committed style points
-Config.CoinsPerStylePoint = 0.2
+-- Award conversion from committed style points (REDUCED TO 1/3)
+Config.CoinsPerStylePoint = 0.067
 
--- Thresholds for bonus coins on commit
+-- Thresholds for bonus coins on commit (REDUCED TO 1/3)
 Config.StyleGoodThreshold = 150
-Config.GoodBonusCoins = 20
+Config.GoodBonusCoins = 7
 
 Config.StyleGreatThreshold = 400
-Config.GreatBonusCoins = 60
+Config.GreatBonusCoins = 20
 
 Config.StyleOutstandingThreshold = 1000
-Config.OutstandingBonusCoins = 200
+Config.OutstandingBonusCoins = 67
 
--- Safety caps
-Config.CommitAwardCoinCap = 5000
+-- Safety caps (REDUCED TO 1/3)
+-- Config.CommitAwardCoinCap = 5000
+Config.CommitAwardCoinCap = 1667
 
 -- Client text formatting (using SharedUtils for consistency)
 function Config.formatCoins(amount)

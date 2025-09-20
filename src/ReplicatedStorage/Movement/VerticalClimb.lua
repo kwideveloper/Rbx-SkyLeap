@@ -42,8 +42,12 @@ local function findFrontWall(root)
 	for _, o in ipairs(origins) do
 		local h = workspace:Raycast(o, look * dist, params)
 		if h and h.Instance and h.Instance.CanCollide then
-			best = h
-			break
+			-- Check if wall has VerticalClimb attribute (disabled only if explicitly set to false)
+			local verticalClimbAttr = h.Instance:GetAttribute("VerticalClimb")
+			if verticalClimbAttr ~= false then
+				best = h
+				break
+			end
 		end
 	end
 	if not best then
@@ -199,6 +203,14 @@ function VerticalClimb.maintain(character, dt)
 	-- re-confirm wall and refresh normal for stability
 	local hit = findFrontWall(root)
 	if not hit then
+		stopVerticalClimbAnimation(character)
+		active[character] = nil
+		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
+		return false
+	end
+	-- Double-check that wall still allows climbing (in case attribute changed)
+	local verticalClimbAttr = hit.Instance:GetAttribute("VerticalClimb")
+	if verticalClimbAttr == false then
 		stopVerticalClimbAnimation(character)
 		active[character] = nil
 		cooldownUntil[character] = os.clock() + (Config.VerticalClimbCooldownSeconds or 0.6)
